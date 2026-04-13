@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Loan Randomizer</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Loan Randomizer</h1>
+      <p>Assign incoming loans to loan officers using your custom balancing rules.</p>
+    </header>
+
+    <main class="grid">
+      <section class="card">
+        <div class="section-header">
+          <h2>Loan Officers</h2>
+          <button id="addOfficerBtn" type="button">Add Officer</button>
+        </div>
+        <p class="hint">Enter as many loan officers as you want.</p>
+        <div id="officerList" class="stack"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-header">
+          <h2>Loans</h2>
+          <button id="addLoanBtn" type="button">Add Loan</button>
+        </div>
+        <p class="hint">Add loan names, IDs, or any labels you want to assign.</p>
+        <div id="loanList" class="stack"></div>
+      </section>
+
+      <section class="card full">
+        <div class="toolbar">
+          <button id="randomizeBtn" class="primary" type="button">Randomize Assignments</button>
+          <button id="sampleBtn" type="button">Load Sample Data</button>
+          <button id="clearBtn" type="button">Clear All</button>
+        </div>
+        <div id="rulesBox" class="rules">
+          <strong>Rules used by this app</strong>
+          <ul>
+            <li>The number of loan officers can be any size.</li>
+            <li>Each loan is assigned to one random officer.</li>
+            <li>The loans themselves are shuffled before assignment.</li>
+            <li>Assignments are then distributed in random fair rounds, so everyone gets one before anyone gets a second, everyone gets two before anyone gets a third, and so on.</li>
+          </ul>
+        </div>
+        <div id="message" class="message"></div>
+      </section>
+
+      <section class="card">
+        <h2>Assignments by Loan</h2>
+        <div id="loanAssignments" class="results empty">No assignments yet.</div>
+      </section>
+
+      <section class="card">
+        <h2>Assignments by Officer</h2>
+        <div id="officerAssignments" class="results empty">No assignments yet.</div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
