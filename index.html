@@ -13,7 +13,7 @@
       <p>Assign incoming loans to loan officers using your custom balancing rules.</p>
       <div class="intro-steps">
         <strong>Quick steps</strong>
-        <p>1. Choose the PDF output folder. 2. Enter loan officers and loans. 3. Use Randomize Assignments to save the results PDF.</p>
+        <p>1. Choose the output folder. 2. The app loads loan officers from the CSV history file if it exists. 3. Enter loans and randomize assignments.</p>
       </div>
     </header>
 
@@ -25,10 +25,11 @@
             <div id="outputStepCompact" class="output-step-compact" hidden>
               <div id="folderStatus" class="folder-status">No output folder selected.</div>
               <button id="changeFolderBtn" class="change-folder-btn" type="button">Change Folder</button>
+              <button id="endOfMonthBtn" class="end-month-btn" type="button">End of Month</button>
             </div>
           </div>
           <div id="outputStepDetails" class="output-step-details">
-            <p class="hint">This must be selected before assignments can be randomized and saved.</p>
+            <p class="hint">This must be selected first so the app can load or create the loan officer history CSV.</p>
             <div class="priority-action">
               <button id="chooseFolderBtn" class="step-button" type="button">Choose Output Folder</button>
             </div>
@@ -46,7 +47,10 @@
           <section class="step-panel">
             <div class="section-header">
               <h3>Loan Officers</h3>
-              <button id="addOfficerBtn" type="button">Add Officer</button>
+              <div class="section-actions">
+                <button id="importPriorMonthBtn" type="button">Import Officers From Previous Month</button>
+                <button id="addOfficerBtn" type="button">Add Officer</button>
+              </div>
             </div>
             <p class="hint">Enter as many loan officers as you want.</p>
             <div id="officerList" class="stack"></div>
@@ -57,7 +61,13 @@
               <h3>Loans</h3>
               <button id="addLoanBtn" type="button">Add Loan</button>
             </div>
-            <p class="hint">Add loan names, IDs, or any labels you want to assign.</p>
+            <p class="hint">Add each loan with its name or ID, Amount Requested, and choose whether it is Auto, Personal, Credit Card, or Internet.</p>
+            <div class="loan-column-headers" aria-hidden="true">
+              <span>Loan Name / ID</span>
+              <span>Dollar Amount</span>
+              <span>Type</span>
+              <span></span>
+            </div>
             <div id="loanList" class="stack"></div>
           </section>
         </div>
@@ -78,8 +88,13 @@
           <ul>
             <li>The number of loan officers can be any size.</li>
             <li>Each loan is assigned to one random officer.</li>
-            <li>The loans themselves are shuffled before assignment.</li>
-            <li>Assignments are then distributed in random fair rounds, so everyone gets one before anyone gets a second, everyone gets two before anyone gets a third, and so on.</li>
+            <li>Each loan must be marked as Auto, Personal, Credit Card, or Internet.</li>
+            <li>Each loan should include an Amount Requested so dollar totals can be balanced fairly.</li>
+            <li>Each loan type is shuffled and balanced separately.</li>
+            <li>Within each type, assignments stay fair, and ties are broken by the lightest overall dollar load first, then by the lightest total loan count.</li>
+            <li>A CSV history file is kept in the selected output folder so the next run can continue balancing from prior dollar and type history.</li>
+            <li>Loan officers missing from a single run stay in the CSV history so their totals return the next time the folder is loaded.</li>
+            <li>If one officer's dollar total gets far ahead, the app shifts priority to the lower-total officers until they reach at least 50% of that high total.</li>
           </ul>
         </div>
         <div id="message" class="message"></div>
