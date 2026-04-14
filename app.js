@@ -17,19 +17,45 @@ const folderStatusEl = document.getElementById('folderStatus');
 const folderPromptEl = document.getElementById('folderPrompt');
 const loanAssignmentsEl = document.getElementById('loanAssignments');
 const officerAssignmentsEl = document.getElementById('officerAssignments');
+const fairnessAuditEl = document.getElementById('fairnessAudit');
 
 let outputDirectoryHandle = null;
-const LOAN_TYPES = ['Auto', 'Personal', 'Credit Card', 'Internet'];
+const LOAN_TYPES = ['Auto', 'Personal', 'Credit Card', 'Collateralized'];
 const RUNNING_TOTALS_FILE_NAME = 'loan-randomizer-running-totals.csv';
 
-function createInputRow(type, value = '', loanType = LOAN_TYPES[0], amount = '') {
+function setOfficerVacationState(row, isOnVacation) {
+  row.dataset.active = String(!isOnVacation);
+
+  const vacationBtn = row.querySelector('.vacation-btn');
+  if (vacationBtn) {
+    vacationBtn.textContent = isOnVacation ? 'Return' : 'Vacation';
+    vacationBtn.dataset.state = isOnVacation ? 'vacation' : 'active';
+  }
+
+  row.classList.toggle('officer-on-vacation', isOnVacation);
+}
+
+function syncLoanAmountInput(typeSelect, amountInput) {
+  const isCreditCard = typeSelect.value === 'Credit Card';
+
+  amountInput.disabled = isCreditCard;
+  amountInput.dataset.mode = isCreditCard ? 'unit' : 'amount';
+  amountInput.placeholder = isCreditCard ? 'Per unit - not required' : 'Amount requested';
+
+  if (isCreditCard) {
+    amountInput.value = '';
+  }
+}
+
+function createInputRow(type, value = '', loanType = LOAN_TYPES[0], amount = '', isOnVacation = false) {
   const row = document.createElement('div');
-  row.className = type === 'loan' ? 'row loan-row' : 'row';
+  row.className = type === 'loan' ? 'row loan-row' : 'row officer-row';
 
   const input = document.createElement('input');
   input.type = 'text';
   input.placeholder = type === 'officer' ? 'Loan officer name' : 'Loan name or ID';
   input.value = value;
+  input.required = type === 'loan';
 
   const removeBtn = document.createElement('button');
   removeBtn.type = 'button';
@@ -59,20 +85,49 @@ function createInputRow(type, value = '', loanType = LOAN_TYPES[0], amount = '')
       typeSelect.appendChild(option);
     });
 
+    typeSelect.addEventListener('change', () => {
+      syncLoanAmountInput(typeSelect, amountInput);
+    });
+
     row.appendChild(input);
     row.appendChild(amountInput);
     row.appendChild(typeSelect);
     row.appendChild(removeBtn);
+    syncLoanAmountInput(typeSelect, amountInput);
     return row;
   }
 
+  row.dataset.active = 'true';
+
+  const vacationBtn = document.createElement('button');
+  vacationBtn.type = 'button';
+  vacationBtn.className = 'vacation-btn';
+  vacationBtn.addEventListener('click', async () => {
+    const isCurrentlyActive = row.dataset.active !== 'false';
+    setOfficerVacationState(row, isCurrentlyActive);
+
+    if (!outputDirectoryHandle) {
+      return;
+    }
+
+    try {
+      const { runningTotals } = await loadRunningTotals();
+      await saveRunningTotals(buildRunningTotalsWithCurrentOfficerStatuses(runningTotals));
+    } catch (error) {
+      setMessage(`Could not save vacation status: ${error.message}`, 'warning');
+    }
+  });
+
   row.appendChild(input);
+  row.appendChild(vacationBtn);
   row.appendChild(removeBtn);
+
+  setOfficerVacationState(row, isOnVacation);
   return row;
 }
 
-function addOfficer(value = '') {
-  officerList.appendChild(createInputRow('officer', value));
+function addOfficer(value = '', isOnVacation = false) {
+  officerList.appendChild(createInputRow('officer', value, LOAN_TYPES[0], '', isOnVacation));
 }
 
 function addLoan(value = '', loanType = LOAN_TYPES[0], amount = '') {
@@ -80,8 +135,9 @@ function addLoan(value = '', loanType = LOAN_TYPES[0], amount = '') {
 }
 
 function getOfficerValues() {
-  return [...officerList.querySelectorAll('input')]
-    .map((input) => input.value.trim())
+  return [...officerList.querySelectorAll('.officer-row')]
+    .filter((row) => row.dataset.active !== 'false')
+    .map((row) => row.querySelector('input').value.trim())
     .filter(Boolean);
 }
 
@@ -96,10 +152,29 @@ function getLoanValues() {
       return {
         name: nameInput.value.trim(),
         type: typeSelect.value,
-        amountRequested: amountValue === '' ? null : Number(amountValue)
+        amountRequested: typeSelect.value === 'Credit Card'
+          ? 0
+          : amountValue === ''
+            ? null
+            : Number(amountValue)
       };
     })
     .filter((loan) => loan.name);
+}
+
+function getLoanRowValidationError() {
+  const loanRows = [...loanList.querySelectorAll('.loan-row')];
+
+  if (!loanRows.length) {
+    return '';
+  }
+
+  const hasMissingLoanName = loanRows.some((row) => !row.querySelector('input').value.trim());
+  if (hasMissingLoanName) {
+    return 'Each loan row must include a Loan Name / ID.';
+  }
+
+  return '';
 }
 
 function shuffle(array) {
@@ -257,6 +332,10 @@ function formatLoanLabel(loan) {
   return `${loan.name} (${loan.type}, ${formatCurrency(loan.amountRequested)})`;
 }
 
+function getGoalAmountForLoan(loan) {
+  return loan.type === 'Credit Card' ? 0 : loan.amountRequested;
+}
+
 function formatCurrency(amount) {
   return new Intl.NumberFormat(undefined, {
     style: 'currency',
@@ -267,6 +346,8 @@ function formatCurrency(amount) {
 
 function createEmptyOfficerStats() {
   return {
+    isOnVacation: false,
+    activeSessionCount: 0,
     loanCount: 0,
     totalAmountRequested: 0,
     typeCounts: Object.fromEntries(LOAN_TYPES.map((loanType) => [loanType, 0]))
@@ -317,7 +398,7 @@ function parseCsvLine(line) {
 
 function buildRunningTotalsCsv(runningTotals) {
   const rows = [
-    'officer,loan_count,total_amount_requested,auto_count,personal_count,credit_card_count,internet_count'
+    'officer,is_on_vacation,active_session_count,loan_count,total_amount_requested,auto_count,personal_count,credit_card_count,collateralized_count'
   ];
 
   Object.entries(runningTotals.officers || {})
@@ -326,12 +407,14 @@ function buildRunningTotalsCsv(runningTotals) {
       const normalizedStats = normalizeOfficerStats(stats);
       rows.push([
         officer,
+        normalizedStats.isOnVacation,
+        normalizedStats.activeSessionCount,
         normalizedStats.loanCount,
         normalizedStats.totalAmountRequested,
         normalizedStats.typeCounts.Auto,
         normalizedStats.typeCounts.Personal,
         normalizedStats.typeCounts['Credit Card'],
-        normalizedStats.typeCounts.Internet
+        normalizedStats.typeCounts.Collateralized
       ].map(escapeCsvValue).join(','));
     });
 
@@ -359,13 +442,15 @@ function parseRunningTotalsCsv(csvText) {
     }
 
     officers[officerName] = normalizeOfficerStats({
+      isOnVacation: String(row.is_on_vacation).toLowerCase() === 'true',
+      activeSessionCount: Number(row.active_session_count ?? (Number(row.loan_count) > 0 || Number(row.total_amount_requested) > 0 ? 1 : 0)),
       loanCount: Number(row.loan_count),
       totalAmountRequested: Number(row.total_amount_requested),
       typeCounts: {
         Auto: Number(row.auto_count),
         Personal: Number(row.personal_count),
         'Credit Card': Number(row.credit_card_count),
-        Internet: Number(row.internet_count)
+        Collateralized: Number(row.collateralized_count ?? row.internet_count)
       }
     });
   });
@@ -383,13 +468,19 @@ function populateOfficersFromRunningTotals(runningTotals) {
     return false;
   }
 
-  officerNames.forEach(addOfficer);
+  officerNames.forEach((officer) => {
+    addOfficer(officer, normalizeOfficerStats(runningTotals.officers?.[officer]).isOnVacation);
+  });
   return true;
 }
 
 function appendOfficersFromRunningTotals(runningTotals) {
   const officerNames = Object.keys(runningTotals.officers || {}).sort((officerA, officerB) => officerA.localeCompare(officerB));
-  const existingOfficerNames = new Set(getOfficerValues());
+  const existingOfficerNames = new Set(
+    [...officerList.querySelectorAll('.officer-row input')]
+      .map((input) => input.value.trim())
+      .filter(Boolean)
+  );
 
   if (!existingOfficerNames.size) {
     officerList.innerHTML = '';
@@ -402,12 +493,12 @@ function appendOfficersFromRunningTotals(runningTotals) {
       return;
     }
 
-    addOfficer(officer);
+    addOfficer(officer, normalizeOfficerStats(runningTotals.officers?.[officer]).isOnVacation);
     existingOfficerNames.add(officer);
     importedCount += 1;
   });
 
-  if (!getOfficerValues().length) {
+  if (![...officerList.querySelectorAll('.officer-row input')].some((input) => input.value.trim())) {
     addOfficer();
   }
 
@@ -422,6 +513,8 @@ function normalizeOfficerStats(stats) {
   }
 
   return {
+    isOnVacation: Boolean(stats.isOnVacation),
+    activeSessionCount: Number.isFinite(stats.activeSessionCount) && stats.activeSessionCount >= 0 ? stats.activeSessionCount : 0,
     loanCount: Number.isFinite(stats.loanCount) && stats.loanCount >= 0 ? stats.loanCount : 0,
     totalAmountRequested: Number.isFinite(stats.totalAmountRequested) && stats.totalAmountRequested >= 0 ? stats.totalAmountRequested : 0,
     typeCounts: Object.fromEntries(
@@ -431,6 +524,28 @@ function normalizeOfficerStats(stats) {
       })
     )
   };
+}
+
+function buildRunningTotalsWithCurrentOfficerStatuses(priorRunningTotals) {
+  const updatedOfficers = Object.fromEntries(
+    Object.entries(priorRunningTotals.officers || {}).map(([officer, stats]) => [officer, normalizeOfficerStats(stats)])
+  );
+
+  [...officerList.querySelectorAll('.officer-row')].forEach((row) => {
+    const officerName = row.querySelector('input').value.trim();
+
+    if (!officerName) {
+      return;
+    }
+
+    const priorStats = normalizeOfficerStats(updatedOfficers[officerName]);
+    updatedOfficers[officerName] = {
+      ...priorStats,
+      isOnVacation: row.dataset.active === 'false'
+    };
+  });
+
+  return { officers: updatedOfficers };
 }
 
 async function loadRunningTotals() {
@@ -468,8 +583,10 @@ function buildUpdatedRunningTotals(cleanOfficers, result, priorRunningTotals) {
     const priorStats = normalizeOfficerStats(updatedOfficers[officer]);
     const assignedLoans = result.officerAssignments[officer] || [];
     const nextStats = {
+      isOnVacation: priorStats.isOnVacation,
+      activeSessionCount: priorStats.activeSessionCount + 1,
       loanCount: priorStats.loanCount + assignedLoans.length,
-      totalAmountRequested: priorStats.totalAmountRequested + assignedLoans.reduce((sum, loan) => sum + loan.amountRequested, 0),
+      totalAmountRequested: priorStats.totalAmountRequested + assignedLoans.reduce((sum, loan) => sum + getGoalAmountForLoan(loan), 0),
       typeCounts: { ...priorStats.typeCounts }
     };
 
@@ -558,7 +675,7 @@ function resetAppAfterEndOfMonth() {
   addOfficer('Loan Officer 3');
   addOfficer('Loan Officer 4');
   addLoan('Loan A', 'Auto', '15000');
-  addLoan('Loan B', 'Internet', '4000');
+  addLoan('Loan B', 'Collateralized', '4000');
   updateFolderStatus();
 }
 
@@ -566,63 +683,143 @@ function getDistinctTypeCount(typeCounts) {
   return Object.values(typeCounts).filter((count) => count > 0).length;
 }
 
-function hasLargeDollarImbalance(officerAmountTotals) {
-  const totals = Object.values(officerAmountTotals);
-
-  if (totals.length < 2) {
-    return false;
-  }
-
-  const highestTotal = Math.max(...totals);
-  if (highestTotal <= 0) {
-    return false;
-  }
-
-  return totals.some((total) => total < highestTotal * 0.5);
+function getNormalizedFairnessValue(total, activeSessionCount) {
+  return total / Math.max(activeSessionCount, 1);
 }
 
-function chooseOfficerForLoan(cleanOfficers, officerLoanTotals, officerTypeCounts, officerAmountTotals, loanType) {
+function calculateVariance(values) {
+  if (!values.length) {
+    return 0;
+  }
+
+  const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+  return values.reduce((sum, value) => sum + ((value - average) ** 2), 0) / values.length;
+}
+
+function buildProjectedLoads(cleanOfficers, currentTotals, officerActiveSessions, selectedOfficer, increment) {
+  return cleanOfficers.map((officer) => getNormalizedFairnessValue(
+    currentTotals[officer] + (officer === selectedOfficer ? increment : 0),
+    officerActiveSessions[officer]
+  ));
+}
+
+function chooseOfficerForLoan(cleanOfficers, officerLoanTotals, officerTypeCounts, officerAmountTotals, officerActiveSessions, loan) {
+  const goalAmount = getGoalAmountForLoan(loan);
   const shuffledOfficers = shuffle(cleanOfficers);
-  const prioritizeDollarCatchUp = hasLargeDollarImbalance(officerAmountTotals);
-  const sortedOfficers = shuffledOfficers.sort((officerA, officerB) => {
-    if (prioritizeDollarCatchUp) {
-      const amountDifference = officerAmountTotals[officerA] - officerAmountTotals[officerB];
-      if (amountDifference !== 0) {
-        return amountDifference;
-      }
 
-      const totalLoanDifference = officerLoanTotals[officerA] - officerLoanTotals[officerB];
-      if (totalLoanDifference !== 0) {
-        return totalLoanDifference;
-      }
+  const scoredOfficers = shuffledOfficers.map((officer) => {
+    const currentTypeTotals = Object.fromEntries(
+      cleanOfficers.map((currentOfficer) => [currentOfficer, officerTypeCounts[currentOfficer][loan.type]])
+    );
 
-      const typeCountDifference = officerTypeCounts[officerA][loanType] - officerTypeCounts[officerB][loanType];
-      if (typeCountDifference !== 0) {
-        return typeCountDifference;
-      }
+    const projectedTypeLoads = buildProjectedLoads(cleanOfficers, currentTypeTotals, officerActiveSessions, officer, 1);
+    const projectedAmountLoads = buildProjectedLoads(cleanOfficers, officerAmountTotals, officerActiveSessions, officer, goalAmount);
+    const projectedLoanLoads = buildProjectedLoads(cleanOfficers, officerLoanTotals, officerActiveSessions, officer, 1);
 
-      return getDistinctTypeCount(officerTypeCounts[officerA]) - getDistinctTypeCount(officerTypeCounts[officerB]);
-    }
+    const typeVariance = calculateVariance(projectedTypeLoads);
+    const amountVariance = calculateVariance(projectedAmountLoads);
+    const loanVariance = calculateVariance(projectedLoanLoads);
+    const distinctTypePenalty = getDistinctTypeCount(officerTypeCounts[officer]) * 0.0025;
+    const currentAmountPenalty = getNormalizedFairnessValue(officerAmountTotals[officer] + goalAmount, officerActiveSessions[officer]) * 0.00001;
+    const score = (typeVariance * 4) + (amountVariance * 3) + (loanVariance * 2) + distinctTypePenalty + currentAmountPenalty;
 
-    const typeCountDifference = officerTypeCounts[officerA][loanType] - officerTypeCounts[officerB][loanType];
-    if (typeCountDifference !== 0) {
-      return typeCountDifference;
-    }
-
-    const amountDifference = officerAmountTotals[officerA] - officerAmountTotals[officerB];
-    if (amountDifference !== 0) {
-      return amountDifference;
-    }
-
-    const totalLoanDifference = officerLoanTotals[officerA] - officerLoanTotals[officerB];
-    if (totalLoanDifference !== 0) {
-      return totalLoanDifference;
-    }
-
-    return getDistinctTypeCount(officerTypeCounts[officerA]) - getDistinctTypeCount(officerTypeCounts[officerB]);
+    return {
+      officer,
+      score,
+      typeVariance,
+      amountVariance,
+      loanVariance,
+      distinctTypePenalty,
+      currentAmountPenalty,
+      projectedTypeLoad: getNormalizedFairnessValue(officerTypeCounts[officer][loan.type] + 1, officerActiveSessions[officer]),
+      projectedAmountLoad: getNormalizedFairnessValue(officerAmountTotals[officer] + goalAmount, officerActiveSessions[officer]),
+      projectedLoanLoad: getNormalizedFairnessValue(officerLoanTotals[officer] + 1, officerActiveSessions[officer])
+    };
   });
 
-  return sortedOfficers[0];
+  scoredOfficers.sort((officerA, officerB) => officerA.score - officerB.score);
+  return {
+    selectedOfficer: scoredOfficers[0].officer,
+    scoredOfficers
+  };
+}
+
+function formatProjectedCurrencyLoad(value) {
+  return `${formatCurrency(value)} per active session`;
+}
+
+function formatProjectedCountLoad(value) {
+  return `${value.toFixed(2)} per active session`;
+}
+
+function formatScoreGapPercent(bestScore, comparedScore) {
+  if (!Number.isFinite(bestScore) || bestScore <= 0 || !Number.isFinite(comparedScore)) {
+    return '0%';
+  }
+
+  const percent = ((comparedScore - bestScore) / bestScore) * 100;
+  return `${Math.max(percent, 0).toFixed(1)}%`;
+}
+
+function getAuditReasonLabels(selectedOfficerScore, runnerUpScore, loanType) {
+  if (!runnerUpScore) {
+    return ['Only available officer'];
+  }
+
+  const comparisons = [
+    {
+      label: `${loanType} balance`,
+      selectedValue: selectedOfficerScore.typeVariance,
+      runnerUpValue: runnerUpScore.typeVariance
+    },
+    {
+      label: 'goal-dollar balance',
+      selectedValue: selectedOfficerScore.amountVariance,
+      runnerUpValue: runnerUpScore.amountVariance
+    },
+    {
+      label: 'overall loan count balance',
+      selectedValue: selectedOfficerScore.loanVariance,
+      runnerUpValue: runnerUpScore.loanVariance
+    }
+  ];
+
+  return comparisons
+    .filter((comparison) => comparison.selectedValue < comparison.runnerUpValue)
+    .sort((comparisonA, comparisonB) => {
+      const differenceA = comparisonA.runnerUpValue - comparisonA.selectedValue;
+      const differenceB = comparisonB.runnerUpValue - comparisonB.selectedValue;
+      return differenceB - differenceA;
+    })
+    .map((comparison) => comparison.label)
+    .slice(0, 2);
+}
+
+function buildAuditExplanation(entry) {
+  const [selectedOfficerScore, runnerUpScore] = entry.scoredOfficers;
+  const reasonLabels = getAuditReasonLabels(selectedOfficerScore, runnerUpScore, entry.loan.type);
+
+  if (!runnerUpScore) {
+    return `${entry.selectedOfficer} was the only available officer for this loan.`;
+  }
+
+  if (!reasonLabels.length) {
+    return `${entry.selectedOfficer} produced the best overall balance, finishing ${formatScoreGapPercent(selectedOfficerScore.score, runnerUpScore.score)} ahead of ${runnerUpScore.officer}.`;
+  }
+
+  return `${entry.selectedOfficer} ranked best because this choice kept ${reasonLabels.join(' and ')} more even across the team. It finished ${formatScoreGapPercent(selectedOfficerScore.score, runnerUpScore.score)} ahead of ${runnerUpScore.officer}.`;
+}
+
+function getAuditStatusLabel(entry, scoredOfficer, index) {
+  if (scoredOfficer.officer === entry.selectedOfficer) {
+    return 'Chosen';
+  }
+
+  if (index === 1) {
+    return `Next best (+${formatScoreGapPercent(entry.scoredOfficers[0].score, scoredOfficer.score)})`;
+  }
+
+  return `Behind winner (+${formatScoreGapPercent(entry.scoredOfficers[0].score, scoredOfficer.score)})`;
 }
 
 function buildPdfLines(result, officers, loans, generatedAt) {
@@ -735,7 +932,7 @@ function assignLoans(officers, loans, runningTotals = { officers: {} }) {
     return { error: 'Please add at least one loan.' };
   }
 
-  const hasInvalidAmount = cleanLoans.some((loan) => !Number.isFinite(loan.amountRequested) || loan.amountRequested < 0);
+  const hasInvalidAmount = cleanLoans.some((loan) => loan.type !== 'Credit Card' && (!Number.isFinite(loan.amountRequested) || loan.amountRequested < 0));
   if (hasInvalidAmount) {
     return { error: 'Each loan must include a valid non-negative Amount Requested.' };
   }
@@ -744,6 +941,7 @@ function assignLoans(officers, loans, runningTotals = { officers: {} }) {
   const officerTypeCounts = {};
   const officerAmountTotals = {};
   const officerLoanTotals = {};
+  const officerActiveSessions = {};
 
   cleanOfficers.forEach((officer) => {
     const priorStats = normalizeOfficerStats(runningTotals.officers?.[officer]);
@@ -751,9 +949,11 @@ function assignLoans(officers, loans, runningTotals = { officers: {} }) {
     officerTypeCounts[officer] = { ...priorStats.typeCounts };
     officerAmountTotals[officer] = priorStats.totalAmountRequested;
     officerLoanTotals[officer] = priorStats.loanCount;
+    officerActiveSessions[officer] = priorStats.activeSessionCount + 1;
   });
 
   const loanAssignments = [];
+  const fairnessAudit = [];
 
   LOAN_TYPES.forEach((loanType) => {
     const loansForType = shuffle(cleanLoans.filter((loan) => loan.type === loanType));
@@ -762,18 +962,24 @@ function assignLoans(officers, loans, runningTotals = { officers: {} }) {
       return;
     }
 
-    const orderedLoansForType = [...loansForType].sort((loanA, loanB) => loanB.amountRequested - loanA.amountRequested);
+    const orderedLoansForType = [...loansForType].sort((loanA, loanB) => getGoalAmountForLoan(loanB) - getGoalAmountForLoan(loanA));
 
     orderedLoansForType.forEach((loan) => {
-      const assignedOfficer = chooseOfficerForLoan(cleanOfficers, officerLoanTotals, officerTypeCounts, officerAmountTotals, loanType);
+      const assignmentDecision = chooseOfficerForLoan(cleanOfficers, officerLoanTotals, officerTypeCounts, officerAmountTotals, officerActiveSessions, loan);
+      const assignedOfficer = assignmentDecision.selectedOfficer;
       officerAssignments[assignedOfficer].push(loan);
       officerTypeCounts[assignedOfficer][loanType] += 1;
-      officerAmountTotals[assignedOfficer] += loan.amountRequested;
+      officerAmountTotals[assignedOfficer] += getGoalAmountForLoan(loan);
       officerLoanTotals[assignedOfficer] += 1;
       loanAssignments.push({
         loan,
         officers: [assignedOfficer],
         shared: false
+      });
+      fairnessAudit.push({
+        loan,
+        selectedOfficer: assignedOfficer,
+        scoredOfficers: assignmentDecision.scoredOfficers
       });
     });
   });
@@ -781,6 +987,7 @@ function assignLoans(officers, loans, runningTotals = { officers: {} }) {
   return {
     loanAssignments: shuffle(loanAssignments),
     officerAssignments,
+    fairnessAudit,
     runningTotalsUsed: Object.fromEntries(cleanOfficers.map((officer) => [officer, normalizeOfficerStats(runningTotals.officers?.[officer])]))
   };
 }
@@ -790,8 +997,10 @@ function renderResults(result) {
     setMessage(result.error, 'warning');
     loanAssignmentsEl.className = 'results empty';
     officerAssignmentsEl.className = 'results empty';
+    fairnessAuditEl.className = 'results empty';
     loanAssignmentsEl.textContent = 'No assignments yet.';
     officerAssignmentsEl.textContent = 'No assignments yet.';
+    fairnessAuditEl.textContent = 'No fairness audit yet.';
     return;
   }
 
@@ -799,9 +1008,11 @@ function renderResults(result) {
 
   loanAssignmentsEl.className = 'results';
   officerAssignmentsEl.className = 'results';
+  fairnessAuditEl.className = 'results';
 
   loanAssignmentsEl.innerHTML = '';
   officerAssignmentsEl.innerHTML = '';
+  fairnessAuditEl.innerHTML = '';
 
   result.loanAssignments.forEach((entry) => {
     const div = document.createElement('div');
@@ -828,12 +1039,12 @@ function renderResults(result) {
     const group = document.createElement('div');
     group.className = 'result-group';
 
-    const totalAmount = assignedLoans.reduce((sum, loan) => sum + loan.amountRequested, 0);
+    const totalAmount = assignedLoans.reduce((sum, loan) => sum + getGoalAmountForLoan(loan), 0);
     const priorStats = normalizeOfficerStats(result.runningTotalsUsed?.[officer]);
     const newRunningAmount = priorStats.totalAmountRequested + totalAmount;
 
     const badge = `<span class="badge">${assignedLoans.length} assigned</span>`;
-    group.innerHTML = `<h3>${escapeHtml(officer)} ${badge}</h3><div class="amount-summary">This run: ${escapeHtml(formatCurrency(totalAmount))}</div><div class="amount-summary">Running total: ${escapeHtml(formatCurrency(newRunningAmount))}</div>`;
+    group.innerHTML = `<h3>${escapeHtml(officer)} ${badge}</h3><div class="amount-summary">This run goal dollars: ${escapeHtml(formatCurrency(totalAmount))}</div><div class="amount-summary">Running goal dollars: ${escapeHtml(formatCurrency(newRunningAmount))}</div>`;
 
     if (!assignedLoans.length) {
       const empty = document.createElement('div');
@@ -850,6 +1061,58 @@ function renderResults(result) {
     }
 
     officerAssignmentsEl.appendChild(group);
+  });
+
+  result.fairnessAudit.forEach((entry) => {
+    const auditCard = document.createElement('div');
+    auditCard.className = 'audit-card';
+
+    const auditRows = entry.scoredOfficers
+      .map((scoredOfficer, index) => `
+        <tr${scoredOfficer.officer === entry.selectedOfficer ? ' class="winner"' : ''}>
+          <td>${escapeHtml(scoredOfficer.officer)}</td>
+          <td>${escapeHtml(getAuditStatusLabel(entry, scoredOfficer, index))}</td>
+          <td>${scoredOfficer.projectedTypeLoad.toFixed(2)} per active session</td>
+          <td>${escapeHtml(formatProjectedCurrencyLoad(scoredOfficer.projectedAmountLoad))}</td>
+          <td>${escapeHtml(formatProjectedCountLoad(scoredOfficer.projectedLoanLoad))}</td>
+        </tr>
+      `)
+      .join('');
+
+    const selectedOfficerScore = entry.scoredOfficers[0];
+    const runnerUpScore = entry.scoredOfficers[1];
+
+    auditCard.innerHTML = `
+      <h3>${escapeHtml(entry.loan.name)} <span class="type-badge">${escapeHtml(entry.loan.type)}</span></h3>
+      <div class="audit-summary">
+        <div class="audit-summary-line"><strong>Chosen officer:</strong> ${escapeHtml(entry.selectedOfficer)}</div>
+        <div class="audit-summary-line">${escapeHtml(buildAuditExplanation(entry))}</div>
+        <div class="audit-summary-metrics">
+          <span class="audit-metric"><strong>${escapeHtml(entry.loan.type)} load after assignment:</strong> ${selectedOfficerScore.projectedTypeLoad.toFixed(2)} per active session</span>
+          <span class="audit-metric"><strong>Projected goal dollars:</strong> ${escapeHtml(formatProjectedCurrencyLoad(selectedOfficerScore.projectedAmountLoad))}</span>
+          <span class="audit-metric"><strong>Projected total loans:</strong> ${escapeHtml(formatProjectedCountLoad(selectedOfficerScore.projectedLoanLoad))}</span>
+        </div>
+        ${runnerUpScore ? `<div class="audit-summary-line">Closest alternative: ${escapeHtml(runnerUpScore.officer)}.</div>` : ''}
+      </div>
+      <div class="audit-table-wrap">
+        <table class="audit-table">
+          <thead>
+            <tr>
+              <th>Officer</th>
+              <th>Result</th>
+              <th>Projected ${escapeHtml(entry.loan.type)} load</th>
+              <th>Projected goal dollars</th>
+              <th>Projected total loans</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${auditRows}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    fairnessAuditEl.appendChild(auditCard);
   });
 }
 
@@ -891,7 +1154,8 @@ function renderLoadedRunningTotals(runningTotals) {
     loanSummary.className = 'loan-line';
     loanSummary.innerHTML = `
       <div><span class="assignment-name">${escapeHtml(officer)}</span></div>
-      <div class="assignment-amount">Running total: ${escapeHtml(formatCurrency(stats.totalAmountRequested))}</div>
+      <div class="assignment-amount">Running goal dollars: ${escapeHtml(formatCurrency(stats.totalAmountRequested))}</div>
+      <div>Active sessions: ${escapeHtml(String(stats.activeSessionCount))}</div>
       <div>Loans tracked: ${escapeHtml(String(stats.loanCount))}</div>
       <div class="assignment-amount">Types: ${escapeHtml(formatTypeCounts(stats.typeCounts))}</div>
     `;
@@ -901,7 +1165,8 @@ function renderLoadedRunningTotals(runningTotals) {
     officerSummary.className = 'result-group';
     officerSummary.innerHTML = `
       <h3>${escapeHtml(officer)} <span class="badge">${escapeHtml(String(stats.loanCount))} tracked</span></h3>
-      <div class="amount-summary">Running total: ${escapeHtml(formatCurrency(stats.totalAmountRequested))}</div>
+      <div class="amount-summary">Running goal dollars: ${escapeHtml(formatCurrency(stats.totalAmountRequested))}</div>
+      <div class="amount-summary">Active sessions: ${escapeHtml(String(stats.activeSessionCount))}</div>
       <div class="amount-summary">${escapeHtml(formatTypeCounts(stats.typeCounts))}</div>
     `;
     officerAssignmentsEl.appendChild(officerSummary);
@@ -993,6 +1258,12 @@ randomizeBtn.addEventListener('click', async () => {
     return;
   }
 
+  const loanRowValidationError = getLoanRowValidationError();
+  if (loanRowValidationError) {
+    setMessage(loanRowValidationError, 'warning');
+    return;
+  }
+
   const officers = getOfficerValues();
   const loans = getLoanValues();
 
@@ -1016,7 +1287,7 @@ randomizeBtn.addEventListener('click', async () => {
     const generatedAt = new Date();
     const fileName = await saveResultPdf(result, officers, loans, generatedAt);
     const updatedRunningTotals = buildUpdatedRunningTotals([...new Set(officers.map((name) => name.trim()).filter(Boolean))], result, runningTotals);
-    await saveRunningTotals(updatedRunningTotals);
+    await saveRunningTotals(buildRunningTotalsWithCurrentOfficerStatuses(updatedRunningTotals));
     setMessage(`Assignments randomized and saved to ${fileName}. Officer history was updated in ${RUNNING_TOTALS_FILE_NAME}.`, 'success');
   } catch (error) {
     setMessage(`Assignments were generated, but the files could not be fully saved: ${error.message}`, 'warning');
@@ -1035,7 +1306,7 @@ sampleBtn.addEventListener('click', () => {
     ['Loan 104', 'Credit Card', '3200'],
     ['Loan 105', 'Personal', '6800'],
     ['Loan 106', 'Credit Card', '4100'],
-    ['Loan 107', 'Internet', '9200']
+    ['Loan 107', 'Collateralized', '9200']
   ].forEach(([loanName, loanType, loanAmount]) => addLoan(loanName, loanType, loanAmount));
 
   const result = assignLoans(getOfficerValues(), getLoanValues());
@@ -1061,5 +1332,5 @@ addOfficer('Loan Officer 2');
 addOfficer('Loan Officer 3');
 addOfficer('Loan Officer 4');
 addLoan('Loan A', 'Auto', '15000');
-addLoan('Loan B', 'Internet', '4000');
+addLoan('Loan B', 'Collateralized', '4000');
 updateFolderStatus();
