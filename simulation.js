@@ -303,16 +303,11 @@
       return null;
     }
 
-    const seedInput = window.prompt('Optional random seed for repeatable simulations.', String(Date.now()));
-    if (seedInput === null) {
-      return null;
-    }
-
     const businessDays = Number.parseInt(businessDaysInput, 10);
     const minLoansPerDay = Number.parseInt(minLoansPerDayInput, 10);
     const maxLoansPerDay = Number.parseInt(maxLoansPerDayInput, 10);
     const eomGoalPerOfficer = Number.parseFloat(eomGoalInput);
-    const seed = Number.parseInt(seedInput, 10);
+    const seed = Date.now();
 
     if (!/^\d{4}-\d{2}$/.test(monthLabel.trim())) {
       throw new Error('Enter the simulation month in YYYY-MM format.');
@@ -332,10 +327,6 @@
 
     if (!Number.isFinite(eomGoalPerOfficer) || eomGoalPerOfficer < 0) {
       throw new Error('End-of-month goal dollars must be zero or greater.');
-    }
-
-    if (!Number.isFinite(seed)) {
-      throw new Error('The random seed must be a whole number.');
     }
 
     return {
@@ -449,7 +440,6 @@
     const lines = [
       { text: 'SIMULATION REPORT - NOT ACTUAL PRODUCTION DATA', size: 18, gapAfter: 16 },
       { text: `Simulation month: ${simulationResult.monthLabel}`, size: 11, gapAfter: 4 },
-      { text: `Random seed: ${simulationResult.seed}`, size: 11, gapAfter: 4 },
       { text: `Business days: ${simulationResult.businessDays}`, size: 11, gapAfter: 4 },
       { text: `Loan officers: ${simulationResult.officers.length}`, size: 11, gapAfter: 4 },
       { text: `Total simulated loans: ${simulationResult.totalLoans}`, size: 11, gapAfter: 4 },
@@ -543,7 +533,6 @@
       <div class="amount-summary">Business days: ${escapeHtml(String(simulationResult.businessDays))}</div>
       <div class="amount-summary">Loans simulated: ${escapeHtml(String(simulationResult.totalLoans))}</div>
       <div class="amount-summary">Goal dollars simulated: ${escapeHtml(formatCurrency(simulationResult.totalAmount))}</div>
-      <div class="amount-summary">Seed used: ${escapeHtml(String(simulationResult.seed))}</div>
     `;
     loanAssignmentsEl.appendChild(summaryCard);
 
