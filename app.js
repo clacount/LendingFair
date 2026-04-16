@@ -813,7 +813,7 @@ async function removeLoanFromHistory(loanName) {
   const { loanHistory } = await loadLoanHistory();
 
   if (!loanHistory.loans[normalizedLoanName]) {
-    throw new Error(`Could not find ${loanName} in ${LOAN_HISTORY_FILE_NAME}.`);
+    throw new Error(`Loan ${loanName} was not found in history.`);
   }
 
   delete loanHistory.loans[normalizedLoanName];
@@ -1482,7 +1482,7 @@ randomizeBtn.addEventListener('click', async () => {
 
   const duplicateExistingLoan = loans.find((loan) => loanHistory.loans?.[loan.name.toLowerCase()]);
   if (duplicateExistingLoan) {
-    setMessage(`Loan ${duplicateExistingLoan.name} is already present in ${LOAN_HISTORY_FILE_NAME}. Remove it from history before entering it again.`, 'warning');
+    setMessage(`${duplicateExistingLoan.name} has already been entered. Please remove it from history before entering it again.`, 'warning');
     return;
   }
 
