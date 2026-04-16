@@ -7,125 +7,148 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app">
-    <header>
-      <div class="brand-header">
-        <img src="midcoast-logo.png" alt="Midcoast Federal Credit Union logo" class="brand-logo" />
-        <div class="brand-copy">
-          <h1>Loan Randomizer</h1>
-          <p>Assign incoming loans to loan officers using your custom balancing rules.</p>
-        </div>
+<div class="app">
+  <header>
+    <div class="brand-header">
+      <img src="midcoast-logo.png" alt="Midcoast Federal Credit Union logo" class="brand-logo" />
+      <div class="brand-copy">
+        <h1>Loan Randomizer</h1>
+        <p>Assign incoming loans to loan officers using your custom balancing rules.</p>
       </div>
-      <div class="intro-steps">
-        <strong>Quick steps</strong>
-        <p>1. Choose the output folder. 2. The app loads loan officers from the CSV history file if it exists. 3. Enter loans and randomize assignments.</p>
-      </div>
-    </header>
+    </div>
+    <div class="intro-steps">
+      <strong>Quick steps</strong>
+      <p>1. Choose the output folder. 2. The app loads loan officers, loan history, and loan types from that folder. 3. Enter loans and randomize assignments.</p>
+    </div>
+  </header>
 
-    <main class="grid">
-      <section class="card full">
-        <div id="outputStep" class="output-box output-box-priority" data-state="pending">
-          <div class="output-step-top">
-            <strong>Step 1: Choose PDF Output Folder</strong>
-            <div id="outputStepCompact" class="output-step-compact" hidden>
-              <div id="folderStatus" class="folder-status">No output folder selected.</div>
-              <button id="changeFolderBtn" class="change-folder-btn" type="button">Change Folder</button>
-              <button id="endOfMonthBtn" class="end-month-btn" type="button">End of Month</button>
-            </div>
-          </div>
-          <div id="outputStepDetails" class="output-step-details">
-            <p class="hint">This must be selected first so the app can load or create the loan officer history CSV.</p>
-            <div class="priority-action">
-              <button id="chooseFolderBtn" class="step-button" type="button">Choose Output Folder</button>
-            </div>
-            <div id="folderPrompt" class="folder-prompt">No output folder selected.</div>
+  <main class="grid">
+    <section class="card full">
+      <div id="outputStep" class="output-box output-box-priority" data-state="pending">
+        <div class="output-step-top">
+          <strong>Step 1: Choose PDF Output Folder</strong>
+          <div id="outputStepCompact" class="output-step-compact" hidden>
+            <div id="folderStatus" class="folder-status">No output folder selected.</div>
+            <button id="changeFolderBtn" class="change-folder-btn" type="button">Change Folder</button>
+            <button id="endOfMonthBtn" class="end-month-btn" type="button">End of Month</button>
           </div>
         </div>
-      </section>
-
-      <section class="card full step-card">
-        <div class="step-heading">
-          <h2>Step 2: Enter Loan Officers and Loans</h2>
-          <p class="hint">Set up the people receiving loans and the loans that need to be assigned.</p>
+        <div id="outputStepDetails" class="output-step-details">
+          <p class="hint">This must be selected first so the app can load or create the loan officer history CSV, loan history CSV, and loan types JSON.</p>
+          <div class="priority-action">
+            <button id="chooseFolderBtn" class="step-button" type="button">Choose Output Folder</button>
+          </div>
+          <div id="folderPrompt" class="folder-prompt">No output folder selected.</div>
         </div>
-        <div class="step-grid">
-          <section class="step-panel">
-            <div class="section-header">
-              <h3>Loan Officers</h3>
-              <div class="section-actions">
-                <button id="importPriorMonthBtn" type="button">Import Officers From Previous Month</button>
-                <button id="addOfficerBtn" type="button">Add Officer</button>
-              </div>
+      </div>
+    </section>
+
+    <section class="card full step-card">
+      <details class="loan-type-details">
+        <summary class="loan-type-summary">
+          <div class="loan-type-summary-copy">
+            <h2>Step 2: Manage Loan Types</h2>
+            <p class="hint">Add seasonal or special loan types, then collapse this section when you're done.</p>
+          </div>
+          <div id="loanTypeSummaryStats" class="loan-type-summary-stats">
+            <span class="badge">0 configured</span>
+          </div>
+        </summary>
+
+        <div class="loan-type-details-body">
+          <div class="type-manager-form">
+            <input id="loanTypeNameInput" type="text" placeholder="Loan type name" />
+            <input id="loanTypeStartInput" type="date" />
+            <input id="loanTypeEndInput" type="date" />
+            <button id="addLoanTypeBtn" type="button">Add Loan Type</button>
+          </div>
+          <div id="loanTypeList" class="results empty">No loan types loaded yet.</div>
+        </div>
+      </details>
+    </section>
+
+    <section class="card full step-card">
+      <div class="step-heading">
+        <h2>Step 3: Enter Loan Officers and Loans</h2>
+        <p class="hint">Set up the people receiving loans and the loans that need to be assigned.</p>
+      </div>
+      <div class="step-grid">
+        <section class="step-panel">
+          <div class="section-header">
+            <h3>Loan Officers</h3>
+            <div class="section-actions">
+              <button id="importPriorMonthBtn" type="button">Import Officers From Previous Month</button>
+              <button id="addOfficerBtn" type="button">Add Officer</button>
             </div>
-            <p class="hint">Enter as many loan officers as you want. Use the Vacation button to temporarily remove someone from assignments without deleting them.</p>
-            <div id="officerList" class="stack"></div>
-          </section>
+          </div>
+          <p class="hint">Enter as many loan officers as you want. Use the Vacation button to temporarily remove someone from assignments without deleting them.</p>
+          <div id="officerList" class="stack"></div>
+        </section>
 
-          <section class="step-panel">
-            <div class="section-header">
-              <h3>Loans</h3>
-              <button id="addLoanBtn" type="button">Add Loan</button>
-            </div>
-            <p class="hint">Add each loan with its name or ID, Amount Requested, and choose whether it is Collateralized, Credit Card, or Personal. Credit Card loans do not require a dollar amount.</p>
-            <div class="loan-column-headers" aria-hidden="true">
-              <span>Loan Name / ID</span>
-              <span>Dollar Amount</span>
-              <span>Type</span>
-              <span></span>
-            </div>
-            <div id="loanList" class="stack"></div>
-          </section>
-        </div>
-      </section>
+        <section class="step-panel">
+          <div class="section-header">
+            <h3>Loans</h3>
+            <button id="addLoanBtn" type="button">Add Loan</button>
+          </div>
+          <p class="hint">Add each loan with its name or ID, Amount Requested, and choose one of the currently active loan types.</p>
+          <div class="loan-column-headers" aria-hidden="true">
+            <span>Loan Name / ID</span>
+            <span>Dollar Amount</span>
+            <span>Type</span>
+            <span></span>
+          </div>
+          <div id="loanList" class="stack"></div>
+        </section>
+      </div>
+    </section>
 
-      <section class="card full step-card">
-        <div class="step-heading">
-          <h2>Step 3: Run Assignments</h2>
-          <p class="hint">Randomize the assignments or load sample data to test the workflow.</p>
-        </div>
-        <div class="toolbar toolbar-centered">
-          <button id="randomizeBtn" class="primary" type="button">Randomize Assignments</button>
-          <button id="sampleBtn" type="button">Load Sample Data</button>
-          <button id="clearBtn" type="button">Clear All</button>
-          <button id="removeLoanHistoryBtn" type="button">Remove Loan Number</button>
-        </div>
-        <div id="rulesBox" class="rules">
-          <strong>Rules used by this app</strong>
-          <ul>
-            <li>The number of loan officers can be any size.</li>
-            <li>Each loan is assigned to one random officer.</li>
-            <li>Each loan must be marked as Collateralized, Credit Card, or Personal.</li>
-            <li>Each loan should include an Amount Requested so dollar totals can be balanced fairly.</li>
-            <li>Credit Card loans are tracked by unit count and type, but their dollar amounts do not count toward goal-dollar balancing.</li>
-            <li>Each loan type is shuffled and balanced separately.</li>
-            <li>Within each type, the app compares a balanced fairness score using type mix, goal dollars, and loan count, then picks the officer that produces the most even team result.</li>
-            <li>A CSV history file is kept in the selected output folder so the next run can continue balancing from prior dollar and type history.</li>
-            <li>Loan officers missing from a single run stay in the CSV history so their totals return the next time the folder is loaded.</li>
-            <li>Fairness is measured against each officer's active sessions, so time off does not force a catch-up spike when someone returns.</li>
-          </ul>
-        </div>
-        <div id="message" class="message"></div>
-        <p class="hint">Loan names and IDs are tracked across sessions in loan-randomizer-loan-history.csv. Duplicate entries are blocked unless the loan is removed from history.</p>
-      </section>
+    <section class="card full step-card">
+      <div class="step-heading">
+        <h2>Step 4: Run Assignments</h2>
+        <p class="hint">Randomize the assignments or load sample data to test the workflow.</p>
+      </div>
+      <div class="toolbar toolbar-centered">
+        <button id="randomizeBtn" class="primary" type="button">Randomize Assignments</button>
+        <button id="sampleBtn" type="button">Load Sample Data</button>
+        <button id="clearBtn" type="button">Clear All</button>
+        <button id="removeLoanHistoryBtn" type="button">Remove Loan Number</button>
+      </div>
+      <div id="rulesBox" class="rules">
+        <strong>Rules used by this app</strong>
+        <ul>
+          <li>The number of loan officers can be any size.</li>
+          <li>Each loan is assigned to one random officer.</li>
+          <li>Built-in and custom seasonal loan types are supported.</li>
+          <li>Custom loan types can be activated by date range or added manually at any time.</li>
+          <li>Only active loan types are available for new assignments.</li>
+          <li>Each loan should include an Amount Requested unless that loan type is configured to skip it.</li>
+          <li>Each active loan type is shuffled and balanced separately.</li>
+          <li>Within each type, the app compares a balanced fairness score using type mix, goal dollars, and loan count, then picks the officer that produces the most even team result.</li>
+          <li>A CSV history file is kept in the selected output folder so the next run can continue balancing from prior history.</li>
+          <li>Loan names and IDs are tracked across sessions to prevent duplicates.</li>
+        </ul>
+      </div>
+      <div id="message" class="message"></div>
+    </section>
 
-      <section class="card">
-        <h2>Assignments by Loan</h2>
-        <div id="loanAssignments" class="results empty">No assignments yet.</div>
-      </section>
+    <section class="card">
+      <h2>Assignments by Loan</h2>
+      <div id="loanAssignments" class="results empty">No assignments yet.</div>
+    </section>
 
-      <section class="card">
-        <h2>Assignments by Officer</h2>
-        <div id="officerAssignments" class="results empty">No assignments yet.</div>
-      </section>
+    <section class="card">
+      <h2>Assignments by Officer</h2>
+      <div id="officerAssignments" class="results empty">No assignments yet.</div>
+    </section>
 
-      <section class="card full">
-        <h2>Fairness Audit</h2>
-        <div id="fairnessAudit" class="results empty">No fairness audit yet.</div>
-      </section>
-    </main>
-  </div>
+    <section class="card full">
+      <h2>Fairness Audit</h2>
+      <div id="fairnessAudit" class="results empty">No fairness audit yet.</div>
+    </section>
+  </main>
+</div>
 
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-  <script src="app.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

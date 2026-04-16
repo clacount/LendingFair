@@ -1,0 +1,6 @@
+[
+  { "name": "Collateralized", "activeFrom": null, "activeTo": null, "isBuiltIn": true, "amountOptional": false },
+  { "name": "Credit Card", "activeFrom": null, "activeTo": null, "isBuiltIn": true, "amountOptional": true },
+  { "name": "Personal", "activeFrom": null, "activeTo": null, "isBuiltIn": true, "amountOptional": false },
+  { "name": "Winter Wish Loan", "activeFrom": "2026-11-01", "activeTo": "2026-12-31", "isBuiltIn": false, "amountOptional": false }
+]

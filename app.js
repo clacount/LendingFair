@@ -20,10 +20,105 @@ const loanAssignmentsEl = document.getElementById('loanAssignments');
 const officerAssignmentsEl = document.getElementById('officerAssignments');
 const fairnessAuditEl = document.getElementById('fairnessAudit');
 
+const addLoanTypeBtn = document.getElementById('addLoanTypeBtn');
+const loanTypeNameInput = document.getElementById('loanTypeNameInput');
+const loanTypeStartInput = document.getElementById('loanTypeStartInput');
+const loanTypeEndInput = document.getElementById('loanTypeEndInput');
+const loanTypeListEl = document.getElementById('loanTypeList');
+const loanTypeSummaryStatsEl = document.getElementById('loanTypeSummaryStats');
+
 let outputDirectoryHandle = null;
-const LOAN_TYPES = ['Collateralized', 'Credit Card', 'Personal'];
+
 const RUNNING_TOTALS_FILE_NAME = 'loan-randomizer-running-totals.csv';
 const LOAN_HISTORY_FILE_NAME = 'loan-randomizer-loan-history.csv';
+const LOAN_TYPES_FILE_NAME = 'loan-types.json';
+
+const DEFAULT_LOAN_TYPES = [
+  {
+    name: 'Collateralized',
+    activeFrom: null,
+    activeTo: null,
+    isBuiltIn: true,
+    amountOptional: false
+  },
+  {
+    name: 'Credit Card',
+    activeFrom: null,
+    activeTo: null,
+    isBuiltIn: true,
+    amountOptional: true
+  },
+  {
+    name: 'Personal',
+    activeFrom: null,
+    activeTo: null,
+    isBuiltIn: true,
+    amountOptional: false
+  }
+];
+
+let allLoanTypes = [...DEFAULT_LOAN_TYPES];
+
+function getTodayKey() {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function normalizeLoanType(type) {
+  if (!type || typeof type !== 'object') {
+    return null;
+  }
+
+  const name = String(type.name ?? '').trim();
+  if (!name) {
+    return null;
+  }
+
+  return {
+    name,
+    activeFrom: type.activeFrom || null,
+    activeTo: type.activeTo || null,
+    isBuiltIn: Boolean(type.isBuiltIn),
+    amountOptional: Boolean(type.amountOptional)
+  };
+}
+
+function getAllLoanTypeNames() {
+  return [...new Set(allLoanTypes.map((loanType) => loanType.name))];
+}
+
+function isLoanTypeActive(loanType, todayKey = getTodayKey()) {
+  if (!loanType) {
+    return false;
+  }
+
+  if (loanType.activeFrom && todayKey < loanType.activeFrom) {
+    return false;
+  }
+
+  if (loanType.activeTo && todayKey > loanType.activeTo) {
+    return false;
+  }
+
+  return true;
+}
+
+function getActiveLoanTypes() {
+  return allLoanTypes.filter((loanType) => isLoanTypeActive(loanType));
+}
+
+function getActiveLoanTypeNames() {
+  return getActiveLoanTypes().map((loanType) => loanType.name);
+}
+
+function isKnownLoanType(typeName) {
+  return getAllLoanTypeNames().includes(typeName);
+}
+
+function isAmountOptionalForType(typeName) {
+  const match = allLoanTypes.find((loanType) => loanType.name === typeName);
+  return Boolean(match?.amountOptional);
+}
 
 function setOfficerVacationState(row, isOnVacation) {
   row.dataset.active = String(!isOnVacation);
@@ -38,18 +133,49 @@ function setOfficerVacationState(row, isOnVacation) {
 }
 
 function syncLoanAmountInput(typeSelect, amountInput) {
-  const isCreditCard = typeSelect.value === 'Credit Card';
+  const isOptional = isAmountOptionalForType(typeSelect.value);
 
-  amountInput.disabled = isCreditCard;
-  amountInput.dataset.mode = isCreditCard ? 'unit' : 'amount';
-  amountInput.placeholder = isCreditCard ? 'Per unit - not required' : 'Amount requested';
+  amountInput.disabled = isOptional;
+  amountInput.dataset.mode = isOptional ? 'unit' : 'amount';
+  amountInput.placeholder = isOptional ? 'Per unit - not required' : 'Amount requested';
 
-  if (isCreditCard) {
+  if (isOptional) {
     amountInput.value = '';
   }
 }
 
-function createInputRow(type, value = '', loanType = LOAN_TYPES[0], amount = '', isOnVacation = false) {
+function buildLoanTypeSelectOptions(typeSelect, selectedType = '') {
+  typeSelect.innerHTML = '';
+
+  const activeTypes = getActiveLoanTypeNames();
+  const optionsToShow = activeTypes.includes(selectedType) || !selectedType
+    ? activeTypes
+    : [...activeTypes, selectedType];
+
+  optionsToShow.forEach((typeOption) => {
+    const option = document.createElement('option');
+    option.value = typeOption;
+    option.textContent = typeOption;
+    option.selected = typeOption === selectedType;
+    typeSelect.appendChild(option);
+  });
+
+  if (!typeSelect.value && optionsToShow.length) {
+    typeSelect.value = optionsToShow[0];
+  }
+}
+
+function refreshLoanTypeSelects() {
+  [...loanList.querySelectorAll('.loan-row')].forEach((row) => {
+    const typeSelect = row.querySelector('select');
+    const amountInput = row.querySelector('.loan-amount-input');
+    const selectedType = typeSelect.value;
+    buildLoanTypeSelectOptions(typeSelect, selectedType);
+    syncLoanAmountInput(typeSelect, amountInput);
+  });
+}
+
+function createInputRow(type, value = '', loanType = '', amount = '', isOnVacation = false) {
   const row = document.createElement('div');
   row.className = type === 'loan' ? 'row loan-row' : 'row officer-row';
 
@@ -79,13 +205,7 @@ function createInputRow(type, value = '', loanType = LOAN_TYPES[0], amount = '',
     amountInput.setAttribute('aria-label', 'Amount requested');
     amountInput.value = amount;
 
-    LOAN_TYPES.forEach((typeOption) => {
-      const option = document.createElement('option');
-      option.value = typeOption;
-      option.textContent = typeOption;
-      option.selected = typeOption === loanType;
-      typeSelect.appendChild(option);
-    });
+    buildLoanTypeSelectOptions(typeSelect, loanType || getActiveLoanTypeNames()[0] || '');
 
     typeSelect.addEventListener('change', () => {
       syncLoanAmountInput(typeSelect, amountInput);
@@ -129,10 +249,10 @@ function createInputRow(type, value = '', loanType = LOAN_TYPES[0], amount = '',
 }
 
 function addOfficer(value = '', isOnVacation = false) {
-  officerList.appendChild(createInputRow('officer', value, LOAN_TYPES[0], '', isOnVacation));
+  officerList.appendChild(createInputRow('officer', value, '', '', isOnVacation));
 }
 
-function addLoan(value = '', loanType = LOAN_TYPES[0], amount = '') {
+function addLoan(value = '', loanType = '', amount = '') {
   loanList.appendChild(createInputRow('loan', value, loanType, amount));
 }
 
@@ -154,7 +274,7 @@ function getLoanValues() {
       return {
         name: nameInput.value.trim(),
         type: typeSelect.value,
-        amountRequested: typeSelect.value === 'Credit Card'
+        amountRequested: isAmountOptionalForType(typeSelect.value)
           ? 0
           : amountValue === ''
             ? null
@@ -175,9 +295,16 @@ function getLoanRowValidationError() {
 
   for (const row of loanRows) {
     const loanName = row.querySelector('input').value.trim();
+    const amountInput = row.querySelector('.loan-amount-input');
+    const typeSelect = row.querySelector('select');
+    const amountValue = amountInput.value.trim();
 
     if (!loanName) {
       return 'Each loan row must include a Loan Name / ID.';
+    }
+
+    if (!typeSelect.value) {
+      return `Loan ${loanName} must have a loan type selected.`;
     }
 
     const normalizedLoanName = loanName.toLowerCase();
@@ -186,6 +313,12 @@ function getLoanRowValidationError() {
     }
 
     seenLoanNames.add(normalizedLoanName);
+
+    if (!isAmountOptionalForType(typeSelect.value)) {
+      if (amountValue === '' || !Number.isFinite(Number(amountValue)) || Number(amountValue) < 0) {
+        return `Loan ${loanName} must include a valid non-negative Amount Requested.`;
+      }
+    }
   }
 
   return '';
@@ -193,7 +326,7 @@ function getLoanRowValidationError() {
 
 function shuffle(array) {
   const copy = [...array];
-  for (let i = copy.length - 1; i > 0; i--) {
+  for (let i = copy.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
     [copy[i], copy[j]] = [copy[j], copy[i]];
   }
@@ -258,6 +391,298 @@ async function ensureDirectoryPermission(directoryHandle) {
   return (await directoryHandle.requestPermission(options)) === 'granted';
 }
 
+async function loadLoanTypes() {
+  if (!outputDirectoryHandle) {
+    allLoanTypes = [...DEFAULT_LOAN_TYPES];
+    renderLoanTypes();
+    refreshLoanTypeSelects();
+    return { fileWasCreated: false };
+  }
+
+  try {
+    const fileHandle = await outputDirectoryHandle.getFileHandle(LOAN_TYPES_FILE_NAME);
+    const file = await fileHandle.getFile();
+    const fileText = await file.text();
+
+    if (!fileText.trim()) {
+      allLoanTypes = [...DEFAULT_LOAN_TYPES];
+      await saveLoanTypes(allLoanTypes);
+      renderLoanTypes();
+      refreshLoanTypeSelects();
+      return { fileWasCreated: true };
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(fileText);
+    } catch (error) {
+      allLoanTypes = [...DEFAULT_LOAN_TYPES];
+      renderLoanTypes();
+      refreshLoanTypeSelects();
+      throw new Error(`${LOAN_TYPES_FILE_NAME} contains invalid JSON. Falling back to default loan types.`);
+    }
+
+    const parsedTypes = Array.isArray(parsed)
+      ? parsed.map(normalizeLoanType).filter(Boolean)
+      : [];
+
+    if (!parsedTypes.length) {
+      allLoanTypes = [...DEFAULT_LOAN_TYPES];
+      await saveLoanTypes(allLoanTypes);
+      renderLoanTypes();
+      refreshLoanTypeSelects();
+      return { fileWasCreated: true };
+    }
+
+    const parsedTypeMap = new Map(
+      parsedTypes.map((loanType) => [loanType.name.toLowerCase(), loanType])
+    );
+
+    const mergedTypes = DEFAULT_LOAN_TYPES.map((defaultType) => {
+      const jsonType = parsedTypeMap.get(defaultType.name.toLowerCase());
+      return jsonType || defaultType;
+    });
+
+    const defaultTypeNames = new Set(
+      DEFAULT_LOAN_TYPES.map((loanType) => loanType.name.toLowerCase())
+    );
+
+    parsedTypes.forEach((loanType) => {
+      if (!defaultTypeNames.has(loanType.name.toLowerCase())) {
+        mergedTypes.push(loanType);
+      }
+    });
+
+    allLoanTypes = mergedTypes;
+    renderLoanTypes();
+    refreshLoanTypeSelects();
+    return { fileWasCreated: false };
+  } catch (error) {
+    if (error.name === 'NotFoundError') {
+      allLoanTypes = [...DEFAULT_LOAN_TYPES];
+      await saveLoanTypes(allLoanTypes);
+      renderLoanTypes();
+      refreshLoanTypeSelects();
+      return { fileWasCreated: true };
+    }
+
+    if (error.message?.includes('invalid JSON')) {
+      setMessage(error.message, 'warning');
+      return { fileWasCreated: false };
+    }
+
+    throw new Error(`The loan types file could not be read: ${error.message}`);
+  }
+}
+
+async function saveLoanTypes(loanTypes) {
+  if (!outputDirectoryHandle) {
+    throw new Error('No output folder has been selected.');
+  }
+
+  const fileHandle = await outputDirectoryHandle.getFileHandle(LOAN_TYPES_FILE_NAME, { create: true });
+  const writable = await fileHandle.createWritable();
+  await writable.write(JSON.stringify(loanTypes, null, 2));
+  await writable.close();
+}
+
+async function addCustomLoanType(name, activeFrom = null, activeTo = null) {
+  const trimmedName = String(name || '').trim();
+
+  if (!trimmedName) {
+    throw new Error('Enter a loan type name.');
+  }
+
+  const exists = allLoanTypes.some((type) => type.name.toLowerCase() === trimmedName.toLowerCase());
+  if (exists) {
+    throw new Error(`Loan type ${trimmedName} already exists.`);
+  }
+
+  if (activeFrom && activeTo && activeFrom > activeTo) {
+    throw new Error('Loan type start date must be on or before the end date.');
+  }
+
+  const newType = normalizeLoanType({
+    name: trimmedName,
+    activeFrom: activeFrom || null,
+    activeTo: activeTo || null,
+    isBuiltIn: false,
+    amountOptional: false
+  });
+
+  allLoanTypes.push(newType);
+  await saveLoanTypes(allLoanTypes);
+}
+
+function getYesterdayKey() {
+  const date = new Date();
+  date.setDate(date.getDate() - 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+async function deactivateCustomLoanType(typeName) {
+  const normalizedTypeName = String(typeName || '').trim().toLowerCase();
+  const target = allLoanTypes.find((type) => type.name.toLowerCase() === normalizedTypeName);
+
+  if (!target) {
+    throw new Error(`Loan type ${typeName} was not found.`);
+  }
+
+  if (target.isBuiltIn) {
+    throw new Error(`Built-in loan type ${typeName} cannot be removed.`);
+  }
+
+  target.activeTo = getYesterdayKey();
+  await saveLoanTypes(allLoanTypes);
+}
+
+async function removeCustomLoanType(typeName) {
+  const normalizedTypeName = String(typeName || '').trim().toLowerCase();
+  const target = allLoanTypes.find((type) => type.name.toLowerCase() === normalizedTypeName);
+
+  if (!target) {
+    throw new Error(`Loan type ${typeName} was not found.`);
+  }
+
+  if (target.isBuiltIn) {
+    throw new Error(`Built-in loan type ${typeName} cannot be removed.`);
+  }
+
+  allLoanTypes = allLoanTypes.filter(
+    (type) => type.name.toLowerCase() !== normalizedTypeName
+  );
+
+  await saveLoanTypes(allLoanTypes);
+}
+
+function renderLoanTypes() {
+  if (!loanTypeListEl) {
+    return;
+  }
+
+  const totalConfigured = allLoanTypes.length;
+  const activeTypes = getActiveLoanTypes();
+  const seasonalActiveCount = activeTypes.filter(
+    (loanType) => loanType.activeFrom || loanType.activeTo
+  ).length;
+
+  if (loanTypeSummaryStatsEl) {
+    loanTypeSummaryStatsEl.innerHTML = `
+      <span class="badge">${totalConfigured} configured</span>
+      <span class="badge">${activeTypes.length} active</span>
+      <span class="badge">${seasonalActiveCount} seasonal active</span>
+    `;
+  }
+
+  loanTypeListEl.innerHTML = '';
+  loanTypeListEl.className = 'results';
+
+  allLoanTypes.forEach((loanType) => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'result-group';
+
+    const isActive = isLoanTypeActive(loanType);
+    const activeLabel = isActive ? 'Active' : 'Inactive';
+    const seasonalLabel = loanType.activeFrom || loanType.activeTo ? 'Seasonal' : 'Always available';
+
+    wrapper.innerHTML = `
+      <div class="loan-type-card-top">
+        <div class="loan-type-card-copy">
+          <h3>${escapeHtml(loanType.name)} <span class="badge">${escapeHtml(activeLabel)}</span></h3>
+          <div class="amount-summary">Availability: ${escapeHtml(seasonalLabel)}</div>
+          <div class="amount-summary">Start: ${escapeHtml(loanType.activeFrom || 'Always')}</div>
+          <div class="amount-summary">End: ${escapeHtml(loanType.activeTo || 'Always')}</div>
+          <div class="amount-summary">Amount optional: ${loanType.amountOptional ? 'Yes' : 'No'}</div>
+        </div>
+      </div>
+    `;
+
+    if (!loanType.isBuiltIn) {
+      const actionRow = document.createElement('div');
+      actionRow.className = 'loan-type-action-row';
+
+      const toggleButton = document.createElement('button');
+      toggleButton.type = 'button';
+      toggleButton.textContent = isActive ? 'Deactivate' : 'Activate';
+      toggleButton.className = `loan-type-action-btn ${isActive ? 'deactivate' : 'activate'}`;
+
+      toggleButton.addEventListener('click', async () => {
+        try {
+          if (isActive) {
+            await deactivateCustomLoanType(loanType.name);
+            setMessage(`Loan type ${loanType.name} was deactivated.`, 'success');
+          } else {
+            await activateCustomLoanType(loanType.name);
+            setMessage(`Loan type ${loanType.name} was activated.`, 'success');
+          }
+
+          renderLoanTypes();
+          refreshLoanTypeSelects();
+        } catch (error) {
+          setMessage(error.message, 'warning');
+        }
+      });
+
+      const removeButton = document.createElement('button');
+      removeButton.type = 'button';
+      removeButton.textContent = '×';
+      removeButton.className = 'loan-type-remove-btn';
+      removeButton.setAttribute('aria-label', `Remove ${loanType.name}`);
+
+      removeButton.addEventListener('click', async () => {
+        const confirmed = window.confirm(`Remove ${loanType.name} from available loan types?`);
+        if (!confirmed) {
+          return;
+        }
+
+        try {
+          await removeCustomLoanType(loanType.name);
+          setMessage(`Loan type ${loanType.name} was removed.`, 'success');
+          renderLoanTypes();
+          refreshLoanTypeSelects();
+        } catch (error) {
+          setMessage(error.message, 'warning');
+        }
+      });
+
+      actionRow.appendChild(toggleButton);
+      actionRow.appendChild(removeButton);
+      wrapper.appendChild(actionRow);
+    }
+
+    loanTypeListEl.appendChild(wrapper);
+  });
+}
+
+async function activateCustomLoanType(typeName) {
+  const normalizedTypeName = String(typeName || '').trim().toLowerCase();
+  const target = allLoanTypes.find((type) => type.name.toLowerCase() === normalizedTypeName);
+
+  if (!target) {
+    throw new Error(`Loan type ${typeName} was not found.`);
+  }
+
+  if (target.isBuiltIn) {
+    throw new Error(`Built-in loan type ${typeName} does not need activation.`);
+  }
+
+  const todayKey = getTodayKey();
+
+  if (target.activeFrom && target.activeFrom > todayKey) {
+    target.activeFrom = todayKey;
+  }
+
+  if (target.activeTo && target.activeTo < todayKey) {
+    target.activeTo = null;
+  }
+
+  if (!target.activeFrom) {
+    target.activeFrom = todayKey;
+  }
+
+  await saveLoanTypes(allLoanTypes);
+}
+
 async function chooseOutputFolder() {
   if (!supportsFolderSelection()) {
     setMessage('Choose Output Folder is only available in browsers that support folder access, such as current Microsoft Edge or Google Chrome.', 'warning');
@@ -275,6 +700,7 @@ async function chooseOutputFolder() {
     }
 
     outputDirectoryHandle = directoryHandle;
+    await loadLoanTypes();
     const { runningTotals, fileWasCreated } = await loadRunningTotals();
     await loadLoanHistory();
     const loadedOfficers = populateOfficersFromRunningTotals(runningTotals);
@@ -348,7 +774,7 @@ function formatLoanLabel(loan) {
 }
 
 function getGoalAmountForLoan(loan) {
-  return loan.type === 'Credit Card' ? 0 : loan.amountRequested;
+  return isAmountOptionalForType(loan.type) ? 0 : loan.amountRequested;
 }
 
 function formatCurrency(amount) {
@@ -372,7 +798,7 @@ function normalizeLoanHistoryEntry(entry) {
 
   return {
     loanName,
-    type: LOAN_TYPES.includes(entry.type) ? entry.type : LOAN_TYPES[0],
+    type: isKnownLoanType(entry.type) ? entry.type : getAllLoanTypeNames()[0],
     amountRequested: Number.isFinite(entry.amountRequested) && entry.amountRequested >= 0 ? entry.amountRequested : 0,
     assignedOfficer: String(entry.assignedOfficer ?? '').trim(),
     generatedAt: String(entry.generatedAt ?? '').trim()
@@ -389,7 +815,7 @@ function createEmptyOfficerStats() {
     activeSessionCount: 0,
     loanCount: 0,
     totalAmountRequested: 0,
-    typeCounts: Object.fromEntries(LOAN_TYPES.map((loanType) => [loanType, 0]))
+    typeCounts: Object.fromEntries(getAllLoanTypeNames().map((loanType) => [loanType, 0]))
   };
 }
 
@@ -442,7 +868,7 @@ function buildLoanHistoryCsv(loanHistory) {
 
   Object.entries(loanHistory.loans || {})
     .sort(([loanA], [loanB]) => loanA.localeCompare(loanB))
-    .forEach(([loanName, entry]) => {
+    .forEach(([, entry]) => {
       const normalizedEntry = normalizeLoanHistoryEntry(entry);
 
       if (!normalizedEntry) {
@@ -497,9 +923,23 @@ function parseLoanHistoryCsv(csvText) {
   return { loans };
 }
 
+function normalizeTypeCounts(typeCounts = {}) {
+  const allTypeNames = getAllLoanTypeNames();
+  const normalized = Object.fromEntries(allTypeNames.map((typeName) => [typeName, 0]));
+
+  Object.entries(typeCounts || {}).forEach(([typeName, count]) => {
+    if (!normalized[typeName]) {
+      normalized[typeName] = 0;
+    }
+    normalized[typeName] = Number.isFinite(Number(count)) && Number(count) >= 0 ? Number(count) : 0;
+  });
+
+  return normalized;
+}
+
 function buildRunningTotalsCsv(runningTotals) {
   const rows = [
-    'officer,is_on_vacation,active_session_count,loan_count,total_amount_requested,personal_count,credit_card_count,collateralized_count'
+    'officer,is_on_vacation,active_session_count,loan_count,total_amount_requested,type_counts_json'
   ];
 
   Object.entries(runningTotals.officers || {})
@@ -512,9 +952,7 @@ function buildRunningTotalsCsv(runningTotals) {
         normalizedStats.activeSessionCount,
         normalizedStats.loanCount,
         normalizedStats.totalAmountRequested,
-        normalizedStats.typeCounts.Personal,
-        normalizedStats.typeCounts['Credit Card'],
-        normalizedStats.typeCounts.Collateralized
+        JSON.stringify(normalizedStats.typeCounts)
       ].map(escapeCsvValue).join(','));
     });
 
@@ -541,16 +979,28 @@ function parseRunningTotalsCsv(csvText) {
       return;
     }
 
+    let parsedTypeCounts = {};
+
+    if (row.type_counts_json) {
+      try {
+        parsedTypeCounts = JSON.parse(row.type_counts_json);
+      } catch (error) {
+        parsedTypeCounts = {};
+      }
+    } else {
+      parsedTypeCounts = {
+        Personal: Number(row.personal_count),
+        'Credit Card': Number(row.credit_card_count),
+        Collateralized: Number(row.collateralized_count ?? row.internet_count)
+      };
+    }
+
     officers[officerName] = normalizeOfficerStats({
       isOnVacation: String(row.is_on_vacation).toLowerCase() === 'true',
       activeSessionCount: Number(row.active_session_count ?? (Number(row.loan_count) > 0 || Number(row.total_amount_requested) > 0 ? 1 : 0)),
       loanCount: Number(row.loan_count),
       totalAmountRequested: Number(row.total_amount_requested),
-      typeCounts: {
-        Personal: Number(row.personal_count),
-        'Credit Card': Number(row.credit_card_count),
-        Collateralized: Number(row.collateralized_count ?? row.internet_count)
-      }
+      typeCounts: parsedTypeCounts
     });
   });
 
@@ -570,6 +1020,7 @@ function populateOfficersFromRunningTotals(runningTotals) {
   officerNames.forEach((officer) => {
     addOfficer(officer, normalizeOfficerStats(runningTotals.officers?.[officer]).isOnVacation);
   });
+
   return true;
 }
 
@@ -616,12 +1067,7 @@ function normalizeOfficerStats(stats) {
     activeSessionCount: Number.isFinite(stats.activeSessionCount) && stats.activeSessionCount >= 0 ? stats.activeSessionCount : 0,
     loanCount: Number.isFinite(stats.loanCount) && stats.loanCount >= 0 ? stats.loanCount : 0,
     totalAmountRequested: Number.isFinite(stats.totalAmountRequested) && stats.totalAmountRequested >= 0 ? stats.totalAmountRequested : 0,
-    typeCounts: Object.fromEntries(
-      LOAN_TYPES.map((loanType) => {
-        const typeCount = stats.typeCounts?.[loanType];
-        return [loanType, Number.isFinite(typeCount) && typeCount >= 0 ? typeCount : 0];
-      })
-    )
+    typeCounts: normalizeTypeCounts(stats.typeCounts || {})
   };
 }
 
@@ -716,6 +1162,9 @@ function buildUpdatedRunningTotals(cleanOfficers, result, priorRunningTotals) {
     };
 
     assignedLoans.forEach((loan) => {
+      if (nextStats.typeCounts[loan.type] === undefined) {
+        nextStats.typeCounts[loan.type] = 0;
+      }
       nextStats.typeCounts[loan.type] += 1;
     });
 
@@ -846,6 +1295,7 @@ async function archiveRunningTotalsForEndOfMonth() {
 
 function resetAppAfterEndOfMonth() {
   outputDirectoryHandle = null;
+  allLoanTypes = [...DEFAULT_LOAN_TYPES];
   officerList.innerHTML = '';
   loanList.innerHTML = '';
   loanAssignmentsEl.className = 'results empty';
@@ -859,6 +1309,7 @@ function resetAppAfterEndOfMonth() {
   addOfficer('Loan Officer 3');
   addLoan('Loan A', 'Collateralized', '15000');
   addLoan('Loan B', 'Personal', '4000');
+  renderLoanTypes();
   updateFolderStatus();
 }
 
@@ -892,7 +1343,7 @@ function chooseOfficerForLoan(cleanOfficers, officerLoanTotals, officerTypeCount
 
   const scoredOfficers = shuffledOfficers.map((officer) => {
     const currentTypeTotals = Object.fromEntries(
-      cleanOfficers.map((currentOfficer) => [currentOfficer, officerTypeCounts[currentOfficer][loan.type]])
+      cleanOfficers.map((currentOfficer) => [currentOfficer, officerTypeCounts[currentOfficer][loan.type] || 0])
     );
 
     const projectedTypeLoads = buildProjectedLoads(cleanOfficers, currentTypeTotals, officerActiveSessions, officer, 1);
@@ -914,7 +1365,7 @@ function chooseOfficerForLoan(cleanOfficers, officerLoanTotals, officerTypeCount
       loanVariance,
       distinctTypePenalty,
       currentAmountPenalty,
-      projectedTypeLoad: getNormalizedFairnessValue(officerTypeCounts[officer][loan.type] + 1, officerActiveSessions[officer]),
+      projectedTypeLoad: getNormalizedFairnessValue((officerTypeCounts[officer][loan.type] || 0) + 1, officerActiveSessions[officer]),
       projectedAmountLoad: getNormalizedFairnessValue(officerAmountTotals[officer] + goalAmount, officerActiveSessions[officer]),
       projectedLoanLoad: getNormalizedFairnessValue(officerLoanTotals[officer] + 1, officerActiveSessions[officer])
     };
@@ -1110,11 +1561,13 @@ async function saveResultPdf(result, officers, loans, generatedAt) {
 }
 
 function assignLoans(officers, loans, runningTotals = { officers: {} }) {
+  const activeLoanTypes = getActiveLoanTypeNames();
+
   const cleanOfficers = [...new Set(officers.map((name) => name.trim()).filter(Boolean))];
   const cleanLoans = loans
     .map((loan) => ({
       name: loan.name.trim(),
-      type: LOAN_TYPES.includes(loan.type) ? loan.type : LOAN_TYPES[0],
+      type: activeLoanTypes.includes(loan.type) ? loan.type : activeLoanTypes[0],
       amountRequested: loan.amountRequested
     }))
     .filter((loan) => loan.name);
@@ -1134,7 +1587,7 @@ function assignLoans(officers, loans, runningTotals = { officers: {} }) {
     return { error: 'Please add at least one loan.' };
   }
 
-  const hasInvalidAmount = cleanLoans.some((loan) => loan.type !== 'Credit Card' && (!Number.isFinite(loan.amountRequested) || loan.amountRequested < 0));
+  const hasInvalidAmount = cleanLoans.some((loan) => !isAmountOptionalForType(loan.type) && (!Number.isFinite(loan.amountRequested) || loan.amountRequested < 0));
   if (hasInvalidAmount) {
     return { error: 'Each loan must include a valid non-negative Amount Requested.' };
   }
@@ -1157,7 +1610,7 @@ function assignLoans(officers, loans, runningTotals = { officers: {} }) {
   const loanAssignments = [];
   const fairnessAudit = [];
 
-  LOAN_TYPES.forEach((loanType) => {
+  activeLoanTypes.forEach((loanType) => {
     const loansForType = shuffle(cleanLoans.filter((loan) => loan.type === loanType));
 
     if (!loansForType.length) {
@@ -1169,15 +1622,23 @@ function assignLoans(officers, loans, runningTotals = { officers: {} }) {
     orderedLoansForType.forEach((loan) => {
       const assignmentDecision = chooseOfficerForLoan(cleanOfficers, officerLoanTotals, officerTypeCounts, officerAmountTotals, officerActiveSessions, loan);
       const assignedOfficer = assignmentDecision.selectedOfficer;
+
       officerAssignments[assignedOfficer].push(loan);
+
+      if (officerTypeCounts[assignedOfficer][loanType] === undefined) {
+        officerTypeCounts[assignedOfficer][loanType] = 0;
+      }
+
       officerTypeCounts[assignedOfficer][loanType] += 1;
       officerAmountTotals[assignedOfficer] += getGoalAmountForLoan(loan);
       officerLoanTotals[assignedOfficer] += 1;
+
       loanAssignments.push({
         loan,
         officers: [assignedOfficer],
         shared: false
       });
+
       fairnessAudit.push({
         loan,
         selectedOfficer: assignedOfficer,
@@ -1220,19 +1681,11 @@ function renderResults(result) {
     const div = document.createElement('div');
     div.className = 'loan-line';
 
-    if (entry.shared) {
-      div.innerHTML = `
-        <div><span class="assignment-name">${escapeHtml(entry.loan.name)}</span> <span class="type-badge">${escapeHtml(entry.loan.type)}</span></div>
-        <div class="assignment-amount">Requested: ${escapeHtml(formatCurrency(entry.loan.amountRequested))}</div>
-        <div class="shared">Shared across: ${entry.officers.map(escapeHtml).join(', ')}</div>
-      `;
-    } else {
-      div.innerHTML = `
-        <div><span class="assignment-name">${escapeHtml(entry.loan.name)}</span> <span class="type-badge">${escapeHtml(entry.loan.type)}</span></div>
-        <div class="assignment-amount">Requested: ${escapeHtml(formatCurrency(entry.loan.amountRequested))}</div>
-        <div>Assigned to: ${escapeHtml(entry.officers[0])}</div>
-      `;
-    }
+    div.innerHTML = `
+      <div><span class="assignment-name">${escapeHtml(entry.loan.name)}</span> <span class="type-badge">${escapeHtml(entry.loan.type)}</span></div>
+      <div class="assignment-amount">Requested: ${escapeHtml(formatCurrency(entry.loan.amountRequested))}</div>
+      <div>Assigned to: ${escapeHtml(entry.officers[0])}</div>
+    `;
 
     loanAssignmentsEl.appendChild(div);
   });
@@ -1328,9 +1781,10 @@ function escapeHtml(value) {
 }
 
 function formatTypeCounts(typeCounts) {
-  return LOAN_TYPES
-    .map((loanType) => `${loanType}: ${typeCounts[loanType] || 0}`)
-    .join(' | ');
+  return Object.entries(typeCounts || {})
+    .filter(([, count]) => count > 0)
+    .map(([loanType, count]) => `${loanType}: ${count}`)
+    .join(' | ') || 'No types tracked';
 }
 
 function renderLoadedRunningTotals(runningTotals) {
@@ -1433,6 +1887,32 @@ chooseFolderBtn.addEventListener('click', handleChooseFolderClick);
 chooseFolderBtn.onclick = handleChooseFolderClick;
 changeFolderBtn.addEventListener('click', handleChooseFolderClick);
 changeFolderBtn.onclick = handleChooseFolderClick;
+
+addLoanTypeBtn?.addEventListener('click', async () => {
+  if (!outputDirectoryHandle) {
+    setMessage('Choose an output folder before adding loan types.', 'warning');
+    return;
+  }
+
+  try {
+    await addCustomLoanType(
+      loanTypeNameInput.value.trim(),
+      loanTypeStartInput.value || null,
+      loanTypeEndInput.value || null
+    );
+
+    loanTypeNameInput.value = '';
+    loanTypeStartInput.value = '';
+    loanTypeEndInput.value = '';
+
+    renderLoanTypes();
+    refreshLoanTypeSelects();
+    setMessage('Loan type added successfully.', 'success');
+  } catch (error) {
+    setMessage(error.message, 'warning');
+  }
+});
+
 endOfMonthBtn?.addEventListener('click', async () => {
   if (!outputDirectoryHandle) {
     setMessage('Choose an output folder before ending the month.', 'warning');
@@ -1511,14 +1991,20 @@ sampleBtn.addEventListener('click', () => {
   loanList.innerHTML = '';
 
   ['Alex', 'Brooke', 'Chris', 'Dana'].forEach(addOfficer);
+
+  const activeTypes = getActiveLoanTypeNames();
+  const firstType = activeTypes[0] || 'Collateralized';
+  const secondType = activeTypes[1] || 'Credit Card';
+  const thirdType = activeTypes[2] || 'Personal';
+
   [
-    ['Loan 101', 'Collateralized', '25000'],
-    ['Loan 102', 'Personal', '18000'],
-    ['Loan 103', 'Personal', '7500'],
-    ['Loan 104', 'Credit Card', '3200'],
-    ['Loan 105', 'Personal', '6800'],
-    ['Loan 106', 'Credit Card', '4100'],
-    ['Loan 107', 'Collateralized', '9200']
+    ['Loan 101', firstType, '25000'],
+    ['Loan 102', thirdType, '18000'],
+    ['Loan 103', thirdType, '7500'],
+    ['Loan 104', secondType, '3200'],
+    ['Loan 105', thirdType, '6800'],
+    ['Loan 106', secondType, '4100'],
+    ['Loan 107', firstType, '9200']
   ].forEach(([loanName, loanType, loanAmount]) => addLoan(loanName, loanType, loanAmount));
 
   const result = assignLoans(getOfficerValues(), getLoanValues());
@@ -1561,9 +2047,12 @@ clearBtn.addEventListener('click', () => {
   addOfficer();
 });
 
-addOfficer('Loan Officer 1');
-addOfficer('Loan Officer 2');
-addOfficer('Loan Officer 3');
-addLoan('Loan A', 'Collateralized', '15000');
-addLoan('Loan B', 'Personal', '4000');
-updateFolderStatus();
+(async function initializeApp() {
+  renderLoanTypes();
+  addOfficer('Loan Officer 1');
+  addOfficer('Loan Officer 2');
+  addOfficer('Loan Officer 3');
+  addLoan('Loan A', 'Collateralized', '15000');
+  addLoan('Loan B', 'Personal', '4000');
+  updateFolderStatus();
+})();
