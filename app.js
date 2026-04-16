@@ -27,6 +27,9 @@ const loanTypeEndInput = document.getElementById('loanTypeEndInput');
 const loanTypeListEl = document.getElementById('loanTypeList');
 const loanTypeSummaryStatsEl = document.getElementById('loanTypeSummaryStats');
 
+const distributionDetailsEl = document.getElementById('distributionDetails');
+const distributionChartsEl = document.getElementById('distributionCharts');
+
 let outputDirectoryHandle = null;
 
 const RUNNING_TOTALS_FILE_NAME = 'loan-randomizer-running-totals.csv';
@@ -553,6 +556,208 @@ async function removeCustomLoanType(typeName) {
   );
 
   await saveLoanTypes(allLoanTypes);
+}
+
+function getBeforeRunDistribution(runningTotals, officers) {
+  const cleanOfficers = [...new Set(officers.map((name) => name.trim()).filter(Boolean))];
+
+  return cleanOfficers.map((officer) => {
+    const stats = normalizeOfficerStats(runningTotals.officers?.[officer]);
+    return {
+      officer,
+      loanCount: stats.loanCount,
+      totalAmountRequested: stats.totalAmountRequested
+    };
+  });
+}
+
+function getAfterRunDistribution(result, officers, runningTotals) {
+  const cleanOfficers = [...new Set(officers.map((name) => name.trim()).filter(Boolean))];
+
+  return cleanOfficers.map((officer) => {
+    const priorStats = normalizeOfficerStats(runningTotals.officers?.[officer]);
+    const assignedLoans = result.officerAssignments?.[officer] || [];
+    const assignedAmount = assignedLoans.reduce((sum, loan) => sum + getGoalAmountForLoan(loan), 0);
+
+    return {
+      officer,
+      loanCount: priorStats.loanCount + assignedLoans.length,
+      totalAmountRequested: priorStats.totalAmountRequested + assignedAmount
+    };
+  });
+}
+
+function getChartSegments(distribution, field) {
+  const total = distribution.reduce((sum, entry) => sum + entry[field], 0);
+
+  if (!total) {
+    return distribution.map((entry) => ({
+      officer: entry.officer,
+      value: entry[field],
+      percent: 0
+    }));
+  }
+
+  return distribution.map((entry) => ({
+    officer: entry.officer,
+    value: entry[field],
+    percent: entry[field] / total
+  }));
+}
+
+function getDonutColor(index) {
+  const palette = [
+    '#126c45',
+    '#d97706',
+    '#2a4d84',
+    '#8e44ad',
+    '#c93d2b',
+    '#0f9d58',
+    '#7a8795',
+    '#008b8b'
+  ];
+
+  return palette[index % palette.length];
+}
+
+function drawDonutChart(config) {
+  const {
+    title,
+    distribution,
+    field,
+    valueFormatter
+  } = config;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 360;
+  canvas.height = 320;
+
+  const ctx = canvas.getContext('2d');
+  const centerX = 120;
+  const centerY = 130;
+  const outerRadius = 70;
+  const innerRadius = 40;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = '#1c2430';
+  ctx.font = 'bold 16px Arial';
+  ctx.fillText(title, 20, 28);
+
+  const segments = getChartSegments(distribution, field);
+  const totalValue = distribution.reduce((sum, entry) => sum + entry[field], 0);
+
+  if (!totalValue) {
+    ctx.fillStyle = '#5e6b7a';
+    ctx.font = '14px Arial';
+    ctx.fillText('No data available', 55, centerY);
+    return { canvas, imageDataUrl: canvas.toDataURL('image/png') };
+  }
+
+  let startAngle = -Math.PI / 2;
+
+  segments.forEach((segment, index) => {
+    const angle = segment.percent * Math.PI * 2;
+    const endAngle = startAngle + angle;
+
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY);
+    ctx.arc(centerX, centerY, outerRadius, startAngle, endAngle);
+    ctx.closePath();
+    ctx.fillStyle = getDonutColor(index);
+    ctx.fill();
+
+    startAngle = endAngle;
+  });
+
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, innerRadius, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+
+  ctx.fillStyle = '#1c2430';
+  ctx.font = 'bold 16px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('Total', centerX, centerY - 4);
+  ctx.font = 'bold 14px Arial';
+  ctx.fillText(field === 'loanCount' ? String(totalValue) : valueFormatter(totalValue), centerX, centerY + 18);
+
+  ctx.textAlign = 'left';
+  let legendY = 60;
+
+  segments.forEach((segment, index) => {
+    const legendX = 215;
+    ctx.fillStyle = getDonutColor(index);
+    ctx.fillRect(legendX, legendY - 10, 12, 12);
+
+    ctx.fillStyle = '#1c2430';
+    ctx.font = '12px Arial';
+    const percentLabel = `${(segment.percent * 100).toFixed(1)}%`;
+    const valueLabel = valueFormatter(segment.value);
+    ctx.fillText(`${segment.officer}`, legendX + 18, legendY);
+    ctx.fillText(`${valueLabel} • ${percentLabel}`, legendX + 18, legendY + 14);
+
+    legendY += 34;
+  });
+
+  return { canvas, imageDataUrl: canvas.toDataURL('image/png') };
+}
+
+function renderDistributionCharts(result, officers, runningTotals) {
+  if (!distributionChartsEl) {
+    return;
+  }
+
+  const beforeDistribution = getBeforeRunDistribution(runningTotals, officers);
+  const afterDistribution = getAfterRunDistribution(result, officers, runningTotals);
+
+  const chartConfigs = [
+    {
+      title: 'Loan Count Before Run',
+      distribution: beforeDistribution,
+      field: 'loanCount',
+      valueFormatter: (value) => `${value} loans`
+    },
+    {
+      title: 'Loan Count After Run',
+      distribution: afterDistribution,
+      field: 'loanCount',
+      valueFormatter: (value) => `${value} loans`
+    },
+    {
+      title: 'Goal Dollars Before Run',
+      distribution: beforeDistribution,
+      field: 'totalAmountRequested',
+      valueFormatter: (value) => formatCurrency(value)
+    },
+    {
+      title: 'Goal Dollars After Run',
+      distribution: afterDistribution,
+      field: 'totalAmountRequested',
+      valueFormatter: (value) => formatCurrency(value)
+    }
+  ];
+
+  distributionChartsEl.innerHTML = '';
+  distributionChartsEl.className = 'distribution-charts';
+
+  const chartImages = [];
+
+  chartConfigs.forEach((config) => {
+    const chartCard = document.createElement('div');
+    chartCard.className = 'distribution-chart-card';
+
+    const { canvas, imageDataUrl } = drawDonutChart(config);
+    chartImages.push({
+      title: config.title,
+      imageDataUrl
+    });
+
+    chartCard.appendChild(canvas);
+    distributionChartsEl.appendChild(chartCard);
+  });
+
+  result.distributionCharts = chartImages;
 }
 
 function renderLoanTypes() {
@@ -1304,6 +1509,16 @@ function resetAppAfterEndOfMonth() {
   loanAssignmentsEl.textContent = 'No assignments yet.';
   officerAssignmentsEl.textContent = 'No assignments yet.';
   fairnessAuditEl.textContent = 'No fairness audit yet.';
+
+  if (distributionChartsEl) {
+    distributionChartsEl.className = 'distribution-charts empty';
+    distributionChartsEl.textContent = 'No distribution charts yet.';
+  }
+
+  if (distributionDetailsEl) {
+    distributionDetailsEl.open = false;
+  }
+
   addOfficer('Loan Officer 1');
   addOfficer('Loan Officer 2');
   addOfficer('Loan Officer 3');
@@ -1506,11 +1721,18 @@ function buildPdfLines(result, officers, loans, generatedAt) {
     });
   });
 
+  if (result.distributionCharts?.length) {
+    lines.push({ text: '', size: 11, gapAfter: 8 });
+    lines.push({ text: 'Distribution Snapshot', size: 14, gapAfter: 10 });
+    lines.push({ text: '__DISTRIBUTION_CHARTS__', size: 11, gapAfter: 0 });
+  }
+
   return lines;
 }
 
-function writePdfLines(doc, lines) {
+function writePdfLines(doc, lines, result = null) {
   const pageHeight = doc.internal.pageSize.getHeight();
+  const pageWidth = doc.internal.pageSize.getWidth();
   const maxWidth = 500;
   const left = 54;
   const top = 64;
@@ -1518,6 +1740,33 @@ function writePdfLines(doc, lines) {
   let currentY = top;
 
   lines.forEach((line) => {
+    if (line.text === '__DISTRIBUTION_CHARTS__') {
+      const charts = result?.distributionCharts || [];
+
+      charts.forEach((chart, index) => {
+        const chartWidth = 240;
+        const chartHeight = 210;
+        const x = index % 2 === 0 ? 54 : pageWidth / 2 + 10;
+
+        if (index % 2 === 0 && currentY + chartHeight > pageHeight - bottom) {
+          doc.addPage();
+          currentY = top;
+        }
+
+        doc.addImage(chart.imageDataUrl, 'PNG', x, currentY, chartWidth, chartHeight);
+
+        if (index % 2 === 1) {
+          currentY += chartHeight + 18;
+        }
+      });
+
+      if ((charts.length % 2) === 1) {
+        currentY += 228;
+      }
+
+      return;
+    }
+
     const fontSize = line.size || 11;
     const indent = line.indent || 0;
     const text = line.text || ' ';
@@ -1547,7 +1796,7 @@ async function saveResultPdf(result, officers, loans, generatedAt) {
   }
 
   const doc = new window.jspdf.jsPDF({ unit: 'pt', format: 'letter' });
-  writePdfLines(doc, buildPdfLines(result, officers, loans, generatedAt));
+  writePdfLines(doc, buildPdfLines(result, officers, loans, generatedAt), result);
 
   const pdfBlob = doc.output('blob');
   const fileName = buildPdfFileName(generatedAt);
@@ -1664,6 +1913,16 @@ function renderResults(result) {
     loanAssignmentsEl.textContent = 'No assignments yet.';
     officerAssignmentsEl.textContent = 'No assignments yet.';
     fairnessAuditEl.textContent = 'No fairness audit yet.';
+
+    if (distributionChartsEl) {
+      distributionChartsEl.className = 'distribution-charts empty';
+      distributionChartsEl.textContent = 'No distribution charts yet.';
+    }
+
+    if (distributionDetailsEl) {
+      distributionDetailsEl.open = false;
+    }
+
     return;
   }
 
@@ -1973,6 +2232,8 @@ randomizeBtn.addEventListener('click', async () => {
     return;
   }
 
+  renderDistributionCharts(result, officers, runningTotals);
+
   try {
     const generatedAt = new Date();
     const updatedRunningTotals = buildUpdatedRunningTotals([...new Set(officers.map((name) => name.trim()).filter(Boolean))], result, runningTotals);
@@ -2009,6 +2270,7 @@ sampleBtn.addEventListener('click', () => {
 
   const result = assignLoans(getOfficerValues(), getLoanValues());
   renderResults(result);
+  renderDistributionCharts(result, getOfficerValues(), { officers: {} });
 });
 
 removeLoanHistoryBtn?.addEventListener('click', async () => {
@@ -2041,6 +2303,16 @@ clearBtn.addEventListener('click', () => {
   loanAssignmentsEl.textContent = 'No assignments yet.';
   officerAssignmentsEl.textContent = 'No assignments yet.';
   fairnessAuditEl.textContent = 'No fairness audit yet.';
+
+  if (distributionChartsEl) {
+    distributionChartsEl.className = 'distribution-charts empty';
+    distributionChartsEl.textContent = 'No distribution charts yet.';
+  }
+
+  if (distributionDetailsEl) {
+    distributionDetailsEl.open = false;
+  }
+
   addOfficer();
   addOfficer();
   addOfficer();
@@ -2049,6 +2321,12 @@ clearBtn.addEventListener('click', () => {
 
 (async function initializeApp() {
   renderLoanTypes();
+
+  if (distributionChartsEl) {
+    distributionChartsEl.className = 'distribution-charts empty';
+    distributionChartsEl.textContent = 'No distribution charts yet.';
+  }
+
   addOfficer('Loan Officer 1');
   addOfficer('Loan Officer 2');
   addOfficer('Loan Officer 3');

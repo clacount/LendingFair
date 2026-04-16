@@ -717,6 +717,75 @@ input[type="date"] {
   margin-top: 10px;
 }
 
+.distribution-details {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fbfdff;
+  overflow: hidden;
+}
+
+.distribution-summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #f8fbff 0%, #f2f7fc 100%);
+  border-bottom: 1px solid transparent;
+}
+
+.distribution-summary::-webkit-details-marker {
+  display: none;
+}
+
+.distribution-summary::after {
+  content: '▾';
+  float: right;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--accent);
+  transition: transform 0.18s ease;
+}
+
+.distribution-details[open] .distribution-summary {
+  border-bottom-color: var(--border);
+}
+
+.distribution-details[open] .distribution-summary::after {
+  transform: rotate(180deg);
+}
+
+.distribution-summary strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.distribution-summary .hint {
+  margin: 0;
+}
+
+.distribution-charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
+  gap: 16px;
+  padding: 16px;
+}
+
+.distribution-chart-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 12px;
+  box-shadow: var(--shadow);
+  overflow: auto;
+}
+
+.distribution-chart-card canvas {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+}
+
 #loanTypeList .loan-type-action-btn {
   align-self: flex-start;
 }
