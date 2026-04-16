@@ -9,6 +9,7 @@ const endOfMonthBtn = document.getElementById('endOfMonthBtn');
 const randomizeBtn = document.getElementById('randomizeBtn');
 const sampleBtn = document.getElementById('sampleBtn');
 const clearBtn = document.getElementById('clearBtn');
+const removeLoanHistoryBtn = document.getElementById('removeLoanHistoryBtn');
 const messageEl = document.getElementById('message');
 const outputStepEl = document.getElementById('outputStep');
 const outputStepCompactEl = document.getElementById('outputStepCompact');
@@ -22,6 +23,7 @@ const fairnessAuditEl = document.getElementById('fairnessAudit');
 let outputDirectoryHandle = null;
 const LOAN_TYPES = ['Collateralized', 'Credit Card', 'Personal'];
 const RUNNING_TOTALS_FILE_NAME = 'loan-randomizer-running-totals.csv';
+const LOAN_HISTORY_FILE_NAME = 'loan-randomizer-loan-history.csv';
 
 function setOfficerVacationState(row, isOnVacation) {
   row.dataset.active = String(!isOnVacation);
@@ -169,9 +171,21 @@ function getLoanRowValidationError() {
     return '';
   }
 
-  const hasMissingLoanName = loanRows.some((row) => !row.querySelector('input').value.trim());
-  if (hasMissingLoanName) {
-    return 'Each loan row must include a Loan Name / ID.';
+  const seenLoanNames = new Set();
+
+  for (const row of loanRows) {
+    const loanName = row.querySelector('input').value.trim();
+
+    if (!loanName) {
+      return 'Each loan row must include a Loan Name / ID.';
+    }
+
+    const normalizedLoanName = loanName.toLowerCase();
+    if (seenLoanNames.has(normalizedLoanName)) {
+      return `Loan ${loanName} is already entered on this screen.`;
+    }
+
+    seenLoanNames.add(normalizedLoanName);
   }
 
   return '';
@@ -262,6 +276,7 @@ async function chooseOutputFolder() {
 
     outputDirectoryHandle = directoryHandle;
     const { runningTotals, fileWasCreated } = await loadRunningTotals();
+    await loadLoanHistory();
     const loadedOfficers = populateOfficersFromRunningTotals(runningTotals);
     renderLoadedRunningTotals(runningTotals);
     updateFolderStatus();
@@ -344,6 +359,30 @@ function formatCurrency(amount) {
   }).format(amount);
 }
 
+function normalizeLoanHistoryEntry(entry) {
+  if (!entry || typeof entry !== 'object') {
+    return null;
+  }
+
+  const loanName = String(entry.loanName ?? '').trim();
+
+  if (!loanName) {
+    return null;
+  }
+
+  return {
+    loanName,
+    type: LOAN_TYPES.includes(entry.type) ? entry.type : LOAN_TYPES[0],
+    amountRequested: Number.isFinite(entry.amountRequested) && entry.amountRequested >= 0 ? entry.amountRequested : 0,
+    assignedOfficer: String(entry.assignedOfficer ?? '').trim(),
+    generatedAt: String(entry.generatedAt ?? '').trim()
+  };
+}
+
+function createEmptyLoanHistory() {
+  return { loans: {} };
+}
+
 function createEmptyOfficerStats() {
   return {
     isOnVacation: false,
@@ -394,6 +433,68 @@ function parseCsvLine(line) {
 
   values.push(currentValue);
   return values;
+}
+
+function buildLoanHistoryCsv(loanHistory) {
+  const rows = [
+    'loan_name,type,amount_requested,assigned_officer,generated_at'
+  ];
+
+  Object.entries(loanHistory.loans || {})
+    .sort(([loanA], [loanB]) => loanA.localeCompare(loanB))
+    .forEach(([loanName, entry]) => {
+      const normalizedEntry = normalizeLoanHistoryEntry(entry);
+
+      if (!normalizedEntry) {
+        return;
+      }
+
+      rows.push([
+        normalizedEntry.loanName,
+        normalizedEntry.type,
+        normalizedEntry.amountRequested,
+        normalizedEntry.assignedOfficer,
+        normalizedEntry.generatedAt
+      ].map(escapeCsvValue).join(','));
+    });
+
+  return `${rows.join('\n')}\n`;
+}
+
+function parseLoanHistoryCsv(csvText) {
+  const trimmedText = csvText.trim();
+
+  if (!trimmedText) {
+    return createEmptyLoanHistory();
+  }
+
+  const [headerLine, ...dataLines] = trimmedText.split(/\r?\n/).filter(Boolean);
+  const headers = parseCsvLine(headerLine).map((header) => header.trim().toLowerCase());
+  const loans = {};
+
+  dataLines.forEach((line) => {
+    const values = parseCsvLine(line);
+    const row = Object.fromEntries(headers.map((header, index) => [header, values[index] ?? '']));
+    const loanName = row.loan_name?.trim();
+
+    if (!loanName) {
+      return;
+    }
+
+    const entry = normalizeLoanHistoryEntry({
+      loanName,
+      type: row.type,
+      amountRequested: Number(row.amount_requested),
+      assignedOfficer: row.assigned_officer,
+      generatedAt: row.generated_at
+    });
+
+    if (entry) {
+      loans[loanName.toLowerCase()] = entry;
+    }
+  });
+
+  return { loans };
 }
 
 function buildRunningTotalsCsv(runningTotals) {
@@ -572,6 +673,32 @@ async function loadRunningTotals() {
   }
 }
 
+async function loadLoanHistory() {
+  if (!outputDirectoryHandle) {
+    return { loanHistory: createEmptyLoanHistory(), fileWasCreated: false };
+  }
+
+  try {
+    const fileHandle = await outputDirectoryHandle.getFileHandle(LOAN_HISTORY_FILE_NAME);
+    const file = await fileHandle.getFile();
+    const fileText = await file.text();
+
+    if (!fileText.trim()) {
+      return { loanHistory: createEmptyLoanHistory(), fileWasCreated: false };
+    }
+
+    return { loanHistory: parseLoanHistoryCsv(fileText), fileWasCreated: false };
+  } catch (error) {
+    if (error.name === 'NotFoundError') {
+      const emptyLoanHistory = createEmptyLoanHistory();
+      await saveLoanHistory(emptyLoanHistory);
+      return { loanHistory: emptyLoanHistory, fileWasCreated: true };
+    }
+
+    throw new Error(`The loan history CSV could not be read: ${error.message}`);
+  }
+}
+
 function buildUpdatedRunningTotals(cleanOfficers, result, priorRunningTotals) {
   const updatedOfficers = Object.fromEntries(
     Object.entries(priorRunningTotals.officers || {}).map(([officer, stats]) => [officer, normalizeOfficerStats(stats)])
@@ -598,6 +725,22 @@ function buildUpdatedRunningTotals(cleanOfficers, result, priorRunningTotals) {
   return { officers: updatedOfficers };
 }
 
+function buildUpdatedLoanHistory(result, generatedAt, priorLoanHistory) {
+  const updatedLoans = { ...(priorLoanHistory.loans || {}) };
+
+  result.loanAssignments.forEach((entry) => {
+    updatedLoans[entry.loan.name.toLowerCase()] = normalizeLoanHistoryEntry({
+      loanName: entry.loan.name,
+      type: entry.loan.type,
+      amountRequested: entry.loan.amountRequested,
+      assignedOfficer: entry.officers[0] || '',
+      generatedAt: generatedAt.toISOString()
+    });
+  });
+
+  return { loans: updatedLoans };
+}
+
 async function saveRunningTotals(runningTotals) {
   if (!outputDirectoryHandle) {
     throw new Error('No output folder has been selected.');
@@ -607,6 +750,18 @@ async function saveRunningTotals(runningTotals) {
   const writable = await fileHandle.createWritable();
 
   await writable.write(buildRunningTotalsCsv(runningTotals));
+  await writable.close();
+}
+
+async function saveLoanHistory(loanHistory) {
+  if (!outputDirectoryHandle) {
+    throw new Error('No output folder has been selected.');
+  }
+
+  const fileHandle = await outputDirectoryHandle.getFileHandle(LOAN_HISTORY_FILE_NAME, { create: true });
+  const writable = await fileHandle.createWritable();
+
+  await writable.write(buildLoanHistoryCsv(loanHistory));
   await writable.close();
 }
 
@@ -648,6 +803,23 @@ async function removeFile(fileName) {
   }
 }
 
+async function removeLoanFromHistory(loanName) {
+  const normalizedLoanName = String(loanName || '').trim().toLowerCase();
+
+  if (!normalizedLoanName) {
+    throw new Error('Enter a loan name or ID to remove.');
+  }
+
+  const { loanHistory } = await loadLoanHistory();
+
+  if (!loanHistory.loans[normalizedLoanName]) {
+    throw new Error(`Loan ${loanName} was not found in history.`);
+  }
+
+  delete loanHistory.loans[normalizedLoanName];
+  await saveLoanHistory(loanHistory);
+}
+
 async function archiveRunningTotalsForEndOfMonth() {
   if (!outputDirectoryHandle) {
     throw new Error('Choose an output folder before ending the month.');
@@ -657,6 +829,18 @@ async function archiveRunningTotalsForEndOfMonth() {
   const archiveFileName = buildArchivedRunningTotalsFileName(new Date());
   await writeCsvFile(archiveFileName, csvText);
   await removeFile(RUNNING_TOTALS_FILE_NAME);
+
+  try {
+    const loanHistoryText = await readCsvFile(LOAN_HISTORY_FILE_NAME);
+    const loanHistoryArchiveFileName = `loan-randomizer-loan-history-${new Date().getFullYear()}-${padNumber(new Date().getMonth() + 1)}.csv`;
+    await writeCsvFile(loanHistoryArchiveFileName, loanHistoryText);
+    await removeFile(LOAN_HISTORY_FILE_NAME);
+  } catch (error) {
+    if (error.name !== 'NotFoundError') {
+      throw error;
+    }
+  }
+
   return archiveFileName;
 }
 
@@ -666,8 +850,10 @@ function resetAppAfterEndOfMonth() {
   loanList.innerHTML = '';
   loanAssignmentsEl.className = 'results empty';
   officerAssignmentsEl.className = 'results empty';
+  fairnessAuditEl.className = 'results empty';
   loanAssignmentsEl.textContent = 'No assignments yet.';
   officerAssignmentsEl.textContent = 'No assignments yet.';
+  fairnessAuditEl.textContent = 'No fairness audit yet.';
   addOfficer('Loan Officer 1');
   addOfficer('Loan Officer 2');
   addOfficer('Loan Officer 3');
@@ -848,6 +1034,25 @@ function buildPdfLines(result, officers, loans, generatedAt) {
     });
 
     lines.push({ text: '', size: 11, gapAfter: 4 });
+  });
+
+  lines.push({ text: 'Fairness Audit', size: 14, gapAfter: 10 });
+
+  result.fairnessAudit.forEach((entry) => {
+    lines.push({ text: `${entry.loan.name} (${entry.loan.type})`, size: 12, gapAfter: 4 });
+    lines.push({ text: `Chosen officer: ${entry.selectedOfficer}`, size: 11, indent: 16, gapAfter: 4 });
+    lines.push({ text: buildAuditExplanation(entry), size: 11, indent: 16, gapAfter: 8 });
+  });
+
+  lines.push({ text: 'Officer Running Totals', size: 14, gapAfter: 10 });
+
+  Object.entries(result.updatedRunningTotals?.officers || {}).forEach(([officer, stats]) => {
+    const normalizedStats = normalizeOfficerStats(stats);
+    lines.push({
+      text: `${officer} | Active sessions: ${normalizedStats.activeSessionCount} | Loans: ${normalizedStats.loanCount} | Goal dollars: ${formatCurrency(normalizedStats.totalAmountRequested)} | ${formatTypeCounts(normalizedStats.typeCounts)}`,
+      size: 11,
+      gapAfter: 6
+    });
   });
 
   return lines;
@@ -1265,11 +1470,19 @@ randomizeBtn.addEventListener('click', async () => {
   const loans = getLoanValues();
 
   let runningTotals;
+  let loanHistory;
 
   try {
     ({ runningTotals } = await loadRunningTotals());
+    ({ loanHistory } = await loadLoanHistory());
   } catch (error) {
     setMessage(error.message, 'warning');
+    return;
+  }
+
+  const duplicateExistingLoan = loans.find((loan) => loanHistory.loans?.[loan.name.toLowerCase()]);
+  if (duplicateExistingLoan) {
+    setMessage(`${duplicateExistingLoan.name} has already been entered. Please remove it from history before entering it again.`, 'warning');
     return;
   }
 
@@ -1282,10 +1495,12 @@ randomizeBtn.addEventListener('click', async () => {
 
   try {
     const generatedAt = new Date();
-    const fileName = await saveResultPdf(result, officers, loans, generatedAt);
     const updatedRunningTotals = buildUpdatedRunningTotals([...new Set(officers.map((name) => name.trim()).filter(Boolean))], result, runningTotals);
-    await saveRunningTotals(buildRunningTotalsWithCurrentOfficerStatuses(updatedRunningTotals));
-    setMessage(`Assignments randomized and saved to ${fileName}. Officer history was updated in ${RUNNING_TOTALS_FILE_NAME}.`, 'success');
+    result.updatedRunningTotals = buildRunningTotalsWithCurrentOfficerStatuses(updatedRunningTotals);
+    const fileName = await saveResultPdf(result, officers, loans, generatedAt);
+    await saveRunningTotals(result.updatedRunningTotals);
+    await saveLoanHistory(buildUpdatedLoanHistory(result, generatedAt, loanHistory));
+    setMessage(`Assignments randomized and saved to ${fileName}. Officer history was updated in ${RUNNING_TOTALS_FILE_NAME}, and loan history was updated in ${LOAN_HISTORY_FILE_NAME}.`, 'success');
   } catch (error) {
     setMessage(`Assignments were generated, but the files could not be fully saved: ${error.message}`, 'warning');
   }
@@ -1310,14 +1525,36 @@ sampleBtn.addEventListener('click', () => {
   renderResults(result);
 });
 
+removeLoanHistoryBtn?.addEventListener('click', async () => {
+  if (!outputDirectoryHandle) {
+    setMessage('Choose an output folder before removing loan history.', 'warning');
+    return;
+  }
+
+  const loanName = window.prompt('Enter the loan name or ID to remove from history.');
+
+  if (loanName === null) {
+    return;
+  }
+
+  try {
+    await removeLoanFromHistory(loanName.trim());
+    setMessage(`Removed ${loanName.trim()} from ${LOAN_HISTORY_FILE_NAME}.`, 'success');
+  } catch (error) {
+    setMessage(error.message, 'warning');
+  }
+});
+
 clearBtn.addEventListener('click', () => {
   officerList.innerHTML = '';
   loanList.innerHTML = '';
   setMessage('');
   loanAssignmentsEl.className = 'results empty';
   officerAssignmentsEl.className = 'results empty';
+  fairnessAuditEl.className = 'results empty';
   loanAssignmentsEl.textContent = 'No assignments yet.';
   officerAssignmentsEl.textContent = 'No assignments yet.';
+  fairnessAuditEl.textContent = 'No fairness audit yet.';
   addOfficer();
   addOfficer();
   addOfficer();

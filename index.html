@@ -66,7 +66,7 @@
               <h3>Loans</h3>
               <button id="addLoanBtn" type="button">Add Loan</button>
             </div>
-            <p class="hint">Add each loan with its name or ID, Amount Requested, and choose whether it's Collateralized, Credit Card, or Personal. Credit Card loans do not require a dollar amount.</p>
+            <p class="hint">Add each loan with its name or ID, Amount Requested, and choose whether it is Collateralized, Credit Card, or Personal. Credit Card loans do not require a dollar amount.</p>
             <div class="loan-column-headers" aria-hidden="true">
               <span>Loan Name / ID</span>
               <span>Dollar Amount</span>
@@ -87,6 +87,7 @@
           <button id="randomizeBtn" class="primary" type="button">Randomize Assignments</button>
           <button id="sampleBtn" type="button">Load Sample Data</button>
           <button id="clearBtn" type="button">Clear All</button>
+          <button id="removeLoanHistoryBtn" type="button">Remove Loan Number</button>
         </div>
         <div id="rulesBox" class="rules">
           <strong>Rules used by this app</strong>
@@ -104,6 +105,7 @@
           </ul>
         </div>
         <div id="message" class="message"></div>
+        <p class="hint">Loan names and IDs are tracked across sessions in loan-randomizer-loan-history.csv. Duplicate entries are blocked unless the loan is removed from history.</p>
       </section>
 
       <section class="card">
