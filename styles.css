@@ -253,7 +253,8 @@ button:disabled {
 
 input[type="text"],
 input[type="number"],
-input[type="date"] {
+input[type="date"],
+input[type="month"] {
   width: 100%;
   padding: 11px 12px;
   border: 1px solid var(--border);
@@ -779,11 +780,138 @@ input[type="date"] {
   overflow: auto;
 }
 
-.distribution-chart-card canvas {
+.distribution-chart-card canvas,
+.distribution-chart-image {
   display: block;
   width: 100%;
   max-width: 100%;
   height: auto;
+  border-radius: 10px;
+}
+
+.simulation-launch-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+  padding: 16px 18px;
+  border: 1px solid #b9dec8;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #eef8f3 0%, #dff1e7 100%);
+}
+
+.simulation-launch-copy {
+  min-width: 0;
+}
+
+.simulation-launch-copy strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 1rem;
+  color: var(--accent);
+}
+
+.simulation-launch-copy p {
+  margin: 0;
+  color: #355946;
+  line-height: 1.45;
+}
+
+#runSimulationBtn {
+  background: #ffffff;
+  border-color: #b9dec8;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+#runSimulationBtn:hover {
+  background: #f7fcf9;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(28, 36, 48, 0.55);
+  backdrop-filter: blur(2px);
+  z-index: 1000;
+}
+
+.modal-card {
+  width: min(100%, 680px);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: 0 20px 50px rgba(28, 36, 48, 0.24);
+  padding: 22px;
+}
+
+.modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.modal-header h2 {
+  margin-bottom: 6px;
+}
+
+.modal-close-btn {
+  min-width: 42px;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border-radius: 999px;
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.simulation-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.simulation-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.simulation-form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.simulation-form-grid label span {
+  font-size: 0.92rem;
+}
+
+.simulation-form-grid .full-width {
+  grid-column: 1 / -1;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+#simulationModalMessage {
+  margin-top: 0;
+  min-height: 20px;
 }
 
 #loanTypeList .loan-type-action-btn {
@@ -878,7 +1006,9 @@ input[type="date"] {
   }
 
   .output-step-top,
-  .output-step-compact {
+  .output-step-compact,
+  .simulation-launch-card,
+  .modal-header {
     flex-direction: column;
     align-items: flex-start;
   }
@@ -903,7 +1033,20 @@ input[type="date"] {
     flex-direction: column;
   }
 
-  .type-manager-form {
+  .type-manager-form,
+  .simulation-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .modal-card {
+    padding: 18px;
+  }
+
+  .modal-actions {
+    justify-content: stretch;
+  }
+
+  .modal-actions button {
+    width: 100%;
   }
 }
