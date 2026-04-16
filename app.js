@@ -32,6 +32,8 @@ const distributionChartsEl = document.getElementById('distributionCharts');
 
 let outputDirectoryHandle = null;
 
+let isFolderPickerOpen = false;
+
 const RUNNING_TOTALS_FILE_NAME = 'loan-randomizer-running-totals.csv';
 const LOAN_HISTORY_FILE_NAME = 'loan-randomizer-loan-history.csv';
 const LOAN_TYPES_FILE_NAME = 'loan-types.json';
@@ -889,11 +891,17 @@ async function activateCustomLoanType(typeName) {
 }
 
 async function chooseOutputFolder() {
+  if (isFolderPickerOpen) {
+    return;
+  }
+
   if (!supportsFolderSelection()) {
     setMessage('Choose Output Folder is only available in browsers that support folder access, such as current Microsoft Edge or Google Chrome.', 'warning');
     updateFolderStatus();
     return;
   }
+
+  isFolderPickerOpen = true;
 
   try {
     const directoryHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
@@ -928,7 +936,14 @@ async function chooseOutputFolder() {
       return;
     }
 
+    if (error.message?.includes('File picker already active')) {
+      setMessage('The folder picker is already open. Please finish that selection first.', 'warning');
+      return;
+    }
+
     setMessage(`Unable to select an output folder: ${error.message}`, 'warning');
+  } finally {
+    isFolderPickerOpen = false;
   }
 }
 
@@ -2143,9 +2158,8 @@ importPriorMonthBtn.addEventListener('click', () => {
 });
 addLoanBtn.addEventListener('click', () => addLoan());
 chooseFolderBtn.addEventListener('click', handleChooseFolderClick);
-chooseFolderBtn.onclick = handleChooseFolderClick;
 changeFolderBtn.addEventListener('click', handleChooseFolderClick);
-changeFolderBtn.onclick = handleChooseFolderClick;
+
 
 addLoanTypeBtn?.addEventListener('click', async () => {
   if (!outputDirectoryHandle) {
