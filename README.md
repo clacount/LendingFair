@@ -1,6 +1,6 @@
 # Loan Randomizer
 
-##Provided for internal testing and security review only.##
+## Provided for internal testing and security review only.
 
 This is a simple local web app for assigning loans to loan officers using fair random distribution.
 
