@@ -224,6 +224,92 @@
     }
   }
 
+  function initializeReportingHub(boundEndOfMonthButton) {
+    const appRoot = document.querySelector('.app');
+    const mainGrid = document.querySelector('main.grid');
+    const simulationLaunchCard = document.getElementById('simulationLaunchCard');
+    const runSimulationButton = document.getElementById('runSimulationBtn');
+
+    if (!appRoot || !mainGrid || !simulationLaunchCard || !boundEndOfMonthButton || !runSimulationButton) {
+      return;
+    }
+
+    const introSteps = appRoot.querySelector('.intro-steps');
+    const viewSwitcher = document.createElement('div');
+    viewSwitcher.className = 'view-switcher';
+    viewSwitcher.innerHTML = `
+      <button id="operationsViewBtn" class="view-switcher-btn active" type="button">Operations</button>
+      <button id="reportingViewBtn" class="view-switcher-btn" type="button">Reporting</button>
+    `;
+
+    if (introSteps) {
+      introSteps.insertAdjacentElement('afterend', viewSwitcher);
+    } else {
+      appRoot.insertBefore(viewSwitcher, mainGrid);
+    }
+
+    const operationsView = document.createElement('section');
+    operationsView.className = 'workspace-view active';
+    operationsView.id = 'operationsView';
+
+    const reportingView = document.createElement('section');
+    reportingView.className = 'workspace-view';
+    reportingView.id = 'reportingView';
+    reportingView.hidden = true;
+    reportingView.innerHTML = `
+      <div class="reporting-grid">
+        <section class="card full reporting-hero-card">
+          <h2>Reporting & Fairness Tools</h2>
+          <p class="hint">Use this section to generate reports, review month-end data, and simulate fairness without cluttering the live assignment workflow.</p>
+        </section>
+        <section id="simulationReportingCard" class="card reporting-card">
+          <h2>Fairness Simulation</h2>
+          <p class="hint">Run a full month simulation to validate fairness distribution without affecting production data.</p>
+        </section>
+        <section class="card reporting-card">
+          <h2>End of Month Report</h2>
+          <p class="hint">Generate the official month-end PDF and archive the current month’s tracking files.</p>
+          <div class="reporting-actions">
+            <button id="reportingEndOfMonthBtn" class="primary" type="button">Generate EOM Report</button>
+          </div>
+        </section>
+        <section class="card reporting-card">
+          <h2>Custom Date Range Reports</h2>
+          <p class="hint">This section is reserved for future reporting across any date range, officer, or loan type.</p>
+          <div class="report-placeholder">Coming next: archived month reports, date filters, and fairness-only export options.</div>
+        </section>
+      </div>
+    `;
+
+    const originalChildren = Array.from(mainGrid.children);
+    originalChildren.forEach((child) => operationsView.appendChild(child));
+
+    mainGrid.appendChild(operationsView);
+    mainGrid.appendChild(reportingView);
+
+    const simulationReportingCard = document.getElementById('simulationReportingCard');
+    if (simulationReportingCard) {
+      simulationReportingCard.appendChild(simulationLaunchCard);
+      simulationLaunchCard.classList.add('simulation-launch-card-reporting');
+    }
+
+    const operationsViewBtn = document.getElementById('operationsViewBtn');
+    const reportingViewBtn = document.getElementById('reportingViewBtn');
+    const reportingEndOfMonthBtn = document.getElementById('reportingEndOfMonthBtn');
+
+    function setActiveView(viewName) {
+      const showingOperations = viewName === 'operations';
+      operationsView.hidden = !showingOperations;
+      reportingView.hidden = showingOperations;
+      operationsViewBtn?.classList.toggle('active', showingOperations);
+      reportingViewBtn?.classList.toggle('active', !showingOperations);
+    }
+
+    operationsViewBtn?.addEventListener('click', () => setActiveView('operations'));
+    reportingViewBtn?.addEventListener('click', () => setActiveView('reporting'));
+    reportingEndOfMonthBtn?.addEventListener('click', () => boundEndOfMonthButton.click());
+  }
+
   const originalButton = document.getElementById('endOfMonthBtn');
   if (!originalButton) {
     return;
@@ -232,4 +318,5 @@
   const replacementButton = originalButton.cloneNode(true);
   originalButton.replaceWith(replacementButton);
   replacementButton.addEventListener('click', handleEndOfMonthClick);
+  initializeReportingHub(replacementButton);
 })();
