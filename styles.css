@@ -829,10 +829,10 @@ input[type="month"] {
   background: #f7fcf9;
 }
 
-.modal-overlay {
+.modal-overlay[hidden] {
   position: fixed;
   inset: 0;
-  display: flex;
+  display: none !important;
   align-items: center;
   justify-content: center;
   padding: 24px;
