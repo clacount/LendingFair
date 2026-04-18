@@ -13,7 +13,7 @@
       <img id="logo" class="brand-logo" />
       <div class="brand-copy">
         <h1>Loan Randomizer</h1>
-        <p>Assign incoming loans to loan officers using your custom balancing rules.</p>
+        <p>Assign incoming loans more fairly using transparent workload balancing and audit-ready reporting.</p>
       </div>
     </div>
     <div class="intro-steps">
@@ -128,18 +128,16 @@
         <button id="runSimulationBtn" type="button">Configure Simulation</button>
       </div>
       <div id="rulesBox" class="rules">
-        <strong>Rules used by this app</strong>
+        <strong>Fair Assignment Logic</strong>
         <ul>
-          <li>The number of loan officers can be any size.</li>
-          <li>Each loan is assigned to one random officer.</li>
-          <li>Built-in and custom seasonal loan types are supported.</li>
-          <li>Custom loan types can be activated by date range or added manually at any time.</li>
-          <li>Only active loan types are available for new assignments.</li>
-          <li>Each loan should include an Amount Requested unless that loan type is configured to skip it.</li>
-          <li>Each active loan type is shuffled and balanced separately.</li>
-          <li>Within each type, the app compares a balanced fairness score using type mix, goal dollars, and loan count, then picks the officer that produces the most even team result.</li>
-          <li>A CSV history file is kept in the selected output folder so the next run can continue balancing from prior history.</li>
-          <li>Loan names and IDs are tracked across sessions to prevent duplicates.</li>
+          <strong>Fair Assignment Logic</strong>
+          <ul>
+            <li>Loan assignments are balanced across any number of loan officers.</li>
+            <li>Only active loan types are included in new assignments.</li>
+            <li>Each loan type is balanced separately to keep distribution more even.</li>
+            <li>The assignment logic compares loan type mix, total goal dollars, and loan count before selecting the best-fit officer.</li>
+            <li>Prior assignment history is included, so fairness is maintained over time, not just within a single run.</li>
+          </ul>
         </ul>
       </div>
       <div id="message" class="message"></div>
