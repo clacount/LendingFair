@@ -18,7 +18,7 @@
     </div>
     <div class="intro-steps">
       <strong>Quick steps</strong>
-      <p>1. Choose the output folder. 2. The app loads loan officers, loan history, and loan types from that folder. 3. Enter loans and randomize assignments.</p>
+      <p>1. Grant save permission by choosing your output folder. 2. The app remembers that folder, creates/uses this month&apos;s YYYY-MM subfolder, and loads loan officers, loan history, and loan types there. 3. Enter loans and randomize assignments.</p>
     </div>
   </header>
 
@@ -37,9 +37,10 @@
           </div>
         </div>
         <div id="outputStepDetails" class="output-step-details">
-          <p class="hint">This must be selected first so the app can load or create the loan officer history CSV, loan history CSV, and loan types JSON.</p>
+          <p class="hint">This must be selected first so the app can load or create this month&apos;s loan officer history CSV, loan history CSV, and loan types JSON.</p>
+          <p class="hint">If opened inside Teams/SharePoint, open the app directly in Edge/Chrome to grant folder access.</p>
           <div class="priority-action">
-            <button id="chooseFolderBtn" class="step-button" type="button">Choose Output Folder</button>
+            <button id="chooseFolderBtn" class="step-button" type="button">Grant Save Permission</button>
             <button id="launchDemoModeBtn" class="step-button step-button-secondary" type="button">Launch Demo Mode</button>
           </div>
           <div id="folderPrompt" class="folder-prompt">No output folder selected.</div>
@@ -233,6 +234,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="graph-sharepoint-stub.js"></script>
 <script src="app.js"></script>
 <script src="simulation.js"></script>
 <script src="eom-report.js"></script>
