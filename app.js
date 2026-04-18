@@ -30,7 +30,7 @@ const loanTypeSummaryStatsEl = document.getElementById('loanTypeSummaryStats');
 const distributionDetailsEl = document.getElementById('distributionDetails');
 const distributionChartsEl = document.getElementById('distributionCharts');
 
-const LOGO_PATH = './logo.png'
+const LOGO_PATH = './logo.png';
 
 const logoEl = document.getElementById('logo');
 
@@ -78,6 +78,30 @@ let allLoanTypes = [...DEFAULT_LOAN_TYPES];
 function getTodayKey() {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+async function getLogoImageDataUrl() {
+  if (!LOGO_PATH) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(LOGO_PATH);
+    if (!response.ok) {
+      return null;
+    }
+
+    const blob = await response.blob();
+
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error('The logo image could not be read.'));
+      reader.readAsDataURL(blob);
+    });
+  } catch (error) {
+    return null;
+  }
 }
 
 function normalizeLoanType(type) {
@@ -1756,14 +1780,22 @@ function buildPdfLines(result, officers, loans, generatedAt) {
   return lines;
 }
 
-function writePdfLines(doc, lines, result = null) {
+function writePdfLines(doc, lines, result = null, options = {}) {
   const pageHeight = doc.internal.pageSize.getHeight();
   const pageWidth = doc.internal.pageSize.getWidth();
   const maxWidth = 500;
   const left = 54;
   const top = 64;
   const bottom = 54;
+  const logoDataUrl = options.logoDataUrl || null;
   let currentY = top;
+
+  if (logoDataUrl) {
+    const logoWidth = 120;
+    const logoHeight = 48;
+    doc.addImage(logoDataUrl, 'PNG', left, currentY, logoWidth, logoHeight);
+    currentY += logoHeight + 18;
+  }
 
   lines.forEach((line) => {
     if (line.text === '__DISTRIBUTION_CHARTS__') {
@@ -1822,7 +1854,8 @@ async function saveResultPdf(result, officers, loans, generatedAt) {
   }
 
   const doc = new window.jspdf.jsPDF({ unit: 'pt', format: 'letter' });
-  writePdfLines(doc, buildPdfLines(result, officers, loans, generatedAt), result);
+  const logoDataUrl = await getLogoImageDataUrl();
+  writePdfLines(doc, buildPdfLines(result, officers, loans, generatedAt), result, { logoDataUrl });
 
   const pdfBlob = doc.output('blob');
   const fileName = buildPdfFileName(generatedAt);
