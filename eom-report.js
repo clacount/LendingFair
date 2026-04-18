@@ -308,7 +308,8 @@
     writePdfLines(doc, lines, report);
 
     const pdfBlob = doc.output('blob');
-    const fileHandle = await outputDirectoryHandle.getFileHandle(fileName, { create: true });
+    const targetDirectoryHandle = await getActiveDataDirectoryHandle();
+    const fileHandle = await targetDirectoryHandle.getFileHandle(fileName, { create: true });
     const writable = await fileHandle.createWritable();
     await writable.write(pdfBlob);
     await writable.close();
