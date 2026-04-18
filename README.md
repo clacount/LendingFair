@@ -7,15 +7,16 @@ This is a simple local web app for assigning loans to loan officers using fair r
 ## How to use
 1. Download and unzip the project.
 2. Open `index.html` in a current version of Microsoft Edge or Google Chrome.
-3. Click **Choose Output Folder** and pick the folder where audit PDFs and the loan officer history CSV should be saved.
-4. The app reads `loan-randomizer-running-totals.csv` from that folder and loads the loan officers if the file already exists.
-5. If the CSV does not exist yet, the app creates it and you can enter the initial loan officers manually.
-6. Enter each loan name or ID, its **Amount Requested**, and its **Loan Type**.
-7. Click **Randomize Assignments**.
+3. Click **Grant Save Permission** and pick the parent folder where monthly loan-randomizer data should be saved.
+4. The app automatically creates/uses a monthly subfolder in `YYYY-MM` format (for example, `2026-04`) and reads `loan-randomizer-running-totals.csv` from that month.
+5. If the CSV does not exist yet for the active month, the app creates it and you can enter the initial loan officers manually.
+6. On supported browsers, the app remembers your approved folder and tries to reconnect on next launch so you do not have to pick it each time.
+7. Enter each loan name or ID, its **Amount Requested**, and its **Loan Type**.
+8. Click **Randomize Assignments**.
 
-Each run creates a PDF named like `Loan-Randomized-Results-2026-04-14-091530.pdf` in the selected folder. The PDF includes the timestamp, the total loan officers and loans entered, plus both **Assignments by Loan** and **Assignments by Officer** so managers can review every run.
+Each run creates a PDF named like `Loan-Randomized-Results-2026-04-14-091530.pdf` in the active monthly `YYYY-MM` subfolder. The PDF includes the timestamp, the total loan officers and loans entered, plus both **Assignments by Loan** and **Assignments by Officer** so managers can review every run.
 
-The app also keeps a CSV state file named `loan-randomizer-running-totals.csv` in that same output folder. It stores running totals by officer, including loan count, dollar amount, and loan types already assigned, so the next run can keep balancing from prior history and restore the loan officer list when the app is reopened.
+The app also keeps a CSV state file named `loan-randomizer-running-totals.csv` in that same monthly subfolder. It stores running totals by officer, including loan count, dollar amount, and loan types already assigned, so the next run can keep balancing from prior history and restore the loan officer list when the app is reopened.
 
 ## Rule behavior
 - You can use **any number of loan officers**.
@@ -49,9 +50,24 @@ The app also keeps a CSV state file named `loan-randomizer-running-totals.csv` i
 - Loan officer names must be unique so totals display correctly.
 - Amount Requested must be a valid non-negative number for every entered loan.
 - Folder selection and direct PDF saving require a browser with the File System Access API.
-- The CSV running-totals file is stored in the selected output folder and is reused the next time that folder is selected.
+- The CSV running-totals file is stored in the active `YYYY-MM` subfolder under the selected output folder and is reused the next time that folder is selected during that month.
 - No install is needed.
 - This runs fully in the browser and can be shared as files.
+
+## Teams / SharePoint hosting notes
+- If this app is opened *inside* a SharePoint/Teams page frame, folder-picker APIs may be blocked by browser/embed security settings.
+- Recommended flow: open the app directly in Edge/Chrome (not embedded), then select a local OneDrive-synced folder that maps to the SharePoint document library.
+- For true direct save to SharePoint without local folder selection, this app would need Microsoft Graph integration (authentication + upload API calls), which is not implemented in this local-file version.
+
+## Graph auth/upload stub (for IT integration planning)
+- A starter scaffold is included in `graph-sharepoint-stub.js`.
+- The stubs expose `window.loanRandomizerGraphStubs` with:
+  - `buildGraphDriveUploadUrl(...)`
+  - `getGraphIntegrationChecklist()`
+  - `getAccessTokenWithPkceStub()`
+  - `uploadFileToSharePointStub(...)`
+- This scaffold is intentionally non-functional for production auth/upload. It is a safe handoff point for IT/dev teams to wire tenant-specific Microsoft Graph auth and library upload logic.
+- For a non-programmer rollout checklist, use `GRAPH-SETUP-EILI5.md`.
 
 
 ## New history and PDF features

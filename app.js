@@ -65,6 +65,10 @@ const DEMO_LOAN_HISTORY_FILE_NAME = 'demo-loan-history.csv';
 const DEMO_LOAN_TYPES_FILE_NAME = 'demo-loan-types.json';
 const DEMO_SIMULATION_HISTORY_FILE_NAME = 'demo-simulation-history.csv';
 const DEMO_DATA_FOLDER_NAME = 'demo-data';
+const MONTH_FOLDER_KEY_REGEX = /^\d{4}-\d{2}$/;
+const FOLDER_HANDLE_DB_NAME = 'loan-randomizer-folder-access';
+const FOLDER_HANDLE_STORE_NAME = 'settings';
+const FOLDER_HANDLE_STORAGE_KEY = 'last-output-folder-handle';
 
 let isDemoMode = false;
 
@@ -116,16 +120,101 @@ function getSessionFileName(fileKind) {
   return demoFileNames[fileKind];
 }
 
+function getMonthFolderKey(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function isValidMonthFolderKey(value) {
+  return MONTH_FOLDER_KEY_REGEX.test(String(value || ''));
+}
+
+function supportsPersistedDirectoryHandle() {
+  return typeof window.indexedDB !== 'undefined';
+}
+
+async function openFolderHandleDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = window.indexedDB.open(FOLDER_HANDLE_DB_NAME, 1);
+
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains(FOLDER_HANDLE_STORE_NAME)) {
+        database.createObjectStore(FOLDER_HANDLE_STORE_NAME);
+      }
+    };
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('Could not open local folder-access database.'));
+  });
+}
+
+async function saveOutputDirectoryHandle(directoryHandle) {
+  if (!supportsPersistedDirectoryHandle() || !directoryHandle) {
+    return;
+  }
+
+  const database = await openFolderHandleDatabase();
+
+  await new Promise((resolve, reject) => {
+    const transaction = database.transaction(FOLDER_HANDLE_STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(FOLDER_HANDLE_STORE_NAME);
+    store.put(directoryHandle, FOLDER_HANDLE_STORAGE_KEY);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error('Could not save the selected output folder.'));
+  });
+
+  database.close();
+}
+
+async function loadSavedOutputDirectoryHandle() {
+  if (!supportsPersistedDirectoryHandle()) {
+    return null;
+  }
+
+  const database = await openFolderHandleDatabase();
+
+  const handle = await new Promise((resolve, reject) => {
+    const transaction = database.transaction(FOLDER_HANDLE_STORE_NAME, 'readonly');
+    const store = transaction.objectStore(FOLDER_HANDLE_STORE_NAME);
+    const request = store.get(FOLDER_HANDLE_STORAGE_KEY);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error || new Error('Could not read the saved output folder.'));
+  });
+
+  database.close();
+  return handle;
+}
+
+async function tryRestoreSavedOutputFolder() {
+  try {
+    const savedDirectoryHandle = await loadSavedOutputDirectoryHandle();
+    if (!savedDirectoryHandle) {
+      return false;
+    }
+
+    const hasPermission = await ensureDirectoryPermission(savedDirectoryHandle);
+    if (!hasPermission) {
+      return false;
+    }
+
+    await activateSessionInDirectory(savedDirectoryHandle, 'production');
+    setMessage(`Production mode is active in ${savedDirectoryHandle.name}. Reconnected to your previously approved save folder.`, 'success');
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
 async function getActiveDataDirectoryHandle() {
   if (!outputDirectoryHandle) {
     throw new Error('No output folder has been selected.');
   }
 
-  if (!isDemoMode) {
-    return outputDirectoryHandle;
+  if (isDemoMode) {
+    return outputDirectoryHandle.getDirectoryHandle(DEMO_DATA_FOLDER_NAME, { create: true });
   }
 
-  return outputDirectoryHandle.getDirectoryHandle(DEMO_DATA_FOLDER_NAME, { create: true });
+  return outputDirectoryHandle.getDirectoryHandle(getMonthFolderKey(), { create: true });
 }
 
 function getSessionModeLabel() {
@@ -592,11 +681,23 @@ function supportsFolderSelection() {
   return typeof window.showDirectoryPicker === 'function';
 }
 
+function isLikelySharePointOrTeamsHost() {
+  const host = String(window.location?.hostname || '').toLowerCase();
+  return host.includes('sharepoint.com') || host.includes('teams.microsoft.com');
+}
+
+function getUnsupportedFolderAccessMessage() {
+  if (isLikelySharePointOrTeamsHost()) {
+    return 'Folder access is blocked in this SharePoint/Teams context. Open this app directly in Edge/Chrome (outside the SharePoint frame) and select a synced OneDrive/SharePoint folder, or add Microsoft Graph upload support for direct cloud saves.';
+  }
+
+  return 'Folder selection is not supported in this browser. Use a current version of Microsoft Edge or Google Chrome.';
+}
+
 function updateFolderStatus() {
   if (outputDirectoryHandle) {
-    const folderSummary = isDemoMode
-      ? `Selected folder: ${outputDirectoryHandle.name} (using /${DEMO_DATA_FOLDER_NAME})`
-      : `Selected folder: ${outputDirectoryHandle.name}`;
+    const activeDataPath = isDemoMode ? `/${DEMO_DATA_FOLDER_NAME}` : `/${getMonthFolderKey()}`;
+    const folderSummary = `Selected folder: ${outputDirectoryHandle.name} (using ${activeDataPath})`;
     folderStatusEl.textContent = folderSummary;
     folderStatusEl.dataset.state = 'ready';
     outputStepEl.dataset.state = 'complete';
@@ -617,7 +718,7 @@ function updateFolderStatus() {
   }
 
   if (!supportsFolderSelection()) {
-    folderPromptEl.textContent = 'Folder selection is not supported in this browser. Use a current version of Microsoft Edge or Google Chrome.';
+    folderPromptEl.textContent = getUnsupportedFolderAccessMessage();
     folderPromptEl.dataset.state = 'error';
     outputStepEl.dataset.state = 'error';
     outputStepCompactEl.hidden = true;
@@ -1198,6 +1299,10 @@ async function activateSessionInDirectory(directoryHandle, sessionMode = 'produc
   outputDirectoryHandle = directoryHandle;
   isDemoMode = sessionMode === 'demo';
 
+  if (sessionMode === 'production') {
+    await saveOutputDirectoryHandle(directoryHandle);
+  }
+
   if (isDemoMode) {
     await ensureDemoDataSeeded();
   }
@@ -1235,7 +1340,7 @@ async function chooseOutputFolder(sessionMode = 'production') {
   }
 
   if (!supportsFolderSelection()) {
-    setMessage('Choose Output Folder is only available in browsers that support folder access, such as current Microsoft Edge or Google Chrome.', 'warning');
+    setMessage(getUnsupportedFolderAccessMessage(), 'warning');
     updateFolderStatus();
     return;
   }
@@ -1243,7 +1348,11 @@ async function chooseOutputFolder(sessionMode = 'production') {
   isFolderPickerOpen = true;
 
   try {
-    const directoryHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    const directoryHandle = await window.showDirectoryPicker({
+      mode: 'readwrite',
+      startIn: 'documents',
+      id: 'loan-randomizer-output-folder'
+    });
     const hasPermission = await ensureDirectoryPermission(directoryHandle);
 
     if (!hasPermission) {
@@ -1834,6 +1943,17 @@ async function readCsvFile(fileName) {
   return file.text();
 }
 
+async function readCsvFileFromMonth(fileName, monthKey) {
+  if (!outputDirectoryHandle || !isValidMonthFolderKey(monthKey)) {
+    throw new Error('A valid month in YYYY-MM format is required.');
+  }
+
+  const monthDirectoryHandle = await outputDirectoryHandle.getDirectoryHandle(monthKey);
+  const fileHandle = await monthDirectoryHandle.getFileHandle(fileName);
+  const file = await fileHandle.getFile();
+  return file.text();
+}
+
 async function writeCsvFile(fileName, content) {
   const dataDirectoryHandle = await getActiveDataDirectoryHandle();
   const fileHandle = await dataDirectoryHandle.getFileHandle(fileName, { create: true });
@@ -2246,7 +2366,7 @@ async function saveResultPdf(result, officers, loans, generatedAt) {
 
   const pdfBlob = doc.output('blob');
   const fileName = buildPdfFileName(generatedAt);
-  const fileHandle = await outputDirectoryHandle.getFileHandle(fileName, { create: true });
+  const fileHandle = await (await getActiveDataDirectoryHandle()).getFileHandle(fileName, { create: true });
   const writable = await fileHandle.createWritable();
 
   await writable.write(pdfBlob);
@@ -2586,22 +2706,31 @@ async function handleImportPriorMonthClick() {
     return;
   }
 
-  const fileName = buildArchivedRunningTotalsFileNameFromKey(normalizedMonthKey);
-
   try {
-    const csvText = await readCsvFile(fileName);
+    let csvText;
+    const archivedFileName = buildArchivedRunningTotalsFileNameFromKey(normalizedMonthKey);
+
+    try {
+      csvText = await readCsvFileFromMonth(getSessionFileName('runningTotals'), normalizedMonthKey);
+    } catch (monthDirectoryError) {
+      if (monthDirectoryError.name !== 'NotFoundError') {
+        throw monthDirectoryError;
+      }
+      csvText = await readCsvFile(archivedFileName);
+    }
+
     const priorMonthTotals = parseRunningTotalsCsv(csvText);
     const importedCount = appendOfficersFromRunningTotals(priorMonthTotals);
 
     if (!importedCount) {
-      setMessage(`No new loan officers were found in ${fileName}.`, 'warning');
+      setMessage(`No new loan officers were found in ${normalizedMonthKey}.`, 'warning');
       return;
     }
 
-    setMessage(`Imported ${importedCount} loan officer${importedCount === 1 ? '' : 's'} from ${fileName}.`, 'success');
+    setMessage(`Imported ${importedCount} loan officer${importedCount === 1 ? '' : 's'} from ${normalizedMonthKey}.`, 'success');
   } catch (error) {
     if (error.name === 'NotFoundError') {
-      setMessage(`Could not find ${fileName} in the selected output folder.`, 'warning');
+      setMessage(`Could not find running totals for ${normalizedMonthKey} in the selected output folder.`, 'warning');
       return;
     }
 
@@ -2806,6 +2935,11 @@ clearBtn.addEventListener('click', () => {
   if (distributionChartsEl) {
     distributionChartsEl.className = 'distribution-charts empty';
     distributionChartsEl.textContent = 'No distribution charts yet.';
+  }
+
+  const restoredSavedFolder = await tryRestoreSavedOutputFolder();
+  if (restoredSavedFolder) {
+    return;
   }
 
   addOfficer('Loan Officer 1');
