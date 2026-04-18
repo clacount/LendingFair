@@ -14,6 +14,9 @@ const randomizeBtn = document.getElementById('randomizeBtn');
 const clearBtn = document.getElementById('clearBtn');
 const removeLoanHistoryBtn = document.getElementById('removeLoanHistoryBtn');
 const messageEl = document.getElementById('message');
+const step1MessageEl = document.getElementById('step1Message');
+const step2MessageEl = document.getElementById('step2Message');
+const step3MessageEl = document.getElementById('step3Message');
 const outputStepEl = document.getElementById('outputStep');
 const outputStepCompactEl = document.getElementById('outputStepCompact');
 const outputStepDetailsEl = document.getElementById('outputStepDetails');
@@ -185,6 +188,24 @@ async function loadSavedOutputDirectoryHandle() {
   return handle;
 }
 
+async function clearSavedOutputDirectoryHandle() {
+  if (!supportsPersistedDirectoryHandle()) {
+    return;
+  }
+
+  const database = await openFolderHandleDatabase();
+
+  await new Promise((resolve, reject) => {
+    const transaction = database.transaction(FOLDER_HANDLE_STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(FOLDER_HANDLE_STORE_NAME);
+    store.delete(FOLDER_HANDLE_STORAGE_KEY);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error('Could not clear the saved output folder.'));
+  });
+
+  database.close();
+}
+
 async function tryRestoreSavedOutputFolder() {
   try {
     const savedDirectoryHandle = await loadSavedOutputDirectoryHandle();
@@ -194,6 +215,12 @@ async function tryRestoreSavedOutputFolder() {
 
     const hasPermission = await ensureDirectoryPermission(savedDirectoryHandle);
     if (!hasPermission) {
+      return false;
+    }
+
+    const canRestoreSession = await hasRestorableSessionData(savedDirectoryHandle);
+    if (!canRestoreSession) {
+      await clearSavedOutputDirectoryHandle();
       return false;
     }
 
@@ -215,6 +242,41 @@ async function getActiveDataDirectoryHandle() {
   }
 
   return outputDirectoryHandle.getDirectoryHandle(getMonthFolderKey(), { create: true });
+}
+
+async function hasRestorableSessionData(directoryHandle) {
+  if (!directoryHandle) {
+    return false;
+  }
+
+  let monthDirectoryHandle;
+  try {
+    monthDirectoryHandle = await directoryHandle.getDirectoryHandle(getMonthFolderKey());
+  } catch (error) {
+    if (error.name === 'NotFoundError') {
+      return false;
+    }
+    throw error;
+  }
+
+  const expectedFiles = [
+    getSessionFileName('runningTotals'),
+    getSessionFileName('loanHistory'),
+    getSessionFileName('loanTypes')
+  ];
+
+  for (const fileName of expectedFiles) {
+    try {
+      await monthDirectoryHandle.getFileHandle(fileName);
+      return true;
+    } catch (error) {
+      if (error.name !== 'NotFoundError') {
+        throw error;
+      }
+    }
+  }
+
+  return false;
 }
 
 function getSessionModeLabel() {
@@ -673,8 +735,36 @@ function chooseRandom(items, count) {
 }
 
 function setMessage(text = '', tone = 'warning') {
+  [step1MessageEl, step2MessageEl, step3MessageEl].forEach((stepMessageEl) => {
+    if (!stepMessageEl) {
+      return;
+    }
+    stepMessageEl.textContent = '';
+    stepMessageEl.dataset.tone = '';
+  });
   messageEl.textContent = text;
   messageEl.dataset.tone = text ? tone : '';
+}
+
+function setStepMessage(stepKey, text = '', tone = 'warning') {
+  const stepMessageMap = {
+    step1: step1MessageEl,
+    step2: step2MessageEl,
+    step3: step3MessageEl,
+    step4: messageEl
+  };
+
+  Object.values(stepMessageMap).forEach((stepMessageEl) => {
+    if (!stepMessageEl) {
+      return;
+    }
+    stepMessageEl.textContent = '';
+    stepMessageEl.dataset.tone = '';
+  });
+
+  const targetMessageEl = stepMessageMap[stepKey] || messageEl;
+  targetMessageEl.textContent = text;
+  targetMessageEl.dataset.tone = text ? tone : '';
 }
 
 function supportsFolderSelection() {
@@ -1356,7 +1446,7 @@ async function chooseOutputFolder(sessionMode = 'production') {
     const hasPermission = await ensureDirectoryPermission(directoryHandle);
 
     if (!hasPermission) {
-      setMessage('Folder access was not granted. Please choose a folder and allow write access.', 'warning');
+      setStepMessage('step1', 'Folder access was not granted. Please choose a folder and allow write access.', 'warning');
       return;
     }
 
@@ -1400,6 +1490,29 @@ function buildArchivedRunningTotalsFileName(date) {
 
 function buildArchivedRunningTotalsFileNameFromKey(monthKey) {
   return `loan-randomizer-running-totals-${monthKey}.csv`;
+}
+
+function buildArchiveBackupFileName(fileName, date = new Date()) {
+  const extensionIndex = fileName.lastIndexOf('.');
+  const hasExtension = extensionIndex > 0;
+  const fileBase = hasExtension ? fileName.slice(0, extensionIndex) : fileName;
+  const extension = hasExtension ? fileName.slice(extensionIndex) : '';
+  const timestamp = `${date.getFullYear()}-${padNumber(date.getMonth() + 1)}-${padNumber(date.getDate())}-${padNumber(date.getHours())}${padNumber(date.getMinutes())}${padNumber(date.getSeconds())}`;
+  return `${fileBase}-backup-${timestamp}${extension}`;
+}
+
+async function preserveExistingArchiveFile(fileName) {
+  try {
+    const existingArchiveText = await readCsvFile(fileName);
+    const backupFileName = buildArchiveBackupFileName(fileName, new Date());
+    await writeCsvFile(backupFileName, existingArchiveText);
+    return backupFileName;
+  } catch (error) {
+    if (error.name === 'NotFoundError') {
+      return null;
+    }
+    throw error;
+  }
 }
 
 function getPreviousMonthKey() {
@@ -2033,12 +2146,14 @@ async function archiveRunningTotalsForEndOfMonth() {
 
   const csvText = await readCsvFile(getSessionFileName('runningTotals'));
   const archiveFileName = buildArchivedRunningTotalsFileName(new Date());
+  await preserveExistingArchiveFile(archiveFileName);
   await writeCsvFile(archiveFileName, csvText);
   await removeFile(getSessionFileName('runningTotals'));
 
   try {
     const loanHistoryText = await readCsvFile(getSessionFileName('loanHistory'));
     const loanHistoryArchiveFileName = `loan-randomizer-loan-history-${new Date().getFullYear()}-${padNumber(new Date().getMonth() + 1)}.csv`;
+    await preserveExistingArchiveFile(loanHistoryArchiveFileName);
     await writeCsvFile(loanHistoryArchiveFileName, loanHistoryText);
     await removeFile(getSessionFileName('loanHistory'));
   } catch (error) {
@@ -2081,7 +2196,8 @@ function resetToInitialScreen() {
   updateFolderStatus();
 }
 
-function resetAppAfterEndOfMonth() {
+async function resetAppAfterEndOfMonth() {
+  await clearSavedOutputDirectoryHandle();
   resetToInitialScreen();
 }
 
@@ -2669,7 +2785,7 @@ async function handleQuickLaunchDemoModeClick(event) {
   event?.preventDefault();
 
   if (!outputDirectoryHandle) {
-    setMessage('Choose an output folder before launching demo mode.', 'warning');
+    setStepMessage('step1', 'Choose an output folder before launching demo mode.', 'warning');
     return;
   }
 
@@ -2687,7 +2803,7 @@ async function handleQuickLaunchDemoModeClick(event) {
 
 async function handleImportPriorMonthClick() {
   if (!outputDirectoryHandle) {
-    setMessage('Choose an output folder before importing officers from a prior month.', 'warning');
+    setStepMessage('step1', 'Choose an output folder before importing officers from a prior month.', 'warning');
     return;
   }
 
@@ -2751,7 +2867,7 @@ changeFolderBtn.addEventListener('click', handleChooseFolderClick);
 
 addLoanTypeBtn?.addEventListener('click', async () => {
   if (!outputDirectoryHandle) {
-    setMessage('Choose an output folder before adding loan types.', 'warning');
+    setStepMessage('step2', 'Choose an output folder before adding loan types.', 'warning');
     return;
   }
 
@@ -2776,7 +2892,7 @@ addLoanTypeBtn?.addEventListener('click', async () => {
 
 endOfMonthBtn?.addEventListener('click', async () => {
   if (!outputDirectoryHandle) {
-    setMessage('Choose an output folder before ending the month.', 'warning');
+    setStepMessage('step1', 'Choose an output folder before ending the month.', 'warning');
     return;
   }
 
@@ -2787,7 +2903,7 @@ endOfMonthBtn?.addEventListener('click', async () => {
 
   try {
     const archiveFileName = await archiveRunningTotalsForEndOfMonth();
-    resetAppAfterEndOfMonth();
+    await resetAppAfterEndOfMonth();
     setMessage(`Loan tracking archived to ${archiveFileName}. Choose Output Folder to start the next month.`, 'success');
   } catch (error) {
     setMessage(`Could not complete End of Month: ${error.message}`, 'warning');
@@ -2830,7 +2946,7 @@ clearDemoDataBtn?.addEventListener('click', async () => {
 
 randomizeBtn.addEventListener('click', async () => {
   if (!outputDirectoryHandle) {
-    setMessage('Choose an output folder before randomizing assignments.', 'warning');
+    setStepMessage('step1', 'Choose an output folder before randomizing assignments.', 'warning');
     updateFolderStatus();
     return;
   }
@@ -2885,7 +3001,7 @@ randomizeBtn.addEventListener('click', async () => {
 
 removeLoanHistoryBtn?.addEventListener('click', async () => {
   if (!outputDirectoryHandle) {
-    setMessage('Choose an output folder before removing loan history.', 'warning');
+    setStepMessage('step1', 'Choose an output folder before removing loan history.', 'warning');
     return;
   }
 

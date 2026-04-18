@@ -1108,6 +1108,35 @@ input[type="month"] {
   margin-bottom: 0;
 }
 
+.fairness-methodology {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #b9dec8;
+  background: #eef8f3;
+  color: #355946;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.app-footer {
+  margin-top: 18px;
+  text-align: right;
+}
+
+.version-label {
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 @media (max-width: 900px) {
   .grid {
     grid-template-columns: 1fr;

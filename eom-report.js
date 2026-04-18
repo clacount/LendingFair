@@ -456,7 +456,7 @@
 
   async function handleEndOfMonthClick() {
     if (!outputDirectoryHandle) {
-      setMessage('Choose an output folder before ending the month.', 'warning');
+      setStepMessage('step1', 'Choose an output folder before ending the month.', 'warning');
       return;
     }
 
@@ -469,7 +469,7 @@
       const report = await buildEomReport();
       const result = await saveEomReportPdf(report);
       const archiveFileName = await archiveRunningTotalsForEndOfMonth();
-      resetAppAfterEndOfMonth();
+      await resetAppAfterEndOfMonth();
       setMessage(`End-of-month report saved to ${result.fileName}. Loan tracking archived to ${archiveFileName}. Choose Output Folder to start the next month.`, 'success');
     } catch (error) {
       setMessage(`Could not complete End of Month: ${error.message}`, 'warning');
@@ -485,7 +485,7 @@
     if (!outputDirectoryHandle) {
       const warningMessage = 'Choose an output folder before generating a custom report.';
       setReportingMessage(customReportMessage, warningMessage, 'warning');
-      setMessage(warningMessage, 'warning');
+      setStepMessage('step1', warningMessage, 'warning');
       return;
     }
 
@@ -533,8 +533,8 @@
     const viewSwitcher = document.createElement('div');
     viewSwitcher.className = 'view-switcher';
     viewSwitcher.innerHTML = `
-      <button id="operationsViewBtn" class="view-switcher-btn active" type="button">Operations</button>
-      <button id="reportingViewBtn" class="view-switcher-btn" type="button">Reporting</button>
+      <button id="operationsViewBtn" class="view-switcher-btn active" type="button">Live Assignment Workspace</button>
+      <button id="reportingViewBtn" class="view-switcher-btn" type="button">Reports &amp; Simulation</button>
     `;
 
     if (introSteps) {

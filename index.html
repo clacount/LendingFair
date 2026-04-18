@@ -18,7 +18,7 @@
     </div>
     <div class="intro-steps">
       <strong>Quick steps</strong>
-      <p>1. Grant save permission by choosing your output folder. 2. The app remembers that folder, creates/uses this month&apos;s YYYY-MM subfolder, and loads loan officers, loan history, and loan types there. 3. Enter loans and randomize assignments.</p>
+      <p>1. Connect your output folder by choosing where reports should be saved. 2. The app remembers that folder, creates/uses this month&apos;s YYYY-MM subfolder, and loads loan officers, loan history, and loan types there. 3. Enter loans and run fair assignment.</p>
     </div>
   </header>
 
@@ -26,26 +26,27 @@
     <section class="card full">
       <div id="outputStep" class="output-box output-box-priority" data-state="pending">
         <div class="output-step-top">
-          <strong>Step 1: Choose PDF Output Folder</strong>
+          <strong>Step 1: Connect Output Folder</strong>
           <div id="outputStepCompact" class="output-step-compact" hidden>
             <div id="folderStatus" class="folder-status">No output folder selected.</div>
             <button id="changeFolderBtn" class="change-folder-btn" type="button">Change Folder</button>
-            <button id="quickLaunchDemoModeBtn" class="change-folder-btn" type="button" hidden>Launch Demo Mode</button>
+            <button id="quickLaunchDemoModeBtn" class="change-folder-btn" type="button" hidden>Load Demo Scenario</button>
             <button id="endDemoModeBtn" class="end-month-btn" type="button" hidden>End Demo Mode</button>
             <button id="clearDemoDataBtn" class="end-month-btn" type="button" hidden>Clear Demo Data</button>
-            <button id="endOfMonthBtn" class="end-month-btn" type="button">End of Month</button>
+            <button id="endOfMonthBtn" class="end-month-btn" type="button">Close Month &amp; Generate Report</button>
           </div>
         </div>
         <div id="outputStepDetails" class="output-step-details">
           <p class="hint">This must be selected first so the app can load or create this month&apos;s loan officer history CSV, loan history CSV, and loan types JSON.</p>
           <p class="hint">If opened inside Teams/SharePoint, open the app directly in Edge/Chrome to grant folder access.</p>
           <div class="priority-action">
-            <button id="chooseFolderBtn" class="step-button" type="button">Grant Save Permission</button>
-            <button id="launchDemoModeBtn" class="step-button step-button-secondary" type="button">Launch Demo Mode</button>
+            <button id="chooseFolderBtn" class="step-button" type="button">Connect Output Folder</button>
+            <button id="launchDemoModeBtn" class="step-button step-button-secondary" type="button">Load Demo Scenario</button>
           </div>
           <div id="folderPrompt" class="folder-prompt">No output folder selected.</div>
         </div>
       </div>
+      <div id="step1Message" class="message" aria-live="polite"></div>
     </section>
 
     <section class="card full step-card">
@@ -61,6 +62,7 @@
         </summary>
 
         <div class="loan-type-details-body">
+          <div id="step2Message" class="message" aria-live="polite"></div>
           <div class="type-manager-form">
             <input id="loanTypeNameInput" type="text" placeholder="Loan type name" />
             <input id="loanTypeStartInput" type="date" />
@@ -77,6 +79,7 @@
         <h2>Step 3: Enter Loan Officers and Loans</h2>
         <p class="hint">Set up the people receiving loans and the loans that need to be assigned.</p>
       </div>
+      <div id="step3Message" class="message" aria-live="polite"></div>
       <div class="step-grid">
         <section class="step-panel">
           <div class="section-header">
@@ -109,12 +112,12 @@
 
     <section class="card full step-card">
       <div class="step-heading">
-        <h2>Step 4: Run Assignments</h2>
-        <p class="hint">Randomize the assignments or load sample data to test the workflow.</p>
+        <h2>Step 4: Run Fair Assignment</h2>
+        <p class="hint">Run the fair assignment workflow or load a demo scenario to test the process.</p>
       </div>
       <div class="toolbar toolbar-centered">
-        <button id="randomizeBtn" class="primary" type="button">Randomize Assignments</button>
-        <button id="clearBtn" type="button">Clear All</button>
+        <button id="randomizeBtn" class="primary" type="button">Run Fair Assignment</button>
+        <button id="clearBtn" type="button">Reset Screen</button>
         <button id="removeLoanHistoryBtn" type="button">Remove Loan Number</button>
       </div>
       <div id="simulationLaunchCard" class="simulation-launch-card">
@@ -154,6 +157,7 @@
 
     <section class="card full">
       <h2>Fairness Audit</h2>
+      <p class="fairness-methodology">Assignments are balanced using loan type mix, total goal dollars, loan count, and historical distribution to keep workloads more even and reduce perceived bias.</p>
       <div id="fairnessAudit" class="results empty">No fairness audit yet.</div>
 
       <details id="distributionDetails" class="distribution-details">
@@ -170,6 +174,9 @@
       </details>
     </section>
   </main>
+  <footer class="app-footer">
+    <span class="version-label">Version v0.9.1</span>
+  </footer>
 </div>
 
 <div id="simulationModal" class="modal-overlay" hidden>
