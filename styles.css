@@ -265,7 +265,9 @@ button:disabled {
 input[type="text"],
 input[type="number"],
 input[type="date"],
-input[type="month"] {
+input[type="month"],
+input[type="file"],
+select {
   width: 100%;
   padding: 11px 12px;
   border: 1px solid var(--border);
@@ -814,6 +816,56 @@ input[type="month"] {
   border-radius: 10px;
 }
 
+
+
+.loan-import-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.loan-import-file-label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.loan-import-section {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  background: #fcfdff;
+}
+
+.loan-import-mapping-grid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.loan-import-mapping-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.loan-import-mapping-grid label span {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.loan-import-summary-list {
+  margin: 8px 0 0 18px;
+  padding: 0;
+}
+
+.loan-import-summary-list li {
+  margin-bottom: 6px;
+}
+
 .simulation-launch-card {
   display: flex;
   align-items: center;
@@ -1089,7 +1141,57 @@ input[type="month"] {
   padding: 22px;
 }
 
-#simulationReportingCard .simulation-launch-card {
+#simulationReportingCard 
+
+.loan-import-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.loan-import-file-label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.loan-import-section {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  background: #fcfdff;
+}
+
+.loan-import-mapping-grid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.loan-import-mapping-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.loan-import-mapping-grid label span {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.loan-import-summary-list {
+  margin: 8px 0 0 18px;
+  padding: 0;
+}
+
+.loan-import-summary-list li {
+  margin-bottom: 6px;
+}
+
+.simulation-launch-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
