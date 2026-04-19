@@ -36,24 +36,51 @@ const loanTypeSummaryStatsEl = document.getElementById('loanTypeSummaryStats');
 const distributionDetailsEl = document.getElementById('distributionDetails');
 const distributionChartsEl = document.getElementById('distributionCharts');
 
-const LOGO_PATH = './custom_branding.png';
+const HEADER_LOGO_PATH = './custom_branding.png';
+const APP_BRANDING_LOGO_PATHS = [
+  './LendFair_Branding.png',
+  './LendingFair_Branding.png',
+  './lendfair_branding.png'
+];
 
 const logoEl = document.getElementById('logo');
+const footerLogoEl = document.getElementById('footerLogo');
 
-if (logoEl && LOGO_PATH) {
-  logoEl.onerror = () => {
-    logoEl.style.display = 'none';
-    logoEl.removeAttribute('src');
+function bindBrandLogoImage(imageEl, logoPathOrPaths) {
+  if (!imageEl) {
+    return;
+  }
+
+  const logoPaths = Array.isArray(logoPathOrPaths)
+    ? logoPathOrPaths.filter(Boolean)
+    : [logoPathOrPaths].filter(Boolean);
+
+  if (!logoPaths.length) {
+    imageEl.style.display = 'none';
+    return;
+  }
+
+  let logoIndex = 0;
+  imageEl.onerror = () => {
+    logoIndex += 1;
+    if (logoIndex >= logoPaths.length) {
+      imageEl.style.display = 'none';
+      imageEl.removeAttribute('src');
+      return;
+    }
+
+    imageEl.src = logoPaths[logoIndex];
   };
 
-  logoEl.onload = () => {
-    logoEl.style.display = 'block';
+  imageEl.onload = () => {
+    imageEl.style.display = 'block';
   };
 
-  logoEl.src = LOGO_PATH;
-} else if (logoEl) {
-  logoEl.style.display = 'none';
+  imageEl.src = logoPaths[logoIndex];
 }
+
+bindBrandLogoImage(logoEl, HEADER_LOGO_PATH);
+bindBrandLogoImage(footerLogoEl, APP_BRANDING_LOGO_PATHS);
 
 let outputDirectoryHandle = null;
 
@@ -397,13 +424,13 @@ function getTodayKey() {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-async function getLogoImageDataUrl() {
-  if (!LOGO_PATH) {
+async function getImageDataUrl(imagePath) {
+  if (!imagePath) {
     return null;
   }
 
   try {
-    const response = await fetch(LOGO_PATH);
+    const response = await fetch(imagePath);
     if (!response.ok) {
       return null;
     }
@@ -419,6 +446,81 @@ async function getLogoImageDataUrl() {
   } catch (error) {
     return null;
   }
+}
+
+function getLoadedImageDataUrl(imageEl) {
+  if (!imageEl || !imageEl.complete || !imageEl.naturalWidth || !imageEl.naturalHeight) {
+    return null;
+  }
+
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = imageEl.naturalWidth;
+    canvas.height = imageEl.naturalHeight;
+    const context = canvas.getContext('2d');
+    if (!context) {
+      return null;
+    }
+
+    context.drawImage(imageEl, 0, 0);
+    return canvas.toDataURL('image/png');
+  } catch (error) {
+    return null;
+  }
+}
+
+async function ensureImageElementReady(imageEl, timeoutMs = 1800) {
+  if (!imageEl) {
+    return false;
+  }
+
+  if (imageEl.complete && imageEl.naturalWidth && imageEl.naturalHeight) {
+    return true;
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = (value) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      imageEl.removeEventListener('load', onLoad);
+      imageEl.removeEventListener('error', onError);
+      window.clearTimeout(timeoutHandle);
+      resolve(value);
+    };
+
+    const onLoad = () => settle(Boolean(imageEl.naturalWidth && imageEl.naturalHeight));
+    const onError = () => settle(false);
+    const timeoutHandle = window.setTimeout(() => settle(Boolean(imageEl.naturalWidth && imageEl.naturalHeight)), timeoutMs);
+
+    imageEl.addEventListener('load', onLoad, { once: true });
+    imageEl.addEventListener('error', onError, { once: true });
+  });
+}
+
+async function getLogoImageDataUrl() {
+  await ensureImageElementReady(logoEl);
+  return getLoadedImageDataUrl(logoEl) || getImageDataUrl(HEADER_LOGO_PATH);
+}
+
+async function getAppBrandingImageDataUrl() {
+  await ensureImageElementReady(footerLogoEl);
+  const loadedBrandingImageDataUrl = getLoadedImageDataUrl(footerLogoEl);
+  if (loadedBrandingImageDataUrl) {
+    return loadedBrandingImageDataUrl;
+  }
+
+  for (const imagePath of APP_BRANDING_LOGO_PATHS) {
+    const imageDataUrl = await getImageDataUrl(imagePath);
+    if (imageDataUrl) {
+      return imageDataUrl;
+    }
+  }
+
+  return null;
 }
 
 function normalizeLoanType(type) {
@@ -2411,13 +2513,50 @@ function writePdfLines(doc, lines, result = null, options = {}) {
   const top = 64;
   const bottom = 54;
   const logoDataUrl = options.logoDataUrl || null;
+  const headerLogoImageEl = options.logoImageEl || logoEl;
+  const resolvedHeaderLogo = logoDataUrl || (headerLogoImageEl?.naturalWidth ? headerLogoImageEl : null);
   let currentY = top;
 
-  if (logoDataUrl) {
+  function drawPdfImage(imageSource, x, y, width, height) {
+    if (!imageSource) {
+      return false;
+    }
+
+    try {
+      if (typeof imageSource === 'string') {
+        const normalizedSource = imageSource.slice(0, 32).toLowerCase();
+        const format = normalizedSource.includes('image/jpeg') || normalizedSource.includes('image/jpg') ? 'JPEG' : 'PNG';
+        doc.addImage(imageSource, format, x, y, width, height);
+        return true;
+      }
+
+      const sourcePath = String(imageSource.currentSrc || imageSource.src || '').toLowerCase();
+      const format = sourcePath.endsWith('.jpg') || sourcePath.endsWith('.jpeg') ? 'JPEG' : 'PNG';
+      try {
+        doc.addImage(imageSource, format, x, y, width, height);
+      } catch (formatError) {
+        doc.addImage(imageSource, x, y, width, height);
+      }
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function drawGeneratedByFooter() {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11);
+    doc.setTextColor(88, 102, 122);
+    doc.text(`Generated by LendingFair - ${new Date().getFullYear()}`, pageWidth / 2, pageHeight - 28, { align: 'center' });
+    doc.setTextColor(0, 0, 0);
+  }
+
+  if (resolvedHeaderLogo) {
     const logoWidth = 120;
     const logoHeight = 48;
-    doc.addImage(logoDataUrl, 'PNG', left, currentY, logoWidth, logoHeight);
-    currentY += logoHeight + 18;
+    if (drawPdfImage(resolvedHeaderLogo, left, currentY, logoWidth, logoHeight)) {
+      currentY += logoHeight + 18;
+    }
   }
 
   lines.forEach((line) => {
@@ -2465,6 +2604,8 @@ function writePdfLines(doc, lines, result = null, options = {}) {
     doc.text(wrappedLines, left + indent, currentY);
     currentY += wrappedLines.length * lineHeight + (line.gapAfter || 0);
   });
+
+  drawGeneratedByFooter();
 }
 
 async function saveResultPdf(result, officers, loans, generatedAt) {
@@ -2478,7 +2619,9 @@ async function saveResultPdf(result, officers, loans, generatedAt) {
 
   const doc = new window.jspdf.jsPDF({ unit: 'pt', format: 'letter' });
   const logoDataUrl = await getLogoImageDataUrl();
-  writePdfLines(doc, buildPdfLines(result, officers, loans, generatedAt), result, { logoDataUrl });
+  writePdfLines(doc, buildPdfLines(result, officers, loans, generatedAt), result, {
+    logoDataUrl
+  });
 
   const pdfBlob = doc.output('blob');
   const fileName = buildPdfFileName(generatedAt);

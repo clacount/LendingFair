@@ -305,7 +305,10 @@
     }
 
     const doc = new window.jspdf.jsPDF({ unit: 'pt', format: 'letter' });
-    writePdfLines(doc, lines, report);
+    const logoDataUrl = await getLogoImageDataUrl();
+    writePdfLines(doc, lines, report, {
+      logoDataUrl
+    });
 
     const pdfBlob = doc.output('blob');
     const targetDirectoryHandle = await getActiveDataDirectoryHandle();

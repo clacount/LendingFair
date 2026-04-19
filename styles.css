@@ -1132,11 +1132,27 @@ input[type="month"] {
 
 .app-footer {
   margin-top: 18px;
-  text-align: right;
+  position: relative;
+  min-height: 76px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 6px 0;
+}
+
+.footer-branding-logo {
+  width: 180px;
+  max-width: min(50%, 220px);
+  height: auto;
+  display: block;
+  opacity: 0.95;
 }
 
 .version-label {
-  display: inline-block;
+  position: absolute;
+  right: 0;
+  bottom: 6px;
+  display: inline-flex;
   padding: 6px 10px;
   border-radius: 999px;
   border: 1px solid var(--border);
@@ -1201,5 +1217,17 @@ input[type="month"] {
 
   .modal-actions button {
     width: 100%;
+  }
+
+  .app-footer {
+    min-height: 108px;
+    align-items: center;
+    justify-content: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .version-label {
+    position: static;
   }
 }

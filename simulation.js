@@ -695,7 +695,10 @@
     }
 
     const doc = new window.jspdf.jsPDF({ unit: 'pt', format: 'letter' });
-    writePdfLines(doc, buildSimulationPdfLines(simulationResult), simulationResult);
+    const logoDataUrl = await getLogoImageDataUrl();
+    writePdfLines(doc, buildSimulationPdfLines(simulationResult), simulationResult, {
+      logoDataUrl
+    });
 
     const pdfBlob = doc.output('blob');
     const fileName = buildSimulationPdfFileName(simulationResult.monthLabel);
