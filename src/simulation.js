@@ -21,6 +21,7 @@
   const simulationOfficerListEl = document.getElementById('simulationOfficerList');
   const simulationModalMessageEl = document.getElementById('simulationModalMessage');
   const simulationOfficerState = [];
+  const loanCategoryUtils = window.LoanCategoryUtils;
 
   function getCurrentMonthKey() {
     const date = new Date();
@@ -56,8 +57,54 @@
 
   function getOfficerValuesForSimulationSeed() {
     return [...officerList.querySelectorAll('.officer-row')]
-      .map((row) => row.querySelector('input')?.value?.trim() || '')
-      .filter(Boolean);
+      .map((row) => {
+        const name = String(row.dataset.officerName || '').trim();
+        const eligibility = loanCategoryUtils.normalizeOfficerEligibility({
+          consumer: row.dataset.eligibilityConsumer === 'true',
+          mortgage: row.dataset.eligibilityMortgage === 'true'
+        });
+        return {
+          name,
+          eligibility: loanCategoryUtils.normalizeOfficerEligibility(eligibility),
+          weights: loanCategoryUtils.normalizeOfficerWeights({
+            consumer: row.dataset.weightConsumer,
+            mortgage: row.dataset.weightMortgage
+          }, eligibility),
+          mortgageOverride: row.dataset.mortgageOverride === 'true'
+        };
+      })
+      .filter((entry) => entry.name);
+  }
+
+  function getClassCodeFromEligibility(eligibility) {
+    const normalizedEligibility = loanCategoryUtils.normalizeOfficerEligibility(eligibility);
+    if (normalizedEligibility.consumer && normalizedEligibility.mortgage) {
+      return 'F';
+    }
+    if (normalizedEligibility.mortgage) {
+      return 'M';
+    }
+    return 'C';
+  }
+
+  function rotateOfficerClass(index) {
+    const entry = simulationOfficerState[index];
+    if (!entry) {
+      return;
+    }
+
+    const classOrder = ['C', 'F', 'M'];
+    const currentClass = getClassCodeFromEligibility(entry.eligibility);
+    const currentIndex = classOrder.indexOf(currentClass);
+    const nextClass = classOrder[(currentIndex + 1) % classOrder.length];
+    const scopeByClass = {
+      C: loanCategoryUtils.OFFICER_SCOPES.CONSUMER_ONLY,
+      F: loanCategoryUtils.OFFICER_SCOPES.CONSUMER_AND_MORTGAGE,
+      M: loanCategoryUtils.OFFICER_SCOPES.MORTGAGE_ONLY
+    };
+    const nextScope = scopeByClass[nextClass] || loanCategoryUtils.OFFICER_SCOPES.CONSUMER_AND_MORTGAGE;
+    entry.eligibility = loanCategoryUtils.getEligibilityFromScope(nextScope);
+    entry.weights = loanCategoryUtils.getDefaultWeightsForScope(nextScope);
   }
 
   function renderSimulationOfficerList() {
@@ -77,24 +124,30 @@
 
     simulationOfficerState.forEach((entry, index) => {
       const row = document.createElement('div');
-      row.className = 'simulation-officer-row';
+      row.className = 'simulation-officer-row officer-row';
 
-      const nameInput = document.createElement('input');
-      nameInput.type = 'text';
-      nameInput.value = entry.name;
-      nameInput.placeholder = 'Loan officer name';
-      nameInput.setAttribute('aria-label', 'Simulation loan officer name');
-      nameInput.addEventListener('input', () => {
-        simulationOfficerState[index].name = nameInput.value.trim();
+      const nameEl = document.createElement('span');
+      nameEl.className = 'officer-name-value';
+      nameEl.textContent = entry.name;
+
+      const classBtn = document.createElement('button');
+      classBtn.type = 'button';
+      classBtn.className = 'officer-class-label';
+      classBtn.textContent = getClassCodeFromEligibility(entry.eligibility);
+      classBtn.setAttribute('aria-label', `Rotate class for ${entry.name || 'simulation officer'}`);
+      classBtn.title = 'Click to cycle class: C → F → M';
+      classBtn.addEventListener('click', () => {
+        rotateOfficerClass(index);
+        renderSimulationOfficerList();
       });
 
       const vacationInput = document.createElement('input');
       vacationInput.type = 'number';
+      vacationInput.className = 'simulation-vacation-input';
       vacationInput.min = '0';
       vacationInput.step = '1';
-      vacationInput.value = String(entry.vacationDays);
-      vacationInput.placeholder = '0';
-      vacationInput.setAttribute('aria-label', 'Vacation days in month');
+      vacationInput.value = String(Number.isFinite(entry.vacationDays) ? entry.vacationDays : 0);
+      vacationInput.setAttribute('aria-label', `Vacation days for ${entry.name || 'simulation officer'}`);
       vacationInput.addEventListener('input', () => {
         const rawDays = Number.parseInt(vacationInput.value || '0', 10);
         simulationOfficerState[index].vacationDays = Number.isFinite(rawDays) && rawDays >= 0 ? rawDays : 0;
@@ -102,15 +155,16 @@
 
       const removeBtn = document.createElement('button');
       removeBtn.type = 'button';
-      removeBtn.className = 'remove-btn';
-      removeBtn.textContent = '×';
+      removeBtn.className = 'officer-edit-btn danger-btn';
+      removeBtn.textContent = 'Remove';
       removeBtn.setAttribute('aria-label', `Remove ${entry.name || 'simulation officer'}`);
       removeBtn.addEventListener('click', () => {
         simulationOfficerState.splice(index, 1);
         renderSimulationOfficerList();
       });
 
-      row.appendChild(nameInput);
+      row.appendChild(nameEl);
+      row.appendChild(classBtn);
       row.appendChild(vacationInput);
       row.appendChild(removeBtn);
       simulationOfficerListEl.appendChild(row);
@@ -120,8 +174,8 @@
   function seedSimulationOfficerStateFromMainScreen() {
     simulationOfficerState.length = 0;
 
-    getOfficerValuesForSimulationSeed().forEach((name) => {
-      simulationOfficerState.push({ name, vacationDays: 0 });
+    getOfficerValuesForSimulationSeed().forEach((officerConfig) => {
+      simulationOfficerState.push({ ...officerConfig, vacationDays: 0 });
     });
 
     renderSimulationOfficerList();
@@ -136,7 +190,14 @@
       return;
     }
 
-    simulationOfficerState.push({ name, vacationDays: 0 });
+    const eligibility = loanCategoryUtils.getDefaultOfficerEligibility();
+    simulationOfficerState.push({
+      name,
+      vacationDays: 0,
+      eligibility,
+      weights: loanCategoryUtils.getDefaultWeightsForScope(loanCategoryUtils.getOfficerScopeFromConfig(eligibility)),
+      mortgageOverride: false
+    });
     if (simulationOfficerNameInput) {
       simulationOfficerNameInput.value = '';
     }
@@ -198,29 +259,46 @@
     return copy;
   }
 
-  function chooseOfficerForLoanWithRandom(cleanOfficers, officerLoanTotals, officerTypeCounts, officerAmountTotals, officerActiveSessions, loan, randomFn) {
+  function chooseOfficerForLoanWithRandom(officersByName, officerLoanTotals, officerTypeCounts, officerAmountTotals, officerActiveSessions, loan, randomFn) {
+    const loanCategory = getLoanCategoryForType(loan.type);
+    let eligibleOfficers = Object.values(officersByName).filter((officerConfig) => isOfficerEligibleForLoanType(officerConfig, loan));
+    if (!eligibleOfficers.length && loanCategory === loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE) {
+      eligibleOfficers = Object.values(officersByName).filter((officerConfig) => {
+        const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officerConfig.eligibility);
+        return eligibility.consumer && eligibility.mortgage;
+      });
+    }
+    const eligibleOfficerNames = eligibleOfficers.map((officer) => officer.name);
+    if (!eligibleOfficerNames.length) {
+      return { error: `No eligible officers are configured for ${loanCategory} loans.` };
+    }
+
     const goalAmount = getGoalAmountForLoan(loan);
-    const shuffledOfficers = shuffleWithRandom(cleanOfficers, randomFn);
+    const shuffledOfficers = shuffleWithRandom(eligibleOfficerNames, randomFn);
 
     const scoredOfficers = shuffledOfficers.map((officer) => {
       const currentTypeTotals = Object.fromEntries(
-        cleanOfficers.map((currentOfficer) => [currentOfficer, officerTypeCounts[currentOfficer][loan.type] || 0])
+        eligibleOfficerNames.map((currentOfficer) => [currentOfficer, officerTypeCounts[currentOfficer][loan.type] || 0])
       );
 
-      const projectedTypeLoads = buildProjectedLoads(cleanOfficers, currentTypeTotals, officerActiveSessions, officer, 1);
-      const projectedAmountLoads = buildProjectedLoads(cleanOfficers, officerAmountTotals, officerActiveSessions, officer, goalAmount);
-      const projectedLoanLoads = buildProjectedLoads(cleanOfficers, officerLoanTotals, officerActiveSessions, officer, 1);
+      const projectedTypeLoads = buildProjectedLoads(eligibleOfficerNames, currentTypeTotals, officerActiveSessions, officer, 1);
+      const projectedAmountLoads = buildProjectedLoads(eligibleOfficerNames, officerAmountTotals, officerActiveSessions, officer, goalAmount);
+      const projectedLoanLoads = buildProjectedLoads(eligibleOfficerNames, officerLoanTotals, officerActiveSessions, officer, 1);
 
       const typeVariance = calculateVariance(projectedTypeLoads);
       const amountVariance = calculateVariance(projectedAmountLoads);
       const loanVariance = calculateVariance(projectedLoanLoads);
       const distinctTypePenalty = getDistinctTypeCount(officerTypeCounts[officer]) * 0.0025;
       const currentAmountPenalty = getNormalizedFairnessValue(officerAmountTotals[officer] + goalAmount, officerActiveSessions[officer]) * 0.00001;
-      const score = (typeVariance * 4) + (amountVariance * 3) + (loanVariance * 2) + distinctTypePenalty + currentAmountPenalty;
+      const fairnessScore = (typeVariance * 4) + (amountVariance * 3) + (loanVariance * 2) + distinctTypePenalty + currentAmountPenalty;
+      const categoryWeight = loanCategoryUtils.getCategoryWeightForOfficer(officersByName[officer], loanCategory);
+      const score = fairnessScore / Math.max(categoryWeight, 0.01);
 
       return {
         officer,
         score,
+        categoryWeight,
+        fairnessScore,
         typeVariance,
         amountVariance,
         loanVariance,
@@ -242,7 +320,10 @@
 
   function assignLoansWithRandom(officers, loans, runningTotals, randomFn) {
     const activeLoanTypes = getActiveLoanTypeNames();
-    const cleanOfficers = [...new Set(officers.map((name) => name.trim()).filter(Boolean))];
+    const cleanOfficers = [...new Set(officers.map((officer) => officer.name.trim()).filter(Boolean))]
+      .map((name) => officers.find((officer) => officer.name === name));
+    const cleanOfficerNames = cleanOfficers.map((officer) => officer.name);
+    const officersByName = Object.fromEntries(cleanOfficers.map((officer) => [officer.name, officer]));
     const cleanLoans = loans
       .map((loan) => ({
         name: loan.name.trim(),
@@ -252,7 +333,7 @@
       .filter((loan) => loan.name)
       .filter((loan) => activeLoanTypes.includes(loan.type));
 
-    if (!cleanOfficers.length) {
+    if (!cleanOfficerNames.length) {
       return { error: 'Please add at least one loan officer before running a fairness simulation.' };
     }
 
@@ -266,7 +347,7 @@
     const officerLoanTotals = {};
     const officerActiveSessions = {};
 
-    cleanOfficers.forEach((officer) => {
+    cleanOfficerNames.forEach((officer) => {
       const priorStats = normalizeOfficerStats(runningTotals.officers?.[officer]);
       officerAssignments[officer] = [];
       officerTypeCounts[officer] = { ...priorStats.typeCounts };
@@ -278,18 +359,19 @@
     const loanAssignments = [];
     const fairnessAudit = [];
 
-    activeLoanTypes.forEach((loanType) => {
-      const loansForType = shuffleWithRandom(cleanLoans.filter((loan) => loan.type === loanType), randomFn);
+    try {
+      activeLoanTypes.forEach((loanType) => {
+        const loansForType = shuffleWithRandom(cleanLoans.filter((loan) => loan.type === loanType), randomFn);
 
-      if (!loansForType.length) {
-        return;
-      }
+        if (!loansForType.length) {
+          return;
+        }
 
       const orderedLoansForType = [...loansForType].sort((loanA, loanB) => getGoalAmountForLoan(loanB) - getGoalAmountForLoan(loanA));
 
-      orderedLoansForType.forEach((loan) => {
+        orderedLoansForType.forEach((loan) => {
         const assignmentDecision = chooseOfficerForLoanWithRandom(
-          cleanOfficers,
+          officersByName,
           officerLoanTotals,
           officerTypeCounts,
           officerAmountTotals,
@@ -297,6 +379,9 @@
           loan,
           randomFn
         );
+        if (assignmentDecision.error) {
+          throw new Error(assignmentDecision.error);
+        }
 
         const assignedOfficer = assignmentDecision.selectedOfficer;
 
@@ -316,19 +401,22 @@
           shared: false
         });
 
-        fairnessAudit.push({
-          loan,
-          selectedOfficer: assignedOfficer,
-          scoredOfficers: assignmentDecision.scoredOfficers
+          fairnessAudit.push({
+            loan,
+            selectedOfficer: assignedOfficer,
+            scoredOfficers: assignmentDecision.scoredOfficers
+          });
         });
       });
-    });
+    } catch (error) {
+      return { error: error.message || 'The fairness simulation could not complete assignments.' };
+    }
 
     return {
       loanAssignments: shuffleWithRandom(loanAssignments, randomFn),
       officerAssignments,
       fairnessAudit,
-      runningTotalsUsed: Object.fromEntries(cleanOfficers.map((officer) => [officer, normalizeOfficerStats(runningTotals.officers?.[officer])]))
+      runningTotalsUsed: Object.fromEntries(cleanOfficerNames.map((officer) => [officer, normalizeOfficerStats(runningTotals.officers?.[officer])]))
     };
   }
 
@@ -452,7 +540,10 @@
     const simulationOfficers = simulationOfficerState
       .map((entry) => ({
         name: String(entry.name || '').trim(),
-        vacationDays: Number.isFinite(entry.vacationDays) ? Math.max(0, Math.trunc(entry.vacationDays)) : 0
+        vacationDays: Number.isFinite(entry.vacationDays) ? Math.max(0, Math.trunc(entry.vacationDays)) : 0,
+        eligibility: loanCategoryUtils.normalizeOfficerEligibility(entry.eligibility),
+        weights: loanCategoryUtils.normalizeOfficerWeights(entry.weights, entry.eligibility),
+        mortgageOverride: Boolean(entry.mortgageOverride)
       }))
       .filter((entry) => entry.name);
 
@@ -834,7 +925,7 @@
       loanSequence += dayLoans.length;
 
       const dateKey = formatDateKey(date);
-      const availableOfficers = config.officerNames.filter((officer) => !vacationByOfficer[officer]?.has(dateKey));
+      const availableOfficers = config.simulationOfficers.filter((officer) => !vacationByOfficer[officer.name]?.has(dateKey));
       const dayResult = assignLoansWithRandom(availableOfficers, dayLoans, runningTotals, randomFn);
       if (dayResult.error) {
         throw new Error(dayResult.error);
@@ -851,7 +942,7 @@
       runningTotals = buildUpdatedRunningTotals(availableOfficers, dayResult, runningTotals);
     });
 
-    const officerStats = buildSimulationOfficerStats(config.officerNames, loanHistoryEntries, config.eomGoalPerOfficer);
+    const officerStats = buildSimulationOfficerStats(config.simulationOfficers.map((entry) => entry.name), loanHistoryEntries, config.eomGoalPerOfficer);
     const fairnessSummary = buildSimulationFairnessSummary(officerStats);
 
     return {

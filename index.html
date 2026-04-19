@@ -78,6 +78,9 @@
       <div class="step-heading">
         <h2>Step 3: Enter Loan Officers and Loans</h2>
         <p class="hint">Set up the people receiving loans and the loans that need to be assigned.</p>
+        <p class="class-note">
+          Loan Officer Class: <strong>C</strong> = Consumer, <strong>M</strong> = Mortgage, and <strong>F</strong> = Flex (Consumer + HELOC).
+        </p>
       </div>
       <div id="step3Message" class="message" aria-live="polite"></div>
       <div class="step-grid">
@@ -89,7 +92,13 @@
               <button id="addOfficerBtn" type="button">Add Officer</button>
             </div>
           </div>
-          <p class="hint">Enter as many loan officers as you want. Use the Vacation button to temporarily remove someone from assignments without deleting them.</p>
+          <p class="hint">Configure which loan categories each officer can receive, and how strongly they should participate in consumer and mortgage assignments.</p>
+          <div class="officer-column-headers" aria-hidden="true">
+            <span>Loan Officer</span>
+            <span>Class</span>
+            <span>Availability</span>
+            <span>Action</span>
+          </div>
           <div id="officerList" class="stack"></div>
         </section>
 
@@ -227,6 +236,58 @@
   </div>
 </div>
 
+<div id="officerEditorModal" class="modal-overlay" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="officerPriorityModalTitle">
+    <div class="modal-header">
+      <div>
+        <h2 id="officerPriorityModalTitle">Loan Officer Details</h2>
+        <p class="hint">Set the officer name and assignment class.</p>
+      </div>
+      <button id="closeOfficerEditorModalBtn" class="modal-close-btn" type="button" aria-label="Close loan officer editor">×</button>
+    </div>
+
+    <div class="simulation-form-grid">
+      <label class="full-width">
+        <span>Name</span>
+        <input id="officerEditorNameInput" type="text" placeholder="Loan officer name" />
+      </label>
+      <label class="full-width">
+        <span>Class</span>
+        <select id="officerEditorClassSelect">
+          <option value="balanced">Balanced</option>
+          <option value="consumer-focused">Consumer Focused</option>
+          <option value="consumer-only">Consumer Only</option>
+          <option value="mortgage-focused">Mortgage Focused</option>
+          <option value="mortgage-only">Mortgage Only</option>
+          <option value="custom">Custom</option>
+        </select>
+      </label>
+      <label id="officerEditorConsumerWeightLabel">
+        <span>Consumer weight (%)</span>
+        <input id="officerEditorConsumerWeightInput" type="number" min="0" step="1" />
+      </label>
+      <label id="officerEditorMortgageWeightLabel">
+        <span>Mortgage weight (%)</span>
+        <input id="officerEditorMortgageWeightInput" type="number" min="0" step="1" />
+      </label>
+      <label class="full-width" id="officerEditorMortgageOverrideLabel">
+        <span>
+          <input id="officerEditorMortgageOverrideInput" type="checkbox" />
+          Override mortgage rule (allow First Mortgage and Home Refi in addition to HELOC)
+        </span>
+      </label>
+    </div>
+
+    <div id="officerEditorModalMessage" class="message"></div>
+
+    <div class="modal-actions">
+      <button id="removeOfficerBtn" class="danger-btn" type="button">Remove</button>
+      <button id="cancelOfficerEditorBtn" type="button">Cancel</button>
+      <button id="saveOfficerEditorBtn" class="primary" type="button">Save Officer</button>
+    </div>
+  </div>
+</div>
+
 <div id="simulationModal" class="modal-overlay" hidden>
   <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="simulationModalTitle">
     <div class="modal-header">
@@ -264,16 +325,17 @@
       <div class="simulation-officer-manager">
         <div class="simulation-officer-heading">
           <h3>Simulation Officers</h3>
-          <p class="hint">Add/remove officers here for simulation-only scenarios, and set vacation days in the selected month.</p>
+          <p class="hint">Add/remove officers here for simulation-only scenarios, set class (C, M, F), and enter vacation days for each officer.</p>
         </div>
         <div class="simulation-officer-add-row">
           <input id="simulationOfficerNameInput" type="text" placeholder="Loan officer name for simulation" />
           <button id="simulationAddOfficerBtn" type="button">Add Officer</button>
         </div>
         <div class="simulation-officer-column-header" aria-hidden="true">
-          <span>Loan Officer</span>
-          <span>Vacation Days</span>
-          <span></span>
+          <span>Name</span>
+          <span>Class</span>
+          <span>Availability</span>
+          <span>Action</span>
         </div>
         <div id="simulationOfficerList" class="stack"></div>
       </div>
@@ -290,6 +352,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="src/integrations/graph-sharepoint-stub.js"></script>
+<script src="src/utils/loanCategoryUtils.js"></script>
 <script src="src/bootstrap/initApp.js"></script>
 <script src="src/app.js"></script>
 <script src="src/simulation.js"></script>
