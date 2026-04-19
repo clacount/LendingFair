@@ -11,7 +11,7 @@ This is a simple local web app for assigning loans to loan officers using fair r
 4. The app automatically creates/uses a monthly subfolder in `YYYY-MM` format (for example, `2026-04`) and reads `loan-randomizer-running-totals.csv` from that month.
 5. If the CSV does not exist yet for the active month, the app creates it and you can enter the initial loan officers manually.
 6. On supported browsers, the app remembers your approved folder and tries to reconnect on next launch so you do not have to pick it each time.
-7. Enter each loan name or ID, its **Amount Requested**, and its **Loan Type**.
+7. Enter each loan application number or ID, its **Amount Requested**, and its **Loan Type**.
 8. Click **Run Fair Assignment**.
 
 Each run creates a PDF named like `Loan-Assignment-Report-2026-04-14-091530.pdf` in the active monthly `YYYY-MM` subfolder. The PDF includes the timestamp, the total loan officers and loans entered, plus both **Assignments by Loan** and **Assignments by Officer** so managers can review every run.
@@ -74,6 +74,6 @@ The app also keeps a CSV state file named `loan-randomizer-running-totals.csv` i
 ## New history and PDF features
 - Generated PDFs now include a Fairness Audit section.
 - Generated PDFs now include every officer's running totals for that run.
-- Loan names and IDs are tracked in `loan-randomizer-loan-history.csv`.
+- Loan application number and IDs are tracked in `loan-randomizer-loan-history.csv`.
 - A loan cannot be entered again in a later session if it already exists in loan history.
-- A **Remove Loan Number** button lets the user remove a loan from history when needed.
+- A **Remove Loan Application** button lets the user remove a loan from history when needed.

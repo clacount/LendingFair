@@ -3,6 +3,7 @@ const loanList = document.getElementById('loanList');
 const addOfficerBtn = document.getElementById('addOfficerBtn');
 const importPriorMonthBtn = document.getElementById('importPriorMonthBtn');
 const addLoanBtn = document.getElementById('addLoanBtn');
+const importLoansBtn = document.getElementById('importLoansBtn');
 const chooseFolderBtn = document.getElementById('chooseFolderBtn');
 const launchDemoModeBtn = document.getElementById('launchDemoModeBtn');
 const changeFolderBtn = document.getElementById('changeFolderBtn');
@@ -25,6 +26,20 @@ const folderPromptEl = document.getElementById('folderPrompt');
 const loanAssignmentsEl = document.getElementById('loanAssignments');
 const officerAssignmentsEl = document.getElementById('officerAssignments');
 const fairnessAuditEl = document.getElementById('fairnessAudit');
+
+const loanImportModalEl = document.getElementById('loanImportModal');
+const closeLoanImportModalBtn = document.getElementById('closeLoanImportModalBtn');
+const cancelLoanImportBtn = document.getElementById('cancelLoanImportBtn');
+const loanImportFileInput = document.getElementById('loanImportFileInput');
+const loanImportDetectedHeadersEl = document.getElementById('loanImportDetectedHeaders');
+const loanImportMappingPanelEl = document.getElementById('loanImportMappingPanel');
+const loanImportLoanIdSelect = document.getElementById('loanImportLoanIdSelect');
+const loanImportAmountSelect = document.getElementById('loanImportAmountSelect');
+const loanImportTypeSelect = document.getElementById('loanImportTypeSelect');
+const loanImportPreviewEl = document.getElementById('loanImportPreview');
+const loanImportMessageEl = document.getElementById('loanImportMessage');
+const previewLoanImportBtn = document.getElementById('previewLoanImportBtn');
+const confirmLoanImportBtn = document.getElementById('confirmLoanImportBtn');
 
 const addLoanTypeBtn = document.getElementById('addLoanTypeBtn');
 const loanTypeNameInput = document.getElementById('loanTypeNameInput');
@@ -125,6 +140,42 @@ const DEFAULT_LOAN_TYPES = [
     amountOptional: false
   }
 ];
+
+const LOAN_IMPORT_HEADER_ALIASES = {
+  loanId: [
+    'application',
+    'application number',
+    'app number',
+    'app #',
+    'loan number',
+    'loan #',
+    'loan id',
+    'account number',
+    'account #',
+    'member loan number',
+    'application id'
+  ],
+  amountRequested: [
+    'amount',
+    'amount requested',
+    'requested amount',
+    'loan amount',
+    'original amount',
+    'requested loan amount',
+    'balance requested'
+  ],
+  loanType: [
+    'loan type',
+    'type',
+    'product',
+    'product type',
+    'loan product',
+    'category',
+    'loan category'
+  ]
+};
+
+let currentLoanImportContext = null;
 
 let allLoanTypes = [...DEFAULT_LOAN_TYPES];
 
@@ -795,7 +846,7 @@ function getLoanRowValidationError() {
     const amountValue = amountInput.value.trim();
 
     if (!loanName) {
-      return 'Each loan row must include a Loan Name / ID.';
+      return 'Each loan row must include a Loan App Number / ID.';
     }
 
     if (!typeSelect.value) {
@@ -1726,6 +1777,441 @@ function parseCsvLine(line) {
   return values;
 }
 
+function normalizeHeader(header) {
+  return String(header || '')
+    .toLowerCase()
+    .replace(/[_\-#]+/g, ' ')
+    .replace(/[^\w\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function detectLoanImportMapping(headers) {
+  const normalizedHeaders = headers.map((header) => normalizeHeader(header));
+  const mapping = {
+    loanId: '',
+    amountRequested: '',
+    loanType: ''
+  };
+
+  Object.entries(LOAN_IMPORT_HEADER_ALIASES).forEach(([field, aliases]) => {
+    const normalizedAliases = aliases.map((alias) => normalizeHeader(alias));
+    for (const alias of normalizedAliases) {
+      const matchIndex = normalizedHeaders.findIndex((header) => header === alias);
+      if (matchIndex >= 0) {
+        mapping[field] = headers[matchIndex];
+        break;
+      }
+    }
+  });
+
+  return mapping;
+}
+
+function parseImportedLoanCsv(text) {
+  const rows = [];
+  let row = [];
+  let value = '';
+  let inQuotes = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    const nextCharacter = text[index + 1];
+
+    if (character === '"') {
+      if (inQuotes && nextCharacter === '"') {
+        value += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (character === ',' && !inQuotes) {
+      row.push(value.trim());
+      value = '';
+      continue;
+    }
+
+    if ((character === '\n' || character === '\r') && !inQuotes) {
+      if (character === '\r' && nextCharacter === '\n') {
+        index += 1;
+      }
+      row.push(value.trim());
+      if (row.some((cell) => cell !== '')) {
+        rows.push(row);
+      }
+      row = [];
+      value = '';
+      continue;
+    }
+
+    value += character;
+  }
+
+  if (value.length || row.length) {
+    row.push(value.trim());
+    if (row.some((cell) => cell !== '')) {
+      rows.push(row);
+    }
+  }
+
+  if (!rows.length) {
+    return { headers: [], rows: [] };
+  }
+
+  const headers = rows[0].map((header, index) => header || `Column ${index + 1}`);
+  const dataRows = rows.slice(1).map((columns, rowIndex) => {
+    const raw = Object.fromEntries(headers.map((header, index) => [header, (columns[index] || '').trim()]));
+    return {
+      rowNumber: rowIndex + 2,
+      raw
+    };
+  });
+
+  return { headers, rows: dataRows };
+}
+
+function parseImportAmount(value) {
+  const cleanedValue = String(value || '').replace(/[$,\s]/g, '');
+  if (!cleanedValue) {
+    return null;
+  }
+  const numericValue = Number(cleanedValue);
+  return Number.isFinite(numericValue) ? numericValue : NaN;
+}
+
+function getLoanImportMappingFromUi() {
+  return {
+    loanId: loanImportLoanIdSelect?.value || '',
+    amountRequested: loanImportAmountSelect?.value || '',
+    loanType: loanImportTypeSelect?.value || ''
+  };
+}
+
+function renderLoanImportMessage(text = '', tone = 'warning') {
+  if (!loanImportMessageEl) {
+    return;
+  }
+
+  loanImportMessageEl.textContent = text;
+  loanImportMessageEl.dataset.tone = text ? tone : '';
+}
+
+function populateLoanImportSelect(selectEl, headers, selectedValue = '', options = {}) {
+  if (!selectEl) {
+    return;
+  }
+
+  const { includeBlank = false } = options;
+  selectEl.innerHTML = '';
+
+  if (includeBlank) {
+    const blankOption = document.createElement('option');
+    blankOption.value = '';
+    blankOption.textContent = 'Not mapped';
+    selectEl.appendChild(blankOption);
+  }
+
+  headers.forEach((header) => {
+    const option = document.createElement('option');
+    option.value = header;
+    option.textContent = header;
+    option.selected = header === selectedValue;
+    selectEl.appendChild(option);
+  });
+
+  if (selectedValue && !headers.includes(selectedValue)) {
+    selectEl.value = includeBlank ? '' : headers[0] || '';
+  }
+}
+
+function openLoanImportModal() {
+  if (!loanImportModalEl) {
+    return;
+  }
+
+  currentLoanImportContext = null;
+  loanImportFileInput.value = '';
+  loanImportDetectedHeadersEl.textContent = 'No file selected.';
+  loanImportMappingPanelEl.hidden = true;
+  loanImportPreviewEl.hidden = true;
+  loanImportPreviewEl.innerHTML = '';
+  confirmLoanImportBtn.disabled = true;
+  renderLoanImportMessage('');
+  loanImportModalEl.hidden = false;
+}
+
+function closeLoanImportModal() {
+  if (!loanImportModalEl) {
+    return;
+  }
+
+  loanImportModalEl.hidden = true;
+  currentLoanImportContext = null;
+}
+
+function renderLoanImportPreview(preview) {
+  loanImportPreviewEl.hidden = false;
+
+  const mappingSummary = [
+    `Loan Name / ID → ${preview.mapping.loanId || 'Not mapped'}`,
+    `Amount Requested → ${preview.mapping.amountRequested || 'Not mapped (blank amounts allowed for amount-optional types)'}`,
+    `Loan Type → ${preview.mapping.loanType || 'Not mapped'}`
+  ];
+
+  loanImportPreviewEl.innerHTML = `
+    <strong>Import preview for ${escapeHtml(preview.fileName)}</strong>
+    <ul class="loan-import-summary-list">
+      <li>Total rows read: ${preview.totalRows}</li>
+      <li>Rows ready to import: ${preview.readyRows.length}</li>
+      <li>Skipped duplicates: ${preview.skippedDuplicates.length}</li>
+      <li>Skipped incomplete or invalid rows: ${preview.skippedInvalid.length}</li>
+      <li>New loan types to add: ${preview.newLoanTypes.length ? escapeHtml(preview.newLoanTypes.join(', ')) : 'None'}</li>
+      <li>Column mapping: ${escapeHtml(mappingSummary.join(' • '))}</li>
+    </ul>
+  `;
+}
+
+async function buildLoanImportPreview(rows, mapping, fileName) {
+  let loanHistory = createEmptyLoanHistory();
+  if (outputDirectoryHandle) {
+    ({ loanHistory } = await loadLoanHistory());
+  }
+
+  const historyLoanNames = new Set(Object.keys(loanHistory.loans || {}));
+  const knownTypeByLower = new Map(allLoanTypes.map((loanType) => [loanType.name.toLowerCase(), loanType]));
+  const readyRows = [];
+  const skippedDuplicates = [];
+  const skippedInvalid = [];
+  const newLoanTypes = [];
+  const newTypeSet = new Set();
+  const importSeenLoanIds = new Set();
+
+  rows.forEach((row) => {
+    const loanId = String(row.raw[mapping.loanId] || '').trim();
+    const loanTypeRaw = String(row.raw[mapping.loanType] || '').trim();
+    const amountRaw = mapping.amountRequested ? row.raw[mapping.amountRequested] : '';
+
+    if (!loanId || !loanTypeRaw) {
+      skippedInvalid.push({ rowNumber: row.rowNumber, reason: 'Missing Loan App Number / ID or Loan Type.' });
+      return;
+    }
+
+    const normalizedLoanId = loanId.toLowerCase();
+    if (importSeenLoanIds.has(normalizedLoanId) || historyLoanNames.has(normalizedLoanId)) {
+      skippedDuplicates.push({ rowNumber: row.rowNumber, loanId });
+      return;
+    }
+
+    const normalizedTypeKey = loanTypeRaw.toLowerCase();
+    const existingType = knownTypeByLower.get(normalizedTypeKey);
+    const resolvedLoanType = existingType ? existingType.name : loanTypeRaw;
+    const isOptionalAmount = Boolean(existingType?.amountOptional);
+
+    const parsedAmount = parseImportAmount(amountRaw);
+    if (isOptionalAmount && (amountRaw === undefined || String(amountRaw).trim() === '')) {
+      readyRows.push({ name: loanId, type: resolvedLoanType, amountRequested: 0 });
+      importSeenLoanIds.add(normalizedLoanId);
+    } else if (parsedAmount === null && !isOptionalAmount) {
+      skippedInvalid.push({ rowNumber: row.rowNumber, reason: `Loan ${loanId} is missing Amount Requested.` });
+      return;
+    } else if (!Number.isFinite(parsedAmount) || parsedAmount < 0) {
+      skippedInvalid.push({ rowNumber: row.rowNumber, reason: `Loan ${loanId} has an invalid Amount Requested.` });
+      return;
+    } else {
+      readyRows.push({ name: loanId, type: resolvedLoanType, amountRequested: isOptionalAmount ? 0 : parsedAmount });
+      importSeenLoanIds.add(normalizedLoanId);
+    }
+
+    if (!existingType && !newTypeSet.has(normalizedTypeKey)) {
+      newTypeSet.add(normalizedTypeKey);
+      newLoanTypes.push(resolvedLoanType);
+      knownTypeByLower.set(normalizedTypeKey, { name: resolvedLoanType, amountOptional: false });
+    }
+  });
+
+  return {
+    fileName,
+    mapping,
+    totalRows: rows.length,
+    readyRows,
+    skippedDuplicates,
+    skippedInvalid,
+    newLoanTypes
+  };
+}
+
+async function ensureImportedLoanTypesExist(importedRows) {
+  const existingTypeMap = new Map(allLoanTypes.map((loanType) => [loanType.name.toLowerCase(), loanType]));
+  const addedTypeNames = [];
+
+  importedRows.forEach((row) => {
+    const normalizedTypeName = row.type.toLowerCase();
+    if (existingTypeMap.has(normalizedTypeName)) {
+      row.type = existingTypeMap.get(normalizedTypeName).name;
+      return;
+    }
+
+    const newType = normalizeLoanType({
+      name: row.type,
+      activeFrom: null,
+      activeTo: null,
+      isBuiltIn: false,
+      amountOptional: false
+    });
+
+    if (!newType) {
+      return;
+    }
+
+    allLoanTypes.push(newType);
+    existingTypeMap.set(normalizedTypeName, newType);
+    row.type = newType.name;
+    addedTypeNames.push(newType.name);
+  });
+
+  if (addedTypeNames.length) {
+    await saveLoanTypes(allLoanTypes);
+    renderLoanTypes();
+    refreshLoanTypeSelects();
+  }
+
+  return addedTypeNames;
+}
+
+function applyImportedLoansToForm(importRows) {
+  importRows.forEach((row) => {
+    addLoan(row.name, row.type, String(row.amountRequested));
+  });
+}
+
+async function handlePreviewLoanImport() {
+  if (!currentLoanImportContext) {
+    renderLoanImportMessage('Select a CSV file before previewing the import.', 'warning');
+    return;
+  }
+
+  const mapping = getLoanImportMappingFromUi();
+  if (!mapping.loanId || !mapping.loanType) {
+    renderLoanImportMessage('Map Loan App Number / ID and Loan Type before previewing the import.', 'warning');
+    return;
+  }
+
+  try {
+    const preview = await buildLoanImportPreview(currentLoanImportContext.rows, mapping, currentLoanImportContext.fileName);
+    currentLoanImportContext.preview = preview;
+    renderLoanImportPreview(preview);
+    confirmLoanImportBtn.disabled = !preview.readyRows.length;
+
+    if (!preview.readyRows.length) {
+      renderLoanImportMessage('No valid rows are ready to import. Review your mapping and source file.', 'warning');
+      return;
+    }
+
+    renderLoanImportMessage('Preview complete. Confirm to import loans into Step 3.', 'success');
+  } catch (error) {
+    renderLoanImportMessage(`Could not preview this file: ${error.message}`, 'warning');
+  }
+}
+
+async function handleConfirmLoanImport() {
+  const preview = currentLoanImportContext?.preview;
+  if (!preview?.readyRows?.length) {
+    renderLoanImportMessage('Preview the file before importing.', 'warning');
+    return;
+  }
+
+  try {
+    const existingLoanRows = [...loanList.querySelectorAll('.loan-row')];
+    const existingLoanCount = existingLoanRows.length;
+    if (existingLoanCount) {
+      const confirmedReplace = window.confirm(
+        `This import will replace the ${existingLoanCount} loan row${existingLoanCount === 1 ? '' : 's'} currently in Step 3. Continue?`
+      );
+
+      if (!confirmedReplace) {
+        renderLoanImportMessage('Import was canceled. Existing loans were left unchanged.', 'warning');
+        return;
+      }
+    }
+
+    loanList.innerHTML = '';
+    const addedTypeNames = await ensureImportedLoanTypesExist(preview.readyRows);
+    applyImportedLoansToForm(preview.readyRows);
+
+    const replacedSummary = existingLoanCount
+      ? `Replaced ${existingLoanCount} existing loan row${existingLoanCount === 1 ? '' : 's'}. `
+      : '';
+    const summary = `${replacedSummary}Imported ${preview.readyRows.length} loan${preview.readyRows.length === 1 ? '' : 's'}. Added ${addedTypeNames.length} new loan type${addedTypeNames.length === 1 ? '' : 's'}. Skipped ${preview.skippedDuplicates.length} duplicate${preview.skippedDuplicates.length === 1 ? '' : 's'}. Skipped ${preview.skippedInvalid.length} incomplete or invalid row${preview.skippedInvalid.length === 1 ? '' : 's'}.`;
+    setStepMessage('step3', summary, 'success');
+    closeLoanImportModal();
+  } catch (error) {
+    renderLoanImportMessage(`Import could not be completed: ${error.message}`, 'warning');
+  }
+}
+
+async function handleLoanImportFileChange(event) {
+  const [selectedFile] = event.target.files || [];
+
+  currentLoanImportContext = null;
+  loanImportMappingPanelEl.hidden = true;
+  loanImportPreviewEl.hidden = true;
+  loanImportPreviewEl.innerHTML = '';
+  confirmLoanImportBtn.disabled = true;
+
+  if (!selectedFile) {
+    loanImportDetectedHeadersEl.textContent = 'No file selected.';
+    renderLoanImportMessage('');
+    return;
+  }
+
+  if (!selectedFile.name.toLowerCase().endsWith('.csv')) {
+    loanImportDetectedHeadersEl.textContent = 'Please choose a .csv file.';
+    renderLoanImportMessage('Only CSV files are supported for import.', 'warning');
+    return;
+  }
+
+  try {
+    const csvText = await selectedFile.text();
+    const parsed = parseImportedLoanCsv(csvText);
+
+    if (!parsed.headers.length) {
+      loanImportDetectedHeadersEl.textContent = 'No headers were found in this CSV file.';
+      renderLoanImportMessage('This file appears to be empty.', 'warning');
+      return;
+    }
+
+    const mapping = detectLoanImportMapping(parsed.headers);
+
+    currentLoanImportContext = {
+      fileName: selectedFile.name,
+      headers: parsed.headers,
+      rows: parsed.rows,
+      mapping,
+      preview: null
+    };
+
+    loanImportDetectedHeadersEl.innerHTML = `<strong>We matched the following columns</strong><div class="amount-summary">Detected headers: ${escapeHtml(parsed.headers.join(', '))}</div>`;
+
+    populateLoanImportSelect(loanImportLoanIdSelect, parsed.headers, mapping.loanId);
+    populateLoanImportSelect(loanImportTypeSelect, parsed.headers, mapping.loanType);
+    populateLoanImportSelect(loanImportAmountSelect, parsed.headers, mapping.amountRequested, { includeBlank: true });
+
+    loanImportMappingPanelEl.hidden = false;
+
+    if (!mapping.loanId || !mapping.loanType) {
+      renderLoanImportMessage('We could not auto-detect all required fields. Please select the mapping manually.', 'warning');
+    } else {
+      renderLoanImportMessage('Column mapping detected. Review and preview before importing.', 'success');
+    }
+  } catch (error) {
+    loanImportDetectedHeadersEl.textContent = 'Could not read this file.';
+    renderLoanImportMessage(`Could not parse the selected file: ${error.message}`, 'warning');
+  }
+}
+
 function buildLoanHistoryCsv(loanHistory) {
   const rows = [
     'loan_name,type,amount_requested,assigned_officer,generated_at'
@@ -2228,7 +2714,7 @@ async function removeLoanFromHistory(loanName) {
   const normalizedLoanName = String(loanName || '').trim().toLowerCase();
 
   if (!normalizedLoanName) {
-    throw new Error('Enter a loan name or ID to remove.');
+    throw new Error('Enter a loan app number or ID to remove.');
   }
 
   const { loanHistory } = await loadLoanHistory();
@@ -3002,6 +3488,24 @@ importPriorMonthBtn.addEventListener('click', () => {
   handleImportPriorMonthClick();
 });
 addLoanBtn.addEventListener('click', () => addLoan());
+importLoansBtn?.addEventListener('click', () => {
+  if (!outputDirectoryHandle) {
+    setStepMessage('step1', 'Choose an output folder before importing loans.', 'warning');
+    return;
+  }
+
+  openLoanImportModal();
+});
+loanImportFileInput?.addEventListener('change', handleLoanImportFileChange);
+previewLoanImportBtn?.addEventListener('click', handlePreviewLoanImport);
+confirmLoanImportBtn?.addEventListener('click', handleConfirmLoanImport);
+closeLoanImportModalBtn?.addEventListener('click', closeLoanImportModal);
+cancelLoanImportBtn?.addEventListener('click', closeLoanImportModal);
+loanImportModalEl?.addEventListener('click', (event) => {
+  if (event.target === loanImportModalEl) {
+    closeLoanImportModal();
+  }
+});
 chooseFolderBtn.addEventListener('click', handleChooseFolderClick);
 launchDemoModeBtn?.addEventListener('click', handleLaunchDemoModeClick);
 quickLaunchDemoModeBtn?.addEventListener('click', handleQuickLaunchDemoModeClick);
@@ -3148,7 +3652,7 @@ removeLoanHistoryBtn?.addEventListener('click', async () => {
     return;
   }
 
-  const loanName = window.prompt('Enter the loan name or ID to remove from history.');
+  const loanName = window.prompt('Enter the loan app number or ID to remove from history.');
 
   if (loanName === null) {
     return;

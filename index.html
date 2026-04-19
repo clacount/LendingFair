@@ -96,11 +96,14 @@
         <section class="step-panel">
           <div class="section-header">
             <h3>Loans</h3>
-            <button id="addLoanBtn" type="button">Add Loan</button>
+            <div class="section-actions">
+              <button id="importLoansBtn" type="button">Import Loans</button>
+              <button id="addLoanBtn" type="button">Add Loan</button>
+            </div>
           </div>
-          <p class="hint">Add each loan with its name or ID, Amount Requested, and choose one of the currently active loan types.</p>
+          <p class="hint">Add each loan with its Application Number or ID, Amount Requested, and choose one of the currently active loan types.</p>
           <div class="loan-column-headers" aria-hidden="true">
-            <span>Loan Name / ID</span>
+            <span>Loan App # / ID</span>
             <span>Dollar Amount</span>
             <span>Type</span>
             <span></span>
@@ -118,7 +121,7 @@
       <div class="toolbar toolbar-centered">
         <button id="randomizeBtn" class="primary" type="button">Run Fair Assignment</button>
         <button id="clearBtn" type="button">Reset Screen</button>
-        <button id="removeLoanHistoryBtn" type="button">Remove Loan Number</button>
+        <button id="removeLoanHistoryBtn" type="button">Remove Loan Application</button>
       </div>
       <div id="simulationLaunchCard" class="simulation-launch-card">
         <div class="simulation-launch-copy">
@@ -173,6 +176,55 @@
     <img id="footerLogo" class="footer-branding-logo" alt="LendingFair Solutions logo" />
     <span class="version-label">Version v0.9.1</span>
   </footer>
+</div>
+
+
+<div id="loanImportModal" class="modal-overlay" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="loanImportModalTitle">
+    <div class="modal-header">
+      <div>
+        <h2 id="loanImportModalTitle">Import loans from a CSV export</h2>
+        <p class="hint">Upload a CSV file, confirm the column mapping, and review the import summary before adding loans.</p>
+      </div>
+      <button id="closeLoanImportModalBtn" class="modal-close-btn" type="button" aria-label="Close loan import">×</button>
+    </div>
+
+    <div class="loan-import-body">
+      <label class="loan-import-file-label" for="loanImportFileInput">
+        <span>Select CSV file</span>
+        <input id="loanImportFileInput" type="file" accept=".csv,text/csv" />
+      </label>
+
+      <div id="loanImportDetectedHeaders" class="loan-import-section">No file selected.</div>
+
+      <div id="loanImportMappingPanel" class="loan-import-section" hidden>
+        <strong>Review the mapping below before importing</strong>
+        <div class="loan-import-mapping-grid">
+          <label>
+            <span>Loan App # / ID column</span>
+            <select id="loanImportLoanIdSelect"></select>
+          </label>
+          <label>
+            <span>Amount Requested column</span>
+            <select id="loanImportAmountSelect"></select>
+          </label>
+          <label>
+            <span>Loan Type column</span>
+            <select id="loanImportTypeSelect"></select>
+          </label>
+        </div>
+      </div>
+
+      <div id="loanImportPreview" class="loan-import-section" hidden></div>
+      <div id="loanImportMessage" class="message"></div>
+    </div>
+
+    <div class="modal-actions">
+      <button id="cancelLoanImportBtn" type="button">Cancel</button>
+      <button id="previewLoanImportBtn" type="button">Preview Import</button>
+      <button id="confirmLoanImportBtn" class="primary" type="button" disabled>Import Loans</button>
+    </div>
+  </div>
 </div>
 
 <div id="simulationModal" class="modal-overlay" hidden>
