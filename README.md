@@ -7,7 +7,7 @@ This is a simple local web app for assigning loans to loan officers using fair r
 ## How to use
 1. Download and unzip the project.
 2. Open `index.html` in a current version of Microsoft Edge or Google Chrome.
-3. Click **Connect Output Folder** and pick the parent folder where monthly loan-randomizer data should be saved.
+3. Click **Connect Working Folder** and pick the parent folder where monthly loan-randomizer data should be saved.
 4. The app automatically creates/uses a monthly subfolder in `YYYY-MM` format (for example, `2026-04`) and reads `loan-randomizer-running-totals.csv` from that month.
 5. If the CSV does not exist yet for the active month, the app creates it and you can enter the initial loan officers manually.
 6. On supported browsers, the app remembers your approved folder and tries to reconnect on next launch so you do not have to pick it each time.
