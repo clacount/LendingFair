@@ -75,6 +75,27 @@ header p {
   margin: 0;
 }
 
+.fairness-model-control {
+  float: right;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.fairness-model-control label {
+  font-size: 0.9rem;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.fairness-model-control select {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: #fff;
+}
+
 .brand-slogan {
   font-size: 1.05rem;
   font-weight: 600;
@@ -894,6 +915,13 @@ select {
 }
 
 
+.distribution-chart-note {
+  margin: 8px 4px 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
 
 .loan-import-body {
   display: flex;
@@ -1316,6 +1344,17 @@ select {
   color: #355946;
   font-size: 0.92rem;
   line-height: 1.45;
+}
+
+.fairness-thresholds {
+  margin: -4px 0 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid #d9e4ef;
+  background: #f6f9fc;
+  color: #4f6072;
+  font-size: 0.9rem;
+  line-height: 1.4;
 }
 
 .app-footer {

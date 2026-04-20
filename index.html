@@ -16,6 +16,13 @@
         <p class="brand-slogan">Fair and transparent loan assignment with audit-ready reporting</p>
       </div>
     </div>
+    <div class="fairness-model-control">
+      <label for="fairnessModelSelect">Fairness Model</label>
+      <select id="fairnessModelSelect" aria-label="Fairness Model">
+        <option value="global">Global Fairness</option>
+        <option value="officer_lane">Officer Lane Fairness</option>
+      </select>
+    </div>
     <div class="intro-steps">
       <strong>Quick steps</strong>
       <p>1. Connect a working folder for reports and saved history. 2. Load or enter loan officers and loans. 3. Run fair assignment and generate audit-ready reports.</p>
@@ -165,6 +172,7 @@
     <section class="card full">
       <h2>Fairness Audit</h2>
       <p class="fairness-methodology">Assignments are balanced using loan type mix, total goal dollars, loan count, and historical distribution to keep workloads more even and reduce perceived bias.</p>
+      <p class="fairness-thresholds">Thresholds: PASS when overall loan-count variance ≤ 15.0% and overall dollar variance ≤ 20.0%; otherwise REVIEW.</p>
       <div id="fairnessAudit" class="results empty">No fairness audit yet.</div>
 
       <details id="distributionDetails" class="distribution-details">
@@ -407,6 +415,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="src/integrations/graph-sharepoint-stub.js"></script>
 <script src="src/utils/loanCategoryUtils.js"></script>
+<script src="src/services/fairnessEngineService.js"></script>
 <script src="src/bootstrap/initApp.js"></script>
 <script src="src/app.js"></script>
 <script src="src/simulation.js"></script>
