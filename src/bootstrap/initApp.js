@@ -41,12 +41,38 @@ const loanImportMessageEl = document.getElementById('loanImportMessage');
 const previewLoanImportBtn = document.getElementById('previewLoanImportBtn');
 const confirmLoanImportBtn = document.getElementById('confirmLoanImportBtn');
 
+const officerEditorModalEl = document.getElementById('officerEditorModal');
+const closeOfficerEditorModalBtn = document.getElementById('closeOfficerEditorModalBtn');
+const cancelOfficerEditorBtn = document.getElementById('cancelOfficerEditorBtn');
+const saveOfficerEditorBtn = document.getElementById('saveOfficerEditorBtn');
+const removeOfficerBtn = document.getElementById('removeOfficerBtn');
+const officerEditorNameInput = document.getElementById('officerEditorNameInput');
+const officerEditorClassSelect = document.getElementById('officerEditorClassSelect');
+const officerEditorConsumerWeightInput = document.getElementById('officerEditorConsumerWeightInput');
+const officerEditorMortgageWeightInput = document.getElementById('officerEditorMortgageWeightInput');
+const officerEditorConsumerWeightLabel = document.getElementById('officerEditorConsumerWeightLabel');
+const officerEditorMortgageWeightLabel = document.getElementById('officerEditorMortgageWeightLabel');
+const officerEditorMortgageOverrideInput = document.getElementById('officerEditorMortgageOverrideInput');
+const officerEditorMortgageOverrideLabel = document.getElementById('officerEditorMortgageOverrideLabel');
+const officerEditorModalMessageEl = document.getElementById('officerEditorModalMessage');
+
 const addLoanTypeBtn = document.getElementById('addLoanTypeBtn');
 const loanTypeNameInput = document.getElementById('loanTypeNameInput');
 const loanTypeStartInput = document.getElementById('loanTypeStartInput');
 const loanTypeEndInput = document.getElementById('loanTypeEndInput');
 const loanTypeListEl = document.getElementById('loanTypeList');
 const loanTypeSummaryStatsEl = document.getElementById('loanTypeSummaryStats');
+const loanTypeEditorModalEl = document.getElementById('loanTypeEditorModal');
+const closeLoanTypeEditorModalBtn = document.getElementById('closeLoanTypeEditorModalBtn');
+const cancelLoanTypeEditorBtn = document.getElementById('cancelLoanTypeEditorBtn');
+const loanTypeEditorForm = document.getElementById('loanTypeEditorForm');
+const loanTypeEditorNameInput = document.getElementById('loanTypeEditorNameInput');
+const loanTypeEditorAvailabilityInput = document.getElementById('loanTypeEditorAvailabilityInput');
+const loanTypeEditorCategoryInput = document.getElementById('loanTypeEditorCategoryInput');
+const loanTypeEditorStartInput = document.getElementById('loanTypeEditorStartInput');
+const loanTypeEditorEndInput = document.getElementById('loanTypeEditorEndInput');
+const loanTypeEditorGoalModeInput = document.getElementById('loanTypeEditorGoalModeInput');
+const loanTypeEditorModalMessageEl = document.getElementById('loanTypeEditorModalMessage');
 
 const distributionDetailsEl = document.getElementById('distributionDetails');
 const distributionChartsEl = document.getElementById('distributionCharts');
@@ -120,6 +146,7 @@ let isDemoMode = false;
 const DEFAULT_LOAN_TYPES = [
   {
     name: 'Collateralized',
+    category: 'consumer',
     activeFrom: null,
     activeTo: null,
     isBuiltIn: true,
@@ -127,6 +154,7 @@ const DEFAULT_LOAN_TYPES = [
   },
   {
     name: 'Credit Card',
+    category: 'consumer',
     activeFrom: null,
     activeTo: null,
     isBuiltIn: true,
@@ -134,6 +162,31 @@ const DEFAULT_LOAN_TYPES = [
   },
   {
     name: 'Personal',
+    category: 'consumer',
+    activeFrom: null,
+    activeTo: null,
+    isBuiltIn: true,
+    amountOptional: false
+  },
+  {
+    name: 'First Mortgage',
+    category: 'mortgage',
+    activeFrom: null,
+    activeTo: null,
+    isBuiltIn: true,
+    amountOptional: false
+  },
+  {
+    name: 'Home Refi',
+    category: 'mortgage',
+    activeFrom: null,
+    activeTo: null,
+    isBuiltIn: true,
+    amountOptional: false
+  },
+  {
+    name: 'HELOC',
+    category: 'mortgage',
     activeFrom: null,
     activeTo: null,
     isBuiltIn: true,
@@ -176,8 +229,52 @@ const LOAN_IMPORT_HEADER_ALIASES = {
 };
 
 let currentLoanImportContext = null;
+let editingLoanTypeOriginalName = null;
+let activeOfficerEditRow = null;
 
 let allLoanTypes = [...DEFAULT_LOAN_TYPES];
+const loanCategoryUtils = window.LoanCategoryUtils;
+
+const OFFICER_CLASS_PRESETS = {
+  balanced: {
+    label: 'Balanced',
+    eligibility: { consumer: true, mortgage: true },
+    weights: { consumer: 0.5, mortgage: 0.5 }
+  },
+  'consumer-focused': {
+    label: 'Consumer Focused',
+    eligibility: { consumer: true, mortgage: true },
+    weights: { consumer: 0.7, mortgage: 0.3 }
+  },
+  'consumer-only': {
+    label: 'Consumer Only',
+    eligibility: { consumer: true, mortgage: false },
+    weights: { consumer: 1.0, mortgage: 0.0 }
+  },
+  'mortgage-focused': {
+    label: 'Mortgage Focused',
+    eligibility: { consumer: true, mortgage: true },
+    weights: { consumer: 0.3, mortgage: 0.7 }
+  },
+  'mortgage-only': {
+    label: 'Mortgage Only',
+    eligibility: { consumer: false, mortgage: true },
+    weights: { consumer: 0.0, mortgage: 1.0 }
+  },
+  custom: {
+    label: 'Custom',
+    eligibility: { consumer: true, mortgage: true },
+    weights: { consumer: 0.5, mortgage: 0.5 }
+  }
+};
+
+function toPercentWeight(weight) {
+  return Math.round((Number(weight) || 0) * 100);
+}
+
+function fromPercentWeight(percentWeight) {
+  return (Number(percentWeight) || 0) / 100;
+}
 
 function getSessionFileName(fileKind) {
   const standardFileNames = {
@@ -395,7 +492,37 @@ function createDemoRunningTotals() {
           Collateralized: 11,
           'Credit Card': 11,
           Personal: 12
-        }
+        },
+        eligibility: { consumer: true, mortgage: false },
+        weights: { consumer: 1.0, mortgage: 0.0 }
+      },
+      'Morgan Reed': {
+        isOnVacation: false,
+        activeSessionCount: 12,
+        loanCount: 18,
+        totalAmountRequested: 914500,
+        typeCounts: {
+          'First Mortgage': 8,
+          'Home Refi': 6,
+          HELOC: 4
+        },
+        eligibility: { consumer: false, mortgage: true },
+        weights: { consumer: 0.0, mortgage: 1.0 }
+      },
+      'Taylor Quinn': {
+        isOnVacation: false,
+        activeSessionCount: 12,
+        loanCount: 22,
+        totalAmountRequested: 512700,
+        typeCounts: {
+          Personal: 7,
+          Collateralized: 6,
+          'Credit Card': 5,
+          HELOC: 4
+        },
+        eligibility: { consumer: true, mortgage: true },
+        weights: { consumer: 0.5, mortgage: 0.5 },
+        mortgageOverride: false
       }
     }
   };
@@ -446,16 +573,20 @@ function createDemoLoanHistory() {
 const DEFAULT_DEMO_LOAN_TYPES = [
   ...DEFAULT_LOAN_TYPES,
   {
-    name: 'Auto',
+    name: 'Special Promo',
     activeFrom: null,
     activeTo: null,
     isBuiltIn: false,
     amountOptional: false
   },
   {
-    name: 'HELOC',
+    name: 'Collateral APR Promo',
     activeFrom: null,
-    activeTo: null,
+    activeTo: (() => {
+      const date = new Date();
+      date.setDate(date.getDate() + 30);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    })(),
     isBuiltIn: false,
     amountOptional: false
   }
@@ -464,10 +595,12 @@ const DEFAULT_DEMO_LOAN_TYPES = [
 const DEFAULT_DEMO_SESSION_LOANS = [
   { name: 'DEMO-LIVE-101', type: 'Collateralized', amount: '25000' },
   { name: 'DEMO-LIVE-102', type: 'Personal', amount: '8200' },
-  { name: 'DEMO-LIVE-103', type: 'HELOC', amount: '46000' },
+  { name: 'DEMO-LIVE-103', type: 'First Mortgage', amount: '46000' },
   { name: 'DEMO-LIVE-104', type: 'Credit Card', amount: '' },
-  { name: 'DEMO-LIVE-105', type: 'Auto', amount: '17500' },
-  { name: 'DEMO-LIVE-106', type: 'Personal', amount: '6400' }
+  { name: 'DEMO-LIVE-105', type: 'Collateral APR Promo', amount: '17500' },
+  { name: 'DEMO-LIVE-106', type: 'HELOC', amount: '6400' },
+  { name: 'DEMO-LIVE-107', type: 'Home Refi', amount: '289000' },
+  { name: 'DEMO-LIVE-108', type: 'Special Promo', amount: '11200' }
 ];
 
 function getTodayKey() {
@@ -586,11 +719,50 @@ function normalizeLoanType(type) {
 
   return {
     name,
+    category: loanCategoryUtils.normalizeLoanTypeCategory(type),
     activeFrom: type.activeFrom || null,
     activeTo: type.activeTo || null,
     isBuiltIn: Boolean(type.isBuiltIn),
     amountOptional: Boolean(type.amountOptional)
   };
+}
+
+function getLoanCategoryForType(typeName) {
+  const loanType = getLoanTypeByName(typeName);
+  return loanCategoryUtils.normalizeLoanCategory(loanType?.category || loanCategoryUtils.classifyLoanTypeCategory(typeName));
+}
+
+function getMortgageLoanPermissionLevel(typeName) {
+  const normalizedType = String(typeName || '').trim().toLowerCase();
+  if (normalizedType.includes('heloc')) {
+    return 'heloc';
+  }
+  if (normalizedType.includes('first mortgage') || normalizedType.includes('home refi')) {
+    return 'full-mortgage';
+  }
+  return 'full-mortgage';
+}
+
+function isOfficerEligibleForLoanType(officerConfig, loan) {
+  const loanCategory = getLoanCategoryForType(loan.type);
+  if (!loanCategoryUtils.isOfficerEligibleForCategory(officerConfig, loanCategory)) {
+    return false;
+  }
+
+  if (loanCategory !== 'mortgage') {
+    return true;
+  }
+
+  const normalizedEligibility = loanCategoryUtils.normalizeOfficerEligibility(officerConfig.eligibility);
+  const hasMortgageOnlyPermissions = !normalizedEligibility.consumer && normalizedEligibility.mortgage;
+  const hasOverride = Boolean(officerConfig.mortgageOverride);
+  const mortgagePermissionLevel = getMortgageLoanPermissionLevel(loan.type);
+
+  if (mortgagePermissionLevel === 'heloc') {
+    return true;
+  }
+
+  return hasMortgageOnlyPermissions || hasOverride;
 }
 
 function getAllLoanTypeNames() {
@@ -695,7 +867,260 @@ function refreshLoanTypeSelects() {
   });
 }
 
-function createInputRow(type, value = '', loanType = '', amount = '', isOnVacation = false) {
+function getOfficerConfigFromRow(row) {
+  if (!row) {
+    return {
+      eligibility: loanCategoryUtils.getDefaultOfficerEligibility(),
+      weights: loanCategoryUtils.getDefaultOfficerWeights(),
+      mortgageOverride: false
+    };
+  }
+
+  const eligibility = loanCategoryUtils.normalizeOfficerEligibility({
+    consumer: row.dataset.eligibilityConsumer === 'true',
+    mortgage: row.dataset.eligibilityMortgage === 'true'
+  });
+  const weights = loanCategoryUtils.normalizeOfficerWeights({
+    consumer: row.dataset.weightConsumer,
+    mortgage: row.dataset.weightMortgage
+  }, eligibility);
+  const mortgageOverride = row.dataset.mortgageOverride === 'true';
+
+  return { eligibility, weights, mortgageOverride };
+}
+
+function getOfficerNameFromRow(row) {
+  return String(row?.dataset.officerName || '').trim();
+}
+
+function getClassCodeForRow(row) {
+  const { eligibility } = getOfficerConfigFromRow(row);
+  if (eligibility.consumer && !eligibility.mortgage) {
+    return 'C';
+  }
+  if (!eligibility.consumer && eligibility.mortgage) {
+    return 'M';
+  }
+  return 'F';
+}
+
+function getClassPresetFromConfig(eligibility, weights) {
+  const normalizedEligibility = loanCategoryUtils.normalizeOfficerEligibility(eligibility);
+  const normalizedWeights = loanCategoryUtils.normalizeOfficerWeights(weights, normalizedEligibility);
+  const roundedConsumer = Number(weights.consumer.toFixed(2));
+  const roundedMortgage = Number(weights.mortgage.toFixed(2));
+
+  if (!normalizedEligibility.consumer && normalizedEligibility.mortgage && roundedConsumer === 0 && roundedMortgage === 1) {
+    return 'mortgage-only';
+  }
+  if (normalizedEligibility.consumer && !normalizedEligibility.mortgage && roundedConsumer === 1 && roundedMortgage === 0) {
+    return 'consumer-only';
+  }
+  if (roundedConsumer === 0.5 && roundedMortgage === 0.5) {
+    return 'balanced';
+  }
+  if (roundedConsumer === 0.7 && roundedMortgage === 0.3 && normalizedEligibility.consumer && normalizedEligibility.mortgage) {
+    return 'consumer-focused';
+  }
+  if (roundedConsumer === 0.3 && roundedMortgage === 0.7 && normalizedEligibility.consumer && normalizedEligibility.mortgage) {
+    return 'mortgage-focused';
+  }
+  return 'custom';
+}
+
+function getClassDisplayLabel(row) {
+  const classLabelEl = row?.querySelector('.officer-class-label');
+  if (classLabelEl) {
+    classLabelEl.textContent = getClassCodeForRow(row);
+    classLabelEl.title = getPriorityDisplayLabel(row);
+  }
+}
+
+function getPriorityDisplayLabel(row) {
+  const { eligibility, weights } = getOfficerConfigFromRow(row);
+  const preset = getClassPresetFromConfig(eligibility, weights);
+  return OFFICER_CLASS_PRESETS[preset]?.label || 'Custom';
+}
+
+function updateOfficerRowDisplay(row) {
+  const label = row?.querySelector('.officer-class-label');
+  if (!label) {
+    return;
+  }
+  getClassDisplayLabel(row);
+}
+
+function setOfficerEditorModalMessage(text = '', tone = 'warning') {
+  if (!officerEditorModalMessageEl) {
+    return;
+  }
+  officerEditorModalMessageEl.textContent = text;
+  officerEditorModalMessageEl.dataset.tone = text ? tone : '';
+}
+
+function closeOfficerEditorModal() {
+  activeOfficerEditRow = null;
+  setOfficerEditorModalMessage('');
+  if (officerEditorModalEl) {
+    officerEditorModalEl.hidden = true;
+  }
+}
+
+function setLoanTypeEditorModalMessage(text = '', tone = 'warning') {
+  if (!loanTypeEditorModalMessageEl) {
+    return;
+  }
+  loanTypeEditorModalMessageEl.textContent = text;
+  loanTypeEditorModalMessageEl.dataset.tone = text ? tone : '';
+}
+
+function syncLoanTypeEditorAvailability() {
+  const isSeasonal = loanTypeEditorAvailabilityInput?.value === 'seasonal';
+  if (loanTypeEditorStartInput) {
+    loanTypeEditorStartInput.disabled = !isSeasonal;
+    if (!isSeasonal) {
+      loanTypeEditorStartInput.value = '';
+    }
+  }
+  if (loanTypeEditorEndInput) {
+    loanTypeEditorEndInput.disabled = !isSeasonal;
+    if (!isSeasonal) {
+      loanTypeEditorEndInput.value = '';
+    }
+  }
+}
+
+function closeLoanTypeEditorModal() {
+  editingLoanTypeOriginalName = null;
+  setLoanTypeEditorModalMessage('');
+  if (loanTypeEditorModalEl) {
+    loanTypeEditorModalEl.hidden = true;
+  }
+}
+
+function openLoanTypeEditorModal(loanType) {
+  if (!loanTypeEditorModalEl || !loanType) {
+    return;
+  }
+
+  editingLoanTypeOriginalName = loanType.name;
+  if (loanTypeEditorNameInput) {
+    loanTypeEditorNameInput.value = loanType.name;
+  }
+  if (loanTypeEditorAvailabilityInput) {
+    loanTypeEditorAvailabilityInput.value = loanType.activeFrom || loanType.activeTo ? 'seasonal' : 'always';
+  }
+  if (loanTypeEditorCategoryInput) {
+    loanTypeEditorCategoryInput.value = loanCategoryUtils.normalizeLoanCategory(loanType.category);
+  }
+  if (loanTypeEditorStartInput) {
+    loanTypeEditorStartInput.value = loanType.activeFrom || '';
+  }
+  if (loanTypeEditorEndInput) {
+    loanTypeEditorEndInput.value = loanType.activeTo || '';
+  }
+  if (loanTypeEditorGoalModeInput) {
+    loanTypeEditorGoalModeInput.value = loanType.amountOptional ? 'unit' : 'amount';
+  }
+
+  syncLoanTypeEditorAvailability();
+  setLoanTypeEditorModalMessage('');
+  loanTypeEditorModalEl.hidden = false;
+  loanTypeEditorNameInput?.focus();
+}
+
+function syncOfficerEditorFromClassPreset() {
+  if (!officerEditorClassSelect || !officerEditorConsumerWeightInput || !officerEditorMortgageWeightInput) {
+    return;
+  }
+
+  const selectedPreset = officerEditorClassSelect.value;
+  const preset = OFFICER_CLASS_PRESETS[selectedPreset];
+  if (preset && selectedPreset !== 'custom') {
+    officerEditorConsumerWeightInput.value = String(toPercentWeight(preset.weights.consumer));
+    officerEditorMortgageWeightInput.value = String(toPercentWeight(preset.weights.mortgage));
+  }
+
+  const disableManual = selectedPreset !== 'custom';
+  officerEditorConsumerWeightInput.disabled = disableManual;
+  officerEditorMortgageWeightInput.disabled = disableManual;
+  if (officerEditorConsumerWeightLabel) {
+    officerEditorConsumerWeightLabel.hidden = disableManual;
+  }
+  if (officerEditorMortgageWeightLabel) {
+    officerEditorMortgageWeightLabel.hidden = disableManual;
+  }
+
+  if (officerEditorMortgageOverrideLabel && officerEditorMortgageOverrideInput) {
+    const presetEligibility = loanCategoryUtils.normalizeOfficerEligibility(preset?.eligibility);
+    const isMortgageOnlyPreset = presetEligibility.mortgage && !presetEligibility.consumer && selectedPreset !== 'custom';
+    const supportsOverride = presetEligibility.mortgage && !isMortgageOnlyPreset;
+    officerEditorMortgageOverrideLabel.hidden = !supportsOverride;
+    officerEditorMortgageOverrideInput.disabled = !supportsOverride;
+    if (!supportsOverride) {
+      officerEditorMortgageOverrideInput.checked = false;
+    }
+  }
+}
+
+function applyOfficerConfigToRow(row, { name, eligibility, weights, mortgageOverride = false }) {
+  row.dataset.officerName = String(name || '').trim();
+  row.dataset.eligibilityConsumer = String(Boolean(eligibility.consumer));
+  row.dataset.eligibilityMortgage = String(Boolean(eligibility.mortgage));
+  row.dataset.weightConsumer = String(weights.consumer);
+  row.dataset.weightMortgage = String(weights.mortgage);
+  row.dataset.mortgageOverride = String(Boolean(mortgageOverride));
+
+  const nameEl = row.querySelector('.officer-name-value');
+  if (nameEl) {
+    nameEl.textContent = row.dataset.officerName;
+  }
+
+  updateOfficerRowDisplay(row);
+}
+
+function openOfficerEditorModal(row = null) {
+  if (!officerEditorModalEl) {
+    return;
+  }
+
+  activeOfficerEditRow = row;
+
+  const rowName = row ? getOfficerNameFromRow(row) : '';
+  const rowConfig = row ? getOfficerConfigFromRow(row) : {
+    eligibility: OFFICER_CLASS_PRESETS.balanced.eligibility,
+    weights: OFFICER_CLASS_PRESETS.balanced.weights,
+    mortgageOverride: false
+  };
+  const rowClass = getClassPresetFromConfig(rowConfig.eligibility, rowConfig.weights);
+
+  if (officerEditorNameInput) {
+    officerEditorNameInput.value = rowName;
+  }
+  if (officerEditorClassSelect) {
+    officerEditorClassSelect.value = rowClass;
+  }
+  if (officerEditorConsumerWeightInput) {
+    officerEditorConsumerWeightInput.value = String(toPercentWeight(rowConfig.weights.consumer));
+  }
+  if (officerEditorMortgageWeightInput) {
+    officerEditorMortgageWeightInput.value = String(toPercentWeight(rowConfig.weights.mortgage));
+  }
+  if (officerEditorMortgageOverrideInput) {
+    officerEditorMortgageOverrideInput.checked = Boolean(rowConfig.mortgageOverride);
+  }
+
+  if (removeOfficerBtn) {
+    removeOfficerBtn.hidden = !row;
+  }
+
+  syncOfficerEditorFromClassPreset();
+  setOfficerEditorModalMessage('');
+  officerEditorModalEl.hidden = false;
+  officerEditorNameInput?.focus();
+}
+
+function createInputRow(type, value = '', loanType = '', amount = '', isOnVacation = false, officerConfig = {}) {
   const row = document.createElement('div');
   row.className = type === 'loan' ? 'row loan-row' : 'row officer-row';
 
@@ -740,6 +1165,24 @@ function createInputRow(type, value = '', loanType = '', amount = '', isOnVacati
   }
 
   row.dataset.active = 'true';
+  row.dataset.officerName = '';
+  row.dataset.eligibilityConsumer = 'true';
+  row.dataset.eligibilityMortgage = 'true';
+  row.dataset.weightConsumer = '1';
+  row.dataset.weightMortgage = '1';
+  row.dataset.mortgageOverride = 'false';
+
+  const nameEl = document.createElement('div');
+  nameEl.className = 'officer-name-value';
+
+  const classEl = document.createElement('div');
+  classEl.className = 'officer-class-label';
+
+  const editBtn = document.createElement('button');
+  editBtn.type = 'button';
+  editBtn.className = 'officer-edit-btn';
+  editBtn.textContent = 'Edit';
+  editBtn.addEventListener('click', () => openOfficerEditorModal(row));
 
   const vacationBtn = document.createElement('button');
   vacationBtn.type = 'button';
@@ -760,16 +1203,24 @@ function createInputRow(type, value = '', loanType = '', amount = '', isOnVacati
     }
   });
 
-  row.appendChild(input);
+  row.appendChild(nameEl);
+  row.appendChild(classEl);
   row.appendChild(vacationBtn);
-  row.appendChild(removeBtn);
+  row.appendChild(editBtn);
 
   setOfficerVacationState(row, isOnVacation);
+  const normalizedEligibility = loanCategoryUtils.normalizeOfficerEligibility(officerConfig.eligibility);
+  const normalizedWeights = loanCategoryUtils.normalizeOfficerWeights(officerConfig.weights, normalizedEligibility);
+  applyOfficerConfigToRow(row, {
+    name: value,
+    eligibility: normalizedEligibility,
+    weights: normalizedWeights
+  });
   return row;
 }
 
-function addOfficer(value = '', isOnVacation = false) {
-  officerList.appendChild(createInputRow('officer', value, '', '', isOnVacation));
+function addOfficer(value = '', isOnVacation = false, officerConfig = {}) {
+  officerList.appendChild(createInputRow('officer', value, '', '', isOnVacation, officerConfig));
 }
 
 function addLoan(value = '', loanType = '', amount = '') {
@@ -805,7 +1256,16 @@ function removeLoansWithType(typeName) {
 function getOfficerValues() {
   return [...officerList.querySelectorAll('.officer-row')]
     .filter((row) => row.dataset.active !== 'false')
-    .map((row) => row.querySelector('input').value.trim())
+    .map((row) => ({
+      name: getOfficerNameFromRow(row),
+      ...getOfficerConfigFromRow(row)
+    }))
+    .filter((officer) => officer.name)
+    .map((officer) => ({
+      ...officer,
+      eligibility: loanCategoryUtils.normalizeOfficerEligibility(officer.eligibility),
+      weights: loanCategoryUtils.normalizeOfficerWeights(officer.weights, officer.eligibility)
+    }))
     .filter(Boolean);
 }
 
@@ -938,6 +1398,21 @@ function getUnsupportedFolderAccessMessage() {
 }
 
 function updateFolderStatus() {
+  function setStep3LockedState(isLocked) {
+    if (addOfficerBtn) {
+      addOfficerBtn.disabled = isLocked;
+    }
+    if (addLoanBtn) {
+      addLoanBtn.disabled = isLocked;
+    }
+    if (importPriorMonthBtn) {
+      importPriorMonthBtn.disabled = isLocked;
+    }
+    if (importLoansBtn) {
+      importLoansBtn.disabled = isLocked;
+    }
+  }
+
   if (outputDirectoryHandle) {
     const activeDataPath = isDemoMode ? `/${DEMO_DATA_FOLDER_NAME}` : `/${getMonthFolderKey()}`;
     const folderSummary = `Selected folder: ${outputDirectoryHandle.name} (using ${activeDataPath})`;
@@ -957,6 +1432,7 @@ function updateFolderStatus() {
     }
     randomizeBtn.disabled = false;
     randomizeBtn.dataset.state = 'ready';
+    setStep3LockedState(false);
     return;
   }
 
@@ -968,6 +1444,7 @@ function updateFolderStatus() {
     outputStepDetailsEl.hidden = false;
     randomizeBtn.disabled = true;
     randomizeBtn.dataset.state = 'locked';
+    setStep3LockedState(true);
     return;
   }
 
@@ -987,6 +1464,7 @@ function updateFolderStatus() {
   }
   randomizeBtn.disabled = true;
   randomizeBtn.dataset.state = 'locked';
+  setStep3LockedState(true);
 }
 
 async function ensureDirectoryPermission(directoryHandle) {
@@ -1115,6 +1593,7 @@ async function addCustomLoanType(name, activeFrom = null, activeTo = null) {
 
   const newType = normalizeLoanType({
     name: trimmedName,
+    category: loanCategoryUtils.classifyLoanTypeCategory(trimmedName),
     activeFrom: activeFrom || null,
     activeTo: activeTo || null,
     isBuiltIn: false,
@@ -1166,8 +1645,124 @@ async function removeCustomLoanType(typeName) {
   await saveLoanTypes(allLoanTypes);
 }
 
+function isValidDateKey(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
+}
+
+function updateLoanRowTypeReferences(oldName, nextName) {
+  if (!loanList || oldName === nextName) {
+    return 0;
+  }
+
+  let updatedRows = 0;
+  [...loanList.querySelectorAll('.loan-row')].forEach((row) => {
+    const typeSelect = row.querySelector('.loan-type-select');
+    if (!typeSelect) {
+      return;
+    }
+
+    if (String(typeSelect.value) === oldName) {
+      buildLoanTypeSelectOptions(typeSelect, nextName);
+      updatedRows += 1;
+    }
+  });
+
+  return updatedRows;
+}
+
+async function editLoanType(existingName, updates) {
+  const target = allLoanTypes.find((type) => type.name === existingName);
+  if (!target) {
+    throw new Error(`Loan type ${existingName} was not found.`);
+  }
+
+  const nextName = String(updates.name || '').trim();
+  if (!nextName) {
+    throw new Error('Loan type name cannot be blank.');
+  }
+
+  if (allLoanTypes.some((type) => type.name.toLowerCase() === nextName.toLowerCase() && type.name !== existingName)) {
+    throw new Error(`Loan type ${nextName} already exists.`);
+  }
+
+  const nextActiveFrom = updates.activeFrom || null;
+  const nextActiveTo = updates.activeTo || null;
+
+  if (nextActiveFrom && !isValidDateKey(nextActiveFrom)) {
+    throw new Error('Start date must be blank or in YYYY-MM-DD format.');
+  }
+
+  if (nextActiveTo && !isValidDateKey(nextActiveTo)) {
+    throw new Error('End date must be blank or in YYYY-MM-DD format.');
+  }
+
+  if (nextActiveFrom && nextActiveTo && nextActiveFrom > nextActiveTo) {
+    throw new Error('Loan type start date must be on or before the end date.');
+  }
+
+  target.name = nextName;
+  target.category = updates.category;
+  target.activeFrom = nextActiveFrom;
+  target.activeTo = nextActiveTo;
+  target.amountOptional = Boolean(updates.amountOptional);
+  const normalizedTarget = normalizeLoanType(target);
+
+  const targetIndex = allLoanTypes.findIndex((type) => type.name === existingName);
+  if (targetIndex >= 0) {
+    allLoanTypes[targetIndex] = normalizedTarget;
+  }
+
+  const touchedLoans = updateLoanRowTypeReferences(existingName, nextName);
+  refreshLoanTypeSelects();
+  await saveLoanTypes(allLoanTypes);
+
+  return { touchedLoans };
+}
+
+async function handleLoanTypeEditorSubmit(event) {
+  event.preventDefault();
+
+  if (!editingLoanTypeOriginalName) {
+    setLoanTypeEditorModalMessage('Select a loan type to edit first.', 'warning');
+    return;
+  }
+
+  const normalizedCategory = loanCategoryUtils.normalizeLoanCategory(loanTypeEditorCategoryInput?.value || 'consumer');
+  const normalizedGoalMode = String(loanTypeEditorGoalModeInput?.value || 'amount').trim().toLowerCase();
+  const isSeasonal = (loanTypeEditorAvailabilityInput?.value || 'always') === 'seasonal';
+
+  if (normalizedGoalMode !== 'amount' && normalizedGoalMode !== 'unit') {
+    setLoanTypeEditorModalMessage('Goal mode must be amount or unit.', 'warning');
+    return;
+  }
+
+  try {
+    const nextName = String(loanTypeEditorNameInput?.value || '').trim();
+    const activeFrom = isSeasonal ? String(loanTypeEditorStartInput?.value || '').trim() : '';
+    const activeTo = isSeasonal ? String(loanTypeEditorEndInput?.value || '').trim() : '';
+    const { touchedLoans } = await editLoanType(editingLoanTypeOriginalName, {
+      name: nextName,
+      category: normalizedCategory,
+      activeFrom,
+      activeTo,
+      amountOptional: normalizedGoalMode === 'unit'
+    });
+
+    renderLoanTypes();
+    closeLoanTypeEditorModal();
+    setMessage(
+      touchedLoans
+        ? `Updated loan type ${nextName}. Refreshed ${touchedLoans} loan row${touchedLoans === 1 ? '' : 's'} to use the new name.`
+        : `Updated loan type ${nextName}.`,
+      'success'
+    );
+  } catch (error) {
+    setLoanTypeEditorModalMessage(error.message, 'warning');
+  }
+}
+
 function getBeforeRunDistribution(runningTotals, officers) {
-  const cleanOfficers = [...new Set(officers.map((name) => name.trim()).filter(Boolean))];
+  const cleanOfficers = [...new Set(officers.map((officer) => normalizeOfficerConfig(officer).name).filter(Boolean))];
 
   return cleanOfficers.map((officer) => {
     const stats = normalizeOfficerStats(runningTotals.officers?.[officer]);
@@ -1180,7 +1775,7 @@ function getBeforeRunDistribution(runningTotals, officers) {
 }
 
 function getAfterRunDistribution(result, officers, runningTotals) {
-  const cleanOfficers = [...new Set(officers.map((name) => name.trim()).filter(Boolean))];
+  const cleanOfficers = [...new Set(officers.map((officer) => normalizeOfficerConfig(officer).name).filter(Boolean))];
 
   return cleanOfficers.map((officer) => {
     const priorStats = normalizeOfficerStats(runningTotals.officers?.[officer]);
@@ -1397,23 +1992,32 @@ function renderLoanTypes() {
     const isActive = isLoanTypeActive(loanType);
     const activeLabel = isActive ? 'Active' : 'Inactive';
     const seasonalLabel = loanType.activeFrom || loanType.activeTo ? 'Seasonal' : 'Always available';
+    const categoryLabel = loanCategoryUtils.normalizeLoanCategory(loanType.category) === 'mortgage' ? 'Mortgage' : 'Consumer';
 
     wrapper.innerHTML = `
       <div class="loan-type-card-top">
         <div class="loan-type-card-copy">
           <h3>${escapeHtml(loanType.name)} <span class="badge">${escapeHtml(activeLabel)}</span></h3>
           <div class="amount-summary">Availability: ${escapeHtml(seasonalLabel)}</div>
+          <div class="amount-summary">Category: ${escapeHtml(categoryLabel)}</div>
           <div class="amount-summary">Start: ${escapeHtml(loanType.activeFrom || 'Always')}</div>
           <div class="amount-summary">End: ${escapeHtml(loanType.activeTo || 'Always')}</div>
-          <div class="amount-summary">Amount optional: ${loanType.amountOptional ? 'Yes' : 'No'}</div>
+          <div class="amount-summary">Goal mode: ${loanType.amountOptional ? 'Per unit' : 'By amount'}</div>
         </div>
       </div>
     `;
 
-    if (!loanType.isBuiltIn) {
-      const actionRow = document.createElement('div');
-      actionRow.className = 'loan-type-action-row';
+    const actionRow = document.createElement('div');
+    actionRow.className = 'loan-type-action-row';
 
+    const editButton = document.createElement('button');
+    editButton.type = 'button';
+    editButton.textContent = 'Edit';
+    editButton.className = 'loan-type-action-btn activate';
+    editButton.addEventListener('click', () => openLoanTypeEditorModal(loanType));
+    actionRow.appendChild(editButton);
+
+    if (!loanType.isBuiltIn) {
       const toggleButton = document.createElement('button');
       toggleButton.type = 'button';
       toggleButton.textContent = isActive ? 'Deactivate' : 'Activate';
@@ -1466,8 +2070,9 @@ function renderLoanTypes() {
 
       actionRow.appendChild(toggleButton);
       actionRow.appendChild(removeButton);
-      wrapper.appendChild(actionRow);
     }
+
+    wrapper.appendChild(actionRow);
 
     loanTypeListEl.appendChild(wrapper);
   });
@@ -1726,12 +2331,16 @@ function createEmptyLoanHistory() {
 }
 
 function createEmptyOfficerStats() {
+  const defaultEligibility = loanCategoryUtils.getDefaultOfficerEligibility();
   return {
     isOnVacation: false,
     activeSessionCount: 0,
     loanCount: 0,
     totalAmountRequested: 0,
-    typeCounts: Object.fromEntries(getAllLoanTypeNames().map((loanType) => [loanType, 0]))
+    typeCounts: Object.fromEntries(getAllLoanTypeNames().map((loanType) => [loanType, 0])),
+    eligibility: defaultEligibility,
+    weights: loanCategoryUtils.getDefaultWeightsForScope(loanCategoryUtils.getOfficerScopeFromConfig(defaultEligibility)),
+    mortgageOverride: false
   };
 }
 
@@ -2056,6 +2665,7 @@ async function ensureImportedLoanTypesExist(importedRows) {
 
     const newType = normalizeLoanType({
       name: row.type,
+      category: loanCategoryUtils.classifyLoanTypeCategory(row.type),
       activeFrom: null,
       activeTo: null,
       isBuiltIn: false,
@@ -2362,7 +2972,7 @@ function normalizeTypeCounts(typeCounts = {}) {
 
 function buildRunningTotalsCsv(runningTotals) {
   const rows = [
-    'officer,is_on_vacation,active_session_count,loan_count,total_amount_requested,type_counts_json'
+    'officer,is_on_vacation,active_session_count,loan_count,total_amount_requested,type_counts_json,eligibility_json,weights_json,mortgage_override'
   ];
 
   Object.entries(runningTotals.officers || {})
@@ -2375,7 +2985,10 @@ function buildRunningTotalsCsv(runningTotals) {
         normalizedStats.activeSessionCount,
         normalizedStats.loanCount,
         normalizedStats.totalAmountRequested,
-        JSON.stringify(normalizedStats.typeCounts)
+        JSON.stringify(normalizedStats.typeCounts),
+        JSON.stringify(normalizedStats.eligibility),
+        JSON.stringify(normalizedStats.weights),
+        normalizedStats.mortgageOverride
       ].map(escapeCsvValue).join(','));
     });
 
@@ -2418,12 +3031,28 @@ function parseRunningTotalsCsv(csvText) {
       };
     }
 
+    let parsedEligibility = undefined;
+    let parsedWeights = undefined;
+    try {
+      parsedEligibility = row.eligibility_json ? JSON.parse(row.eligibility_json) : undefined;
+    } catch (error) {
+      parsedEligibility = undefined;
+    }
+    try {
+      parsedWeights = row.weights_json ? JSON.parse(row.weights_json) : undefined;
+    } catch (error) {
+      parsedWeights = undefined;
+    }
+
     officers[officerName] = normalizeOfficerStats({
       isOnVacation: String(row.is_on_vacation).toLowerCase() === 'true',
       activeSessionCount: Number(row.active_session_count ?? (Number(row.loan_count) > 0 || Number(row.total_amount_requested) > 0 ? 1 : 0)),
       loanCount: Number(row.loan_count),
       totalAmountRequested: Number(row.total_amount_requested),
-      typeCounts: parsedTypeCounts
+      typeCounts: parsedTypeCounts,
+      eligibility: parsedEligibility,
+      weights: parsedWeights,
+      mortgageOverride: String(row.mortgage_override).toLowerCase() === 'true'
     });
   });
 
@@ -2436,12 +3065,15 @@ function populateOfficersFromRunningTotals(runningTotals) {
   officerList.innerHTML = '';
 
   if (!officerNames.length) {
-    addOfficer();
     return false;
   }
 
   officerNames.forEach((officer) => {
-    addOfficer(officer, normalizeOfficerStats(runningTotals.officers?.[officer]).isOnVacation);
+    const normalizedStats = normalizeOfficerStats(runningTotals.officers?.[officer]);
+    addOfficer(officer, normalizedStats.isOnVacation, {
+      eligibility: normalizedStats.eligibility,
+      weights: normalizedStats.weights
+    });
   });
 
   return true;
@@ -2450,8 +3082,8 @@ function populateOfficersFromRunningTotals(runningTotals) {
 function appendOfficersFromRunningTotals(runningTotals) {
   const officerNames = Object.keys(runningTotals.officers || {}).sort((officerA, officerB) => officerA.localeCompare(officerB));
   const existingOfficerNames = new Set(
-    [...officerList.querySelectorAll('.officer-row input')]
-      .map((input) => input.value.trim())
+    [...officerList.querySelectorAll('.officer-row')]
+      .map((row) => getOfficerNameFromRow(row))
       .filter(Boolean)
   );
 
@@ -2466,14 +3098,14 @@ function appendOfficersFromRunningTotals(runningTotals) {
       return;
     }
 
-    addOfficer(officer, normalizeOfficerStats(runningTotals.officers?.[officer]).isOnVacation);
+    const normalizedStats = normalizeOfficerStats(runningTotals.officers?.[officer]);
+    addOfficer(officer, normalizedStats.isOnVacation, {
+      eligibility: normalizedStats.eligibility,
+      weights: normalizedStats.weights
+    });
     existingOfficerNames.add(officer);
     importedCount += 1;
   });
-
-  if (![...officerList.querySelectorAll('.officer-row input')].some((input) => input.value.trim())) {
-    addOfficer();
-  }
 
   return importedCount;
 }
@@ -2490,7 +3122,10 @@ function normalizeOfficerStats(stats) {
     activeSessionCount: Number.isFinite(stats.activeSessionCount) && stats.activeSessionCount >= 0 ? stats.activeSessionCount : 0,
     loanCount: Number.isFinite(stats.loanCount) && stats.loanCount >= 0 ? stats.loanCount : 0,
     totalAmountRequested: Number.isFinite(stats.totalAmountRequested) && stats.totalAmountRequested >= 0 ? stats.totalAmountRequested : 0,
-    typeCounts: normalizeTypeCounts(stats.typeCounts || {})
+    typeCounts: normalizeTypeCounts(stats.typeCounts || {}),
+    eligibility: loanCategoryUtils.normalizeOfficerEligibility(stats.eligibility),
+    weights: loanCategoryUtils.normalizeOfficerWeights(stats.weights, stats.eligibility),
+    mortgageOverride: Boolean(stats.mortgageOverride)
   };
 }
 
@@ -2500,16 +3135,20 @@ function buildRunningTotalsWithCurrentOfficerStatuses(priorRunningTotals) {
   );
 
   [...officerList.querySelectorAll('.officer-row')].forEach((row) => {
-    const officerName = row.querySelector('input').value.trim();
+    const officerName = getOfficerNameFromRow(row);
 
     if (!officerName) {
       return;
     }
 
     const priorStats = normalizeOfficerStats(updatedOfficers[officerName]);
+    const officerConfig = getOfficerConfigFromRow(row);
     updatedOfficers[officerName] = {
       ...priorStats,
-      isOnVacation: row.dataset.active === 'false'
+      isOnVacation: row.dataset.active === 'false',
+      eligibility: officerConfig.eligibility,
+      weights: officerConfig.weights,
+      mortgageOverride: officerConfig.mortgageOverride
     };
   });
 
@@ -2573,7 +3212,8 @@ function buildUpdatedRunningTotals(cleanOfficers, result, priorRunningTotals) {
     Object.entries(priorRunningTotals.officers || {}).map(([officer, stats]) => [officer, normalizeOfficerStats(stats)])
   );
 
-  cleanOfficers.forEach((officer) => {
+  cleanOfficers.map((officer) => normalizeOfficerConfig(officer)).forEach((officerConfig) => {
+    const officer = officerConfig.name;
     const priorStats = normalizeOfficerStats(updatedOfficers[officer]);
     const assignedLoans = result.officerAssignments[officer] || [];
     const nextStats = {
@@ -2583,6 +3223,9 @@ function buildUpdatedRunningTotals(cleanOfficers, result, priorRunningTotals) {
       totalAmountRequested: priorStats.totalAmountRequested + assignedLoans.reduce((sum, loan) => sum + getGoalAmountForLoan(loan), 0),
       typeCounts: { ...priorStats.typeCounts }
     };
+    nextStats.eligibility = officerConfig.eligibility;
+    nextStats.weights = officerConfig.weights;
+    nextStats.mortgageOverride = officerConfig.mortgageOverride;
 
     assignedLoans.forEach((loan) => {
       if (nextStats.typeCounts[loan.type] === undefined) {
@@ -2707,6 +3350,9 @@ async function clearDemoDataFolder() {
     removedEntries += 1;
   }
 
+  await outputDirectoryHandle.removeEntry(DEMO_DATA_FOLDER_NAME, { recursive: true });
+  removedEntries += 1;
+
   return removedEntries;
 }
 
@@ -2775,11 +3421,6 @@ function resetToInitialScreen() {
     distributionDetailsEl.open = false;
   }
 
-  addOfficer('Loan Officer 1');
-  addOfficer('Loan Officer 2');
-  addOfficer('Loan Officer 3');
-  addLoan('Loan A', 'Collateralized', '15000');
-  addLoan('Loan B', 'Personal', '4000');
   renderLoanTypes();
   updateFolderStatus();
 }
@@ -2793,8 +3434,31 @@ function getDistinctTypeCount(typeCounts) {
   return Object.values(typeCounts).filter((count) => count > 0).length;
 }
 
+function normalizeOfficerConfig(officer) {
+  if (typeof officer === 'string') {
+    return {
+      name: officer.trim(),
+      eligibility: loanCategoryUtils.getDefaultOfficerEligibility(),
+      weights: loanCategoryUtils.getDefaultOfficerWeights(),
+      mortgageOverride: false
+    };
+  }
+
+  const name = String(officer?.name || '').trim();
+  const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officer?.eligibility);
+  const weights = loanCategoryUtils.normalizeOfficerWeights(officer?.weights, eligibility);
+  const mortgageOverride = Boolean(officer?.mortgageOverride);
+
+  return { name, eligibility, weights, mortgageOverride };
+}
+
 function getNormalizedFairnessValue(total, activeSessionCount) {
   return total / Math.max(activeSessionCount, 1);
+}
+
+function getNormalizedAmountFairnessValue(total, activeSessionCount) {
+  const normalizedAmount = getNormalizedFairnessValue(total, activeSessionCount);
+  return Math.log10(Math.max(normalizedAmount, 0) + 1);
 }
 
 function calculateVariance(values) {
@@ -2806,41 +3470,155 @@ function calculateVariance(values) {
   return values.reduce((sum, value) => sum + ((value - average) ** 2), 0) / values.length;
 }
 
-function buildProjectedLoads(cleanOfficers, currentTotals, officerActiveSessions, selectedOfficer, increment) {
-  return cleanOfficers.map((officer) => getNormalizedFairnessValue(
-    currentTotals[officer] + (officer === selectedOfficer ? increment : 0),
-    officerActiveSessions[officer]
+function buildProjectedLoads(eligibleOfficerNames, currentTotals, officerActiveSessions, selectedOfficer, increment) {
+  return eligibleOfficerNames.map((officerName) => getNormalizedFairnessValue(
+    currentTotals[officerName] + (officerName === selectedOfficer ? increment : 0),
+    officerActiveSessions[officerName]
   ));
 }
 
-function chooseOfficerForLoan(cleanOfficers, officerLoanTotals, officerTypeCounts, officerAmountTotals, officerActiveSessions, loan) {
+function getCategoryCountFromTypeCounts(typeCounts, loanCategory) {
+  return Object.entries(typeCounts || {}).reduce((sum, [loanType, count]) => (
+    getLoanCategoryForType(loanType) === loanCategory ? sum + Number(count || 0) : sum
+  ), 0);
+}
+
+function getEstimatedCategoryAmountTotal(typeCounts, totalAmount, loanCategory) {
+  const totalLoans = Object.values(typeCounts || {}).reduce((sum, count) => sum + Number(count || 0), 0);
+  if (!totalLoans) {
+    return 0;
+  }
+
+  const categoryLoans = getCategoryCountFromTypeCounts(typeCounts, loanCategory);
+  const categoryRatio = categoryLoans / totalLoans;
+  return totalAmount * categoryRatio;
+}
+
+function getCategoryWeightBias(categoryWeight) {
+  return 0.8 + (0.2 * Math.max(0, Math.min(1, categoryWeight)));
+}
+
+function getOfficerCategoryParticipationBias(officerConfig, loanCategory, eligibleOfficerConfigs) {
+  if (loanCategory !== loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE) {
+    return 1;
+  }
+
+  const hasMortgageOnlyOfficer = eligibleOfficerConfigs.some((candidate) => {
+    const eligibility = loanCategoryUtils.normalizeOfficerEligibility(candidate.eligibility);
+    return !eligibility.consumer && eligibility.mortgage;
+  });
+
+  if (!hasMortgageOnlyOfficer) {
+    return 1;
+  }
+
+  const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officerConfig?.eligibility);
+  const isMortgageOnly = !eligibility.consumer && eligibility.mortgage;
+  const isFlex = eligibility.consumer && eligibility.mortgage;
+
+  if (isMortgageOnly) {
+    return 1.15;
+  }
+
+  if (isFlex) {
+    return 0.6;
+  }
+
+  return 1;
+}
+
+function chooseOfficerForLoan(officersByName, officerLoanTotals, officerTypeCounts, officerAmountTotals, officerActiveSessions, loan) {
+  const loanCategory = getLoanCategoryForType(loan.type);
+  let eligibleOfficers = Object.values(officersByName).filter((officerConfig) => isOfficerEligibleForLoanType(officerConfig, loan));
+  const isHelocLoan = String(loan?.type || '').trim().toLowerCase() === 'heloc';
+  if (loanCategory === loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE && !isHelocLoan) {
+    const mortgageOnlyOfficers = eligibleOfficers.filter((officerConfig) => {
+      const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officerConfig.eligibility);
+      return !eligibility.consumer && eligibility.mortgage;
+    });
+    if (mortgageOnlyOfficers.length) {
+      eligibleOfficers = mortgageOnlyOfficers;
+    }
+  }
+
+  if (!eligibleOfficers.length) {
+    return {
+      error: `No eligible officers are configured for ${loanCategory} loans.`,
+      loanCategory,
+      scoredOfficers: []
+    };
+  }
+
   const goalAmount = getGoalAmountForLoan(loan);
-  const shuffledOfficers = shuffle(cleanOfficers);
+  const eligibleOfficerNames = eligibleOfficers.map((officer) => officer.name);
+  const shuffledOfficers = shuffle(eligibleOfficerNames);
+  const categoryLoanTotals = Object.fromEntries(
+    eligibleOfficerNames.map((officerName) => [officerName, getCategoryCountFromTypeCounts(officerTypeCounts[officerName], loanCategory)])
+  );
+  const categoryAmountTotals = Object.fromEntries(
+    eligibleOfficerNames.map((officerName) => [officerName, getEstimatedCategoryAmountTotal(
+      officerTypeCounts[officerName],
+      officerAmountTotals[officerName],
+      loanCategory
+    )])
+  );
 
   const scoredOfficers = shuffledOfficers.map((officer) => {
     const currentTypeTotals = Object.fromEntries(
-      cleanOfficers.map((currentOfficer) => [currentOfficer, officerTypeCounts[currentOfficer][loan.type] || 0])
+      eligibleOfficerNames.map((currentOfficer) => [currentOfficer, officerTypeCounts[currentOfficer][loan.type] || 0])
     );
 
-    const projectedTypeLoads = buildProjectedLoads(cleanOfficers, currentTypeTotals, officerActiveSessions, officer, 1);
-    const projectedAmountLoads = buildProjectedLoads(cleanOfficers, officerAmountTotals, officerActiveSessions, officer, goalAmount);
-    const projectedLoanLoads = buildProjectedLoads(cleanOfficers, officerLoanTotals, officerActiveSessions, officer, 1);
+    const projectedTypeLoads = buildProjectedLoads(eligibleOfficerNames, currentTypeTotals, officerActiveSessions, officer, 1);
+    const projectedAmountLoads = eligibleOfficerNames.map((officerName) => getNormalizedAmountFairnessValue(
+      categoryAmountTotals[officerName] + (officerName === officer ? goalAmount : 0),
+      officerActiveSessions[officerName]
+    ));
+    const projectedRawAmountLoads = eligibleOfficerNames.map((officerName) => getNormalizedFairnessValue(
+      categoryAmountTotals[officerName] + (officerName === officer ? goalAmount : 0),
+      officerActiveSessions[officerName]
+    ));
+    const projectedLoanLoads = buildProjectedLoads(eligibleOfficerNames, categoryLoanTotals, officerActiveSessions, officer, 1);
 
     const typeVariance = calculateVariance(projectedTypeLoads);
     const amountVariance = calculateVariance(projectedAmountLoads);
     const loanVariance = calculateVariance(projectedLoanLoads);
     const distinctTypePenalty = getDistinctTypeCount(officerTypeCounts[officer]) * 0.0025;
-    const currentAmountPenalty = getNormalizedFairnessValue(officerAmountTotals[officer] + goalAmount, officerActiveSessions[officer]) * 0.00001;
-    const score = (typeVariance * 4) + (amountVariance * 3) + (loanVariance * 2) + distinctTypePenalty + currentAmountPenalty;
+    const currentAmountPenalty = getNormalizedAmountFairnessValue(
+      categoryAmountTotals[officer] + goalAmount,
+      officerActiveSessions[officer]
+    ) * 0.01;
+    let consumerDollarDriftPenalty = 0;
+    if (loanCategory === loanCategoryUtils.LOAN_CATEGORIES.CONSUMER && projectedRawAmountLoads.length) {
+      const projectedRawAverage = projectedRawAmountLoads.reduce((sum, value) => sum + value, 0) / projectedRawAmountLoads.length;
+      const projectedOfficerRawAmountLoad = getNormalizedFairnessValue(
+        categoryAmountTotals[officer] + goalAmount,
+        officerActiveSessions[officer]
+      );
+      const allowedConsumerAmountLoad = projectedRawAverage * 1.2;
+      if (projectedOfficerRawAmountLoad > allowedConsumerAmountLoad && projectedRawAverage > 0) {
+        const overageRatio = (projectedOfficerRawAmountLoad - allowedConsumerAmountLoad) / projectedRawAverage;
+        consumerDollarDriftPenalty = (overageRatio ** 2) * 6;
+      }
+    }
+    const amountWeightMultiplier = loanCategory === loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE ? 6 : 5;
+    const loanWeightMultiplier = loanCategory === loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE ? 1 : 1.5;
+    const fairnessScore = (typeVariance * 4) + (amountVariance * amountWeightMultiplier) + (loanVariance * loanWeightMultiplier) + distinctTypePenalty + currentAmountPenalty + consumerDollarDriftPenalty;
+    const categoryWeight = loanCategoryUtils.getCategoryWeightForOfficer(officersByName[officer], loanCategory);
+    const participationBias = getOfficerCategoryParticipationBias(officersByName[officer], loanCategory, eligibleOfficers);
+    const score = fairnessScore / (getCategoryWeightBias(categoryWeight) * participationBias);
 
     return {
       officer,
       score,
+      fairnessScore,
+      categoryWeight,
+      loanCategory,
       typeVariance,
       amountVariance,
       loanVariance,
       distinctTypePenalty,
       currentAmountPenalty,
+      consumerDollarDriftPenalty,
       projectedTypeLoad: getNormalizedFairnessValue((officerTypeCounts[officer][loan.type] || 0) + 1, officerActiveSessions[officer]),
       projectedAmountLoad: getNormalizedFairnessValue(officerAmountTotals[officer] + goalAmount, officerActiveSessions[officer]),
       projectedLoanLoad: getNormalizedFairnessValue(officerLoanTotals[officer] + 1, officerActiveSessions[officer])
@@ -3123,7 +3901,17 @@ async function saveResultPdf(result, officers, loans, generatedAt) {
 function assignLoans(officers, loans, runningTotals = { officers: {} }) {
   const activeLoanTypes = getActiveLoanTypeNames();
 
-  const cleanOfficers = [...new Set(officers.map((name) => name.trim()).filter(Boolean))];
+  const normalizedOfficers = officers.map(normalizeOfficerConfig).filter((officer) => officer.name);
+  const cleanOfficers = Object.values(
+    normalizedOfficers.reduce((map, officer) => {
+      if (!map[officer.name]) {
+        map[officer.name] = officer;
+      }
+      return map;
+    }, {})
+  );
+  const cleanOfficerNames = cleanOfficers.map((officer) => officer.name);
+  const officersByName = Object.fromEntries(cleanOfficers.map((officer) => [officer.name, officer]));
   const cleanLoans = loans
     .map((loan) => ({
       name: loan.name.trim(),
@@ -3134,13 +3922,13 @@ function assignLoans(officers, loans, runningTotals = { officers: {} }) {
     .filter((loan) => activeLoanTypes.includes(loan.type));
 
   const loanCount = cleanLoans.length;
-  const officerCount = cleanOfficers.length;
+  const officerCount = cleanOfficerNames.length;
 
   if (officerCount < 1) {
     return { error: 'Please add at least one loan officer.' };
   }
 
-  if (officerCount !== officers.length) {
+  if (officerCount !== normalizedOfficers.length) {
     return { error: 'Loan officer names must be unique so assignments are tracked correctly.' };
   }
 
@@ -3159,30 +3947,34 @@ function assignLoans(officers, loans, runningTotals = { officers: {} }) {
   const officerLoanTotals = {};
   const officerActiveSessions = {};
 
-  cleanOfficers.forEach((officer) => {
-    const priorStats = normalizeOfficerStats(runningTotals.officers?.[officer]);
-    officerAssignments[officer] = [];
-    officerTypeCounts[officer] = { ...priorStats.typeCounts };
-    officerAmountTotals[officer] = priorStats.totalAmountRequested;
-    officerLoanTotals[officer] = priorStats.loanCount;
-    officerActiveSessions[officer] = priorStats.activeSessionCount + 1;
+  cleanOfficerNames.forEach((officerName) => {
+    const priorStats = normalizeOfficerStats(runningTotals.officers?.[officerName]);
+    officerAssignments[officerName] = [];
+    officerTypeCounts[officerName] = { ...priorStats.typeCounts };
+    officerAmountTotals[officerName] = priorStats.totalAmountRequested;
+    officerLoanTotals[officerName] = priorStats.loanCount;
+    officerActiveSessions[officerName] = priorStats.activeSessionCount + 1;
   });
 
   const loanAssignments = [];
   const fairnessAudit = [];
 
-  activeLoanTypes.forEach((loanType) => {
-    const loansForType = shuffle(cleanLoans.filter((loan) => loan.type === loanType));
+  try {
+    activeLoanTypes.forEach((loanType) => {
+      const loansForType = shuffle(cleanLoans.filter((loan) => loan.type === loanType));
 
-    if (!loansForType.length) {
-      return;
-    }
+      if (!loansForType.length) {
+        return;
+      }
 
-    const orderedLoansForType = [...loansForType].sort((loanA, loanB) => getGoalAmountForLoan(loanB) - getGoalAmountForLoan(loanA));
+      const orderedLoansForType = [...loansForType].sort((loanA, loanB) => getGoalAmountForLoan(loanB) - getGoalAmountForLoan(loanA));
 
-    orderedLoansForType.forEach((loan) => {
-      const assignmentDecision = chooseOfficerForLoan(cleanOfficers, officerLoanTotals, officerTypeCounts, officerAmountTotals, officerActiveSessions, loan);
-      const assignedOfficer = assignmentDecision.selectedOfficer;
+      orderedLoansForType.forEach((loan) => {
+        const assignmentDecision = chooseOfficerForLoan(officersByName, officerLoanTotals, officerTypeCounts, officerAmountTotals, officerActiveSessions, loan);
+        if (assignmentDecision.error) {
+          throw new Error(assignmentDecision.error);
+        }
+        const assignedOfficer = assignmentDecision.selectedOfficer;
 
       officerAssignments[assignedOfficer].push(loan);
 
@@ -3200,19 +3992,22 @@ function assignLoans(officers, loans, runningTotals = { officers: {} }) {
         shared: false
       });
 
-      fairnessAudit.push({
-        loan,
-        selectedOfficer: assignedOfficer,
-        scoredOfficers: assignmentDecision.scoredOfficers
+        fairnessAudit.push({
+          loan,
+          selectedOfficer: assignedOfficer,
+          scoredOfficers: assignmentDecision.scoredOfficers
+        });
       });
     });
-  });
+  } catch (error) {
+    return { error: error.message || 'Could not complete loan assignment.' };
+  }
 
   return {
     loanAssignments: shuffle(loanAssignments),
     officerAssignments,
     fairnessAudit,
-    runningTotalsUsed: Object.fromEntries(cleanOfficers.map((officer) => [officer, normalizeOfficerStats(runningTotals.officers?.[officer])]))
+    runningTotalsUsed: Object.fromEntries(cleanOfficerNames.map((officerName) => [officerName, normalizeOfficerStats(runningTotals.officers?.[officerName])]))
   };
 }
 
@@ -3394,6 +4189,7 @@ function renderLoadedRunningTotals(runningTotals) {
       <h3>${escapeHtml(officer)} <span class="badge">${escapeHtml(String(stats.loanCount))} tracked</span></h3>
       <div class="amount-summary">Running goal dollars: ${escapeHtml(formatCurrency(stats.totalAmountRequested))}</div>
       <div class="amount-summary">Active sessions: ${escapeHtml(String(stats.activeSessionCount))}</div>
+      <div class="amount-summary">Loan scope: ${escapeHtml(loanCategoryUtils.getOfficerScopeFromConfig(stats.eligibility) === loanCategoryUtils.OFFICER_SCOPES.CONSUMER_AND_MORTGAGE ? 'Consumer + Mortgage' : loanCategoryUtils.getOfficerScopeFromConfig(stats.eligibility) === loanCategoryUtils.OFFICER_SCOPES.MORTGAGE_ONLY ? 'Mortgage Only' : 'Consumer Only')}</div>
       <div class="amount-summary">${escapeHtml(formatTypeCounts(stats.typeCounts))}</div>
     `;
     officerAssignmentsEl.appendChild(officerSummary);
@@ -3483,11 +4279,25 @@ async function handleImportPriorMonthClick() {
   }
 }
 
-addOfficerBtn.addEventListener('click', () => addOfficer());
+addOfficerBtn.addEventListener('click', () => {
+  if (!outputDirectoryHandle) {
+    setStepMessage('step1', 'Choose an output folder (live mode) or launch demo mode before adding officers.', 'warning');
+    return;
+  }
+
+  openOfficerEditorModal(null);
+});
 importPriorMonthBtn.addEventListener('click', () => {
   handleImportPriorMonthClick();
 });
-addLoanBtn.addEventListener('click', () => addLoan());
+addLoanBtn.addEventListener('click', () => {
+  if (!outputDirectoryHandle) {
+    setStepMessage('step1', 'Choose an output folder (live mode) or launch demo mode before adding loans.', 'warning');
+    return;
+  }
+
+  addLoan();
+});
 importLoansBtn?.addEventListener('click', () => {
   if (!outputDirectoryHandle) {
     setStepMessage('step1', 'Choose an output folder before importing loans.', 'warning');
@@ -3505,6 +4315,70 @@ loanImportModalEl?.addEventListener('click', (event) => {
   if (event.target === loanImportModalEl) {
     closeLoanImportModal();
   }
+});
+officerEditorClassSelect?.addEventListener('change', syncOfficerEditorFromClassPreset);
+loanTypeEditorAvailabilityInput?.addEventListener('change', syncLoanTypeEditorAvailability);
+closeLoanTypeEditorModalBtn?.addEventListener('click', closeLoanTypeEditorModal);
+cancelLoanTypeEditorBtn?.addEventListener('click', closeLoanTypeEditorModal);
+loanTypeEditorForm?.addEventListener('submit', handleLoanTypeEditorSubmit);
+loanTypeEditorModalEl?.addEventListener('click', (event) => {
+  if (event.target === loanTypeEditorModalEl) {
+    closeLoanTypeEditorModal();
+  }
+});
+closeOfficerEditorModalBtn?.addEventListener('click', closeOfficerEditorModal);
+cancelOfficerEditorBtn?.addEventListener('click', closeOfficerEditorModal);
+officerEditorModalEl?.addEventListener('click', (event) => {
+  if (event.target === officerEditorModalEl) {
+    closeOfficerEditorModal();
+  }
+});
+removeOfficerBtn?.addEventListener('click', () => {
+  if (activeOfficerEditRow) {
+    activeOfficerEditRow.remove();
+  }
+  closeOfficerEditorModal();
+});
+saveOfficerEditorBtn?.addEventListener('click', () => {
+  const officerName = String(officerEditorNameInput?.value || '').trim();
+  if (!officerName) {
+    setOfficerEditorModalMessage('Enter a loan officer name.', 'warning');
+    return;
+  }
+
+  const classValue = officerEditorClassSelect?.value || 'balanced';
+  const classPreset = OFFICER_CLASS_PRESETS[classValue] || OFFICER_CLASS_PRESETS.balanced;
+  const eligibility = loanCategoryUtils.normalizeOfficerEligibility(classPreset.eligibility);
+  const consumerWeightPercent = classValue === 'custom'
+    ? Number(officerEditorConsumerWeightInput?.value)
+    : toPercentWeight(classPreset.weights.consumer);
+  const mortgageWeightPercent = classValue === 'custom'
+    ? Number(officerEditorMortgageWeightInput?.value)
+    : toPercentWeight(classPreset.weights.mortgage);
+  const consumerWeight = fromPercentWeight(consumerWeightPercent);
+  const mortgageWeight = fromPercentWeight(mortgageWeightPercent);
+
+  if (!Number.isFinite(consumerWeightPercent) || consumerWeightPercent < 0 || !Number.isFinite(mortgageWeightPercent) || mortgageWeightPercent < 0) {
+    setOfficerEditorModalMessage('Enter valid non-negative percentages for both weights.', 'warning');
+    return;
+  }
+
+  const targetRow = activeOfficerEditRow || createInputRow('officer');
+  applyOfficerConfigToRow(targetRow, {
+    name: officerName,
+    eligibility,
+    weights: loanCategoryUtils.normalizeOfficerWeights({
+      consumer: consumerWeight,
+      mortgage: mortgageWeight
+    }, eligibility),
+    mortgageOverride: Boolean(officerEditorMortgageOverrideInput?.checked)
+  });
+
+  if (!activeOfficerEditRow) {
+    officerList.appendChild(targetRow);
+  }
+
+  closeOfficerEditorModal();
 });
 chooseFolderBtn.addEventListener('click', handleChooseFolderClick);
 launchDemoModeBtn?.addEventListener('click', handleLaunchDemoModeClick);
@@ -3635,7 +4509,7 @@ randomizeBtn.addEventListener('click', async () => {
 
   try {
     const generatedAt = new Date();
-    const updatedRunningTotals = buildUpdatedRunningTotals([...new Set(officers.map((name) => name.trim()).filter(Boolean))], result, runningTotals);
+    const updatedRunningTotals = buildUpdatedRunningTotals(officers, result, runningTotals);
     result.updatedRunningTotals = buildRunningTotalsWithCurrentOfficerStatuses(updatedRunningTotals);
     const fileName = await saveResultPdf(result, officers, loans, generatedAt);
     await saveRunningTotals(result.updatedRunningTotals);
@@ -3686,10 +4560,6 @@ clearBtn.addEventListener('click', () => {
     distributionDetailsEl.open = false;
   }
 
-  addOfficer();
-  addOfficer();
-  addOfficer();
-  addOfficer();
 });
 
 (async function initializeApp() {
@@ -3705,10 +4575,5 @@ clearBtn.addEventListener('click', () => {
     return;
   }
 
-  addOfficer('Loan Officer 1');
-  addOfficer('Loan Officer 2');
-  addOfficer('Loan Officer 3');
-  addLoan('Loan A', 'Collateralized', '15000');
-  addLoan('Loan B', 'Personal', '4000');
   updateFolderStatus();
 })();

@@ -224,7 +224,7 @@ button:disabled {
 
 .step-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(280px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
 }
 
@@ -233,6 +233,8 @@ button:disabled {
   border: 1px solid var(--border);
   border-radius: 14px;
   background: #fbfdff;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .row {
@@ -242,7 +244,37 @@ button:disabled {
 }
 
 .officer-row {
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(180px, 1fr) 64px 86px 64px;
+}
+
+.officer-column-headers {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 64px 86px 64px;
+  gap: 10px;
+  margin: 0 0 10px;
+  padding: 0 2px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.officer-row input[type="text"],
+.officer-row select {
+  padding: 8px 10px;
+}
+
+.officer-name-value {
+  display: flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  font-weight: 600;
 }
 
 .loan-row {
@@ -294,13 +326,16 @@ select {
 }
 
 .remove-btn {
-  min-width: 42px;
-  padding: 10px;
+  min-width: 40px;
+  width: 40px;
+  padding: 8px;
 }
 
 .vacation-btn {
   min-width: 86px;
-  padding: 10px 12px;
+  width: 86px;
+  padding: 8px 8px;
+  font-size: 0.9rem;
   background: #eef5ff;
   border-color: #c9d9f4;
   color: #2a4d84;
@@ -312,7 +347,49 @@ select {
   color: #8a4f00;
 }
 
-.officer-on-vacation input[type="text"] {
+.officer-priority-btn {
+  min-width: 112px;
+  width: 112px;
+  padding: 8px 8px;
+  font-size: 0.9rem;
+  line-height: 1.15;
+  background: #f2f6ff;
+  border-color: #c9d9f4;
+  color: #2a4d84;
+}
+
+.officer-class-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  min-height: 42px;
+  border: 1px solid #c9d9f4;
+  border-radius: 10px;
+  background: #f2f6ff;
+  color: #2a4d84;
+  font-weight: 700;
+}
+
+.officer-edit-btn {
+  min-width: 64px;
+  width: 64px;
+  padding: 8px 8px;
+  font-size: 0.9rem;
+}
+
+.danger-btn {
+  background: #ffe9e9;
+  border-color: #efb3b3;
+  color: #9b1c1c;
+}
+
+.danger-btn:hover {
+  background: #ffdede;
+  border-color: #e59494;
+}
+
+.officer-on-vacation .officer-name-value {
   background: #f4f6f8;
   color: #7a8795;
 }
@@ -1003,7 +1080,7 @@ select {
 
 .simulation-officer-column-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 140px 44px;
+  grid-template-columns: minmax(180px, 1fr) 64px 86px 64px;
   gap: 10px;
   margin: 0 0 8px;
   padding: 0 2px;
@@ -1016,12 +1093,21 @@ select {
 
 .simulation-officer-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 140px 44px;
+  grid-template-columns: minmax(180px, 1fr) 64px 86px 64px;
   gap: 10px;
 }
 
-.simulation-officer-row .remove-btn {
-  min-width: 44px;
+.simulation-officer-row .officer-name-value {
+  min-height: 42px;
+}
+
+.simulation-officer-row .officer-edit-btn {
+  min-width: 64px;
+}
+
+.simulation-vacation-input {
+  text-align: center;
+  padding: 8px 6px;
 }
 
 .modal-actions {
@@ -1288,7 +1374,8 @@ select {
     text-align: left;
   }
 
-  .loan-column-headers {
+  .loan-column-headers,
+  .officer-column-headers {
     display: none;
   }
 

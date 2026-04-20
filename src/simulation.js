@@ -21,6 +21,7 @@
   const simulationOfficerListEl = document.getElementById('simulationOfficerList');
   const simulationModalMessageEl = document.getElementById('simulationModalMessage');
   const simulationOfficerState = [];
+  const loanCategoryUtils = window.LoanCategoryUtils;
 
   function getCurrentMonthKey() {
     const date = new Date();
@@ -56,8 +57,54 @@
 
   function getOfficerValuesForSimulationSeed() {
     return [...officerList.querySelectorAll('.officer-row')]
-      .map((row) => row.querySelector('input')?.value?.trim() || '')
-      .filter(Boolean);
+      .map((row) => {
+        const name = String(row.dataset.officerName || '').trim();
+        const eligibility = loanCategoryUtils.normalizeOfficerEligibility({
+          consumer: row.dataset.eligibilityConsumer === 'true',
+          mortgage: row.dataset.eligibilityMortgage === 'true'
+        });
+        return {
+          name,
+          eligibility: loanCategoryUtils.normalizeOfficerEligibility(eligibility),
+          weights: loanCategoryUtils.normalizeOfficerWeights({
+            consumer: row.dataset.weightConsumer,
+            mortgage: row.dataset.weightMortgage
+          }, eligibility),
+          mortgageOverride: row.dataset.mortgageOverride === 'true'
+        };
+      })
+      .filter((entry) => entry.name);
+  }
+
+  function getClassCodeFromEligibility(eligibility) {
+    const normalizedEligibility = loanCategoryUtils.normalizeOfficerEligibility(eligibility);
+    if (normalizedEligibility.consumer && normalizedEligibility.mortgage) {
+      return 'F';
+    }
+    if (normalizedEligibility.mortgage) {
+      return 'M';
+    }
+    return 'C';
+  }
+
+  function rotateOfficerClass(index) {
+    const entry = simulationOfficerState[index];
+    if (!entry) {
+      return;
+    }
+
+    const classOrder = ['C', 'F', 'M'];
+    const currentClass = getClassCodeFromEligibility(entry.eligibility);
+    const currentIndex = classOrder.indexOf(currentClass);
+    const nextClass = classOrder[(currentIndex + 1) % classOrder.length];
+    const scopeByClass = {
+      C: loanCategoryUtils.OFFICER_SCOPES.CONSUMER_ONLY,
+      F: loanCategoryUtils.OFFICER_SCOPES.CONSUMER_AND_MORTGAGE,
+      M: loanCategoryUtils.OFFICER_SCOPES.MORTGAGE_ONLY
+    };
+    const nextScope = scopeByClass[nextClass] || loanCategoryUtils.OFFICER_SCOPES.CONSUMER_AND_MORTGAGE;
+    entry.eligibility = loanCategoryUtils.getEligibilityFromScope(nextScope);
+    entry.weights = loanCategoryUtils.getDefaultWeightsForScope(nextScope);
   }
 
   function renderSimulationOfficerList() {
@@ -77,24 +124,30 @@
 
     simulationOfficerState.forEach((entry, index) => {
       const row = document.createElement('div');
-      row.className = 'simulation-officer-row';
+      row.className = 'simulation-officer-row officer-row';
 
-      const nameInput = document.createElement('input');
-      nameInput.type = 'text';
-      nameInput.value = entry.name;
-      nameInput.placeholder = 'Loan officer name';
-      nameInput.setAttribute('aria-label', 'Simulation loan officer name');
-      nameInput.addEventListener('input', () => {
-        simulationOfficerState[index].name = nameInput.value.trim();
+      const nameEl = document.createElement('span');
+      nameEl.className = 'officer-name-value';
+      nameEl.textContent = entry.name;
+
+      const classBtn = document.createElement('button');
+      classBtn.type = 'button';
+      classBtn.className = 'officer-class-label';
+      classBtn.textContent = getClassCodeFromEligibility(entry.eligibility);
+      classBtn.setAttribute('aria-label', `Rotate class for ${entry.name || 'simulation officer'}`);
+      classBtn.title = 'Click to cycle class: C → F → M';
+      classBtn.addEventListener('click', () => {
+        rotateOfficerClass(index);
+        renderSimulationOfficerList();
       });
 
       const vacationInput = document.createElement('input');
       vacationInput.type = 'number';
+      vacationInput.className = 'simulation-vacation-input';
       vacationInput.min = '0';
       vacationInput.step = '1';
-      vacationInput.value = String(entry.vacationDays);
-      vacationInput.placeholder = '0';
-      vacationInput.setAttribute('aria-label', 'Vacation days in month');
+      vacationInput.value = String(Number.isFinite(entry.vacationDays) ? entry.vacationDays : 0);
+      vacationInput.setAttribute('aria-label', `Vacation days for ${entry.name || 'simulation officer'}`);
       vacationInput.addEventListener('input', () => {
         const rawDays = Number.parseInt(vacationInput.value || '0', 10);
         simulationOfficerState[index].vacationDays = Number.isFinite(rawDays) && rawDays >= 0 ? rawDays : 0;
@@ -102,15 +155,16 @@
 
       const removeBtn = document.createElement('button');
       removeBtn.type = 'button';
-      removeBtn.className = 'remove-btn';
-      removeBtn.textContent = '×';
+      removeBtn.className = 'officer-edit-btn danger-btn';
+      removeBtn.textContent = 'Remove';
       removeBtn.setAttribute('aria-label', `Remove ${entry.name || 'simulation officer'}`);
       removeBtn.addEventListener('click', () => {
         simulationOfficerState.splice(index, 1);
         renderSimulationOfficerList();
       });
 
-      row.appendChild(nameInput);
+      row.appendChild(nameEl);
+      row.appendChild(classBtn);
       row.appendChild(vacationInput);
       row.appendChild(removeBtn);
       simulationOfficerListEl.appendChild(row);
@@ -120,8 +174,8 @@
   function seedSimulationOfficerStateFromMainScreen() {
     simulationOfficerState.length = 0;
 
-    getOfficerValuesForSimulationSeed().forEach((name) => {
-      simulationOfficerState.push({ name, vacationDays: 0 });
+    getOfficerValuesForSimulationSeed().forEach((officerConfig) => {
+      simulationOfficerState.push({ ...officerConfig, vacationDays: 0 });
     });
 
     renderSimulationOfficerList();
@@ -136,7 +190,14 @@
       return;
     }
 
-    simulationOfficerState.push({ name, vacationDays: 0 });
+    const eligibility = loanCategoryUtils.getDefaultOfficerEligibility();
+    simulationOfficerState.push({
+      name,
+      vacationDays: 0,
+      eligibility,
+      weights: loanCategoryUtils.getDefaultWeightsForScope(loanCategoryUtils.getOfficerScopeFromConfig(eligibility)),
+      mortgageOverride: false
+    });
     if (simulationOfficerNameInput) {
       simulationOfficerNameInput.value = '';
     }
@@ -198,34 +259,98 @@
     return copy;
   }
 
-  function chooseOfficerForLoanWithRandom(cleanOfficers, officerLoanTotals, officerTypeCounts, officerAmountTotals, officerActiveSessions, loan, randomFn) {
+  function chooseOfficerForLoanWithRandom(officersByName, officerLoanTotals, officerTypeCounts, officerAmountTotals, officerActiveSessions, loan, randomFn) {
+    const loanCategory = getLoanCategoryForType(loan.type);
+    let eligibleOfficers = Object.values(officersByName).filter((officerConfig) => isOfficerEligibleForLoanType(officerConfig, loan));
+    const isHelocLoan = String(loan?.type || '').trim().toLowerCase() === 'heloc';
+    if (loanCategory === loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE && !isHelocLoan) {
+      const mortgageOnlyOfficers = eligibleOfficers.filter((officerConfig) => {
+        const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officerConfig.eligibility);
+        return !eligibility.consumer && eligibility.mortgage;
+      });
+      if (mortgageOnlyOfficers.length) {
+        eligibleOfficers = mortgageOnlyOfficers;
+      }
+    }
+    if (!eligibleOfficers.length && loanCategory === loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE) {
+      eligibleOfficers = Object.values(officersByName).filter((officerConfig) => {
+        const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officerConfig.eligibility);
+        return eligibility.consumer && eligibility.mortgage;
+      });
+    }
+    const eligibleOfficerNames = eligibleOfficers.map((officer) => officer.name);
+    if (!eligibleOfficerNames.length) {
+      return { error: `No eligible officers are configured for ${loanCategory} loans.` };
+    }
+
     const goalAmount = getGoalAmountForLoan(loan);
-    const shuffledOfficers = shuffleWithRandom(cleanOfficers, randomFn);
+    const shuffledOfficers = shuffleWithRandom(eligibleOfficerNames, randomFn);
+    const categoryLoanTotals = Object.fromEntries(
+      eligibleOfficerNames.map((officerName) => [officerName, getCategoryCountFromTypeCounts(officerTypeCounts[officerName], loanCategory)])
+    );
+    const categoryAmountTotals = Object.fromEntries(
+      eligibleOfficerNames.map((officerName) => [officerName, getEstimatedCategoryAmountTotal(
+        officerTypeCounts[officerName],
+        officerAmountTotals[officerName],
+        loanCategory
+      )])
+    );
 
     const scoredOfficers = shuffledOfficers.map((officer) => {
       const currentTypeTotals = Object.fromEntries(
-        cleanOfficers.map((currentOfficer) => [currentOfficer, officerTypeCounts[currentOfficer][loan.type] || 0])
+        eligibleOfficerNames.map((currentOfficer) => [currentOfficer, officerTypeCounts[currentOfficer][loan.type] || 0])
       );
 
-      const projectedTypeLoads = buildProjectedLoads(cleanOfficers, currentTypeTotals, officerActiveSessions, officer, 1);
-      const projectedAmountLoads = buildProjectedLoads(cleanOfficers, officerAmountTotals, officerActiveSessions, officer, goalAmount);
-      const projectedLoanLoads = buildProjectedLoads(cleanOfficers, officerLoanTotals, officerActiveSessions, officer, 1);
+      const projectedTypeLoads = buildProjectedLoads(eligibleOfficerNames, currentTypeTotals, officerActiveSessions, officer, 1);
+      const projectedAmountLoads = eligibleOfficerNames.map((officerName) => getNormalizedAmountFairnessValue(
+        categoryAmountTotals[officerName] + (officerName === officer ? goalAmount : 0),
+        officerActiveSessions[officerName]
+      ));
+      const projectedRawAmountLoads = eligibleOfficerNames.map((officerName) => getNormalizedFairnessValue(
+        categoryAmountTotals[officerName] + (officerName === officer ? goalAmount : 0),
+        officerActiveSessions[officerName]
+      ));
+      const projectedLoanLoads = buildProjectedLoads(eligibleOfficerNames, categoryLoanTotals, officerActiveSessions, officer, 1);
 
       const typeVariance = calculateVariance(projectedTypeLoads);
       const amountVariance = calculateVariance(projectedAmountLoads);
       const loanVariance = calculateVariance(projectedLoanLoads);
       const distinctTypePenalty = getDistinctTypeCount(officerTypeCounts[officer]) * 0.0025;
-      const currentAmountPenalty = getNormalizedFairnessValue(officerAmountTotals[officer] + goalAmount, officerActiveSessions[officer]) * 0.00001;
-      const score = (typeVariance * 4) + (amountVariance * 3) + (loanVariance * 2) + distinctTypePenalty + currentAmountPenalty;
+      const currentAmountPenalty = getNormalizedAmountFairnessValue(
+        categoryAmountTotals[officer] + goalAmount,
+        officerActiveSessions[officer]
+      ) * 0.01;
+      let consumerDollarDriftPenalty = 0;
+      if (loanCategory === loanCategoryUtils.LOAN_CATEGORIES.CONSUMER && projectedRawAmountLoads.length) {
+        const projectedRawAverage = projectedRawAmountLoads.reduce((sum, value) => sum + value, 0) / projectedRawAmountLoads.length;
+        const projectedOfficerRawAmountLoad = getNormalizedFairnessValue(
+          categoryAmountTotals[officer] + goalAmount,
+          officerActiveSessions[officer]
+        );
+        const allowedConsumerAmountLoad = projectedRawAverage * 1.2;
+        if (projectedOfficerRawAmountLoad > allowedConsumerAmountLoad && projectedRawAverage > 0) {
+          const overageRatio = (projectedOfficerRawAmountLoad - allowedConsumerAmountLoad) / projectedRawAverage;
+          consumerDollarDriftPenalty = (overageRatio ** 2) * 6;
+        }
+      }
+      const amountWeightMultiplier = loanCategory === loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE ? 6 : 5;
+      const loanWeightMultiplier = loanCategory === loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE ? 1 : 1.5;
+      const fairnessScore = (typeVariance * 4) + (amountVariance * amountWeightMultiplier) + (loanVariance * loanWeightMultiplier) + distinctTypePenalty + currentAmountPenalty + consumerDollarDriftPenalty;
+      const categoryWeight = loanCategoryUtils.getCategoryWeightForOfficer(officersByName[officer], loanCategory);
+      const participationBias = getOfficerCategoryParticipationBias(officersByName[officer], loanCategory, eligibleOfficers);
+      const score = fairnessScore / (getCategoryWeightBias(categoryWeight) * participationBias);
 
       return {
         officer,
         score,
+        categoryWeight,
+        fairnessScore,
         typeVariance,
         amountVariance,
         loanVariance,
         distinctTypePenalty,
         currentAmountPenalty,
+        consumerDollarDriftPenalty,
         projectedTypeLoad: getNormalizedFairnessValue((officerTypeCounts[officer][loan.type] || 0) + 1, officerActiveSessions[officer]),
         projectedAmountLoad: getNormalizedFairnessValue(officerAmountTotals[officer] + goalAmount, officerActiveSessions[officer]),
         projectedLoanLoad: getNormalizedFairnessValue(officerLoanTotals[officer] + 1, officerActiveSessions[officer])
@@ -242,7 +367,10 @@
 
   function assignLoansWithRandom(officers, loans, runningTotals, randomFn) {
     const activeLoanTypes = getActiveLoanTypeNames();
-    const cleanOfficers = [...new Set(officers.map((name) => name.trim()).filter(Boolean))];
+    const cleanOfficers = [...new Set(officers.map((officer) => officer.name.trim()).filter(Boolean))]
+      .map((name) => officers.find((officer) => officer.name === name));
+    const cleanOfficerNames = cleanOfficers.map((officer) => officer.name);
+    const officersByName = Object.fromEntries(cleanOfficers.map((officer) => [officer.name, officer]));
     const cleanLoans = loans
       .map((loan) => ({
         name: loan.name.trim(),
@@ -252,7 +380,7 @@
       .filter((loan) => loan.name)
       .filter((loan) => activeLoanTypes.includes(loan.type));
 
-    if (!cleanOfficers.length) {
+    if (!cleanOfficerNames.length) {
       return { error: 'Please add at least one loan officer before running a fairness simulation.' };
     }
 
@@ -266,7 +394,7 @@
     const officerLoanTotals = {};
     const officerActiveSessions = {};
 
-    cleanOfficers.forEach((officer) => {
+    cleanOfficerNames.forEach((officer) => {
       const priorStats = normalizeOfficerStats(runningTotals.officers?.[officer]);
       officerAssignments[officer] = [];
       officerTypeCounts[officer] = { ...priorStats.typeCounts };
@@ -278,18 +406,19 @@
     const loanAssignments = [];
     const fairnessAudit = [];
 
-    activeLoanTypes.forEach((loanType) => {
-      const loansForType = shuffleWithRandom(cleanLoans.filter((loan) => loan.type === loanType), randomFn);
+    try {
+      activeLoanTypes.forEach((loanType) => {
+        const loansForType = shuffleWithRandom(cleanLoans.filter((loan) => loan.type === loanType), randomFn);
 
-      if (!loansForType.length) {
-        return;
-      }
+        if (!loansForType.length) {
+          return;
+        }
 
       const orderedLoansForType = [...loansForType].sort((loanA, loanB) => getGoalAmountForLoan(loanB) - getGoalAmountForLoan(loanA));
 
-      orderedLoansForType.forEach((loan) => {
+        orderedLoansForType.forEach((loan) => {
         const assignmentDecision = chooseOfficerForLoanWithRandom(
-          cleanOfficers,
+          officersByName,
           officerLoanTotals,
           officerTypeCounts,
           officerAmountTotals,
@@ -297,6 +426,9 @@
           loan,
           randomFn
         );
+        if (assignmentDecision.error) {
+          throw new Error(assignmentDecision.error);
+        }
 
         const assignedOfficer = assignmentDecision.selectedOfficer;
 
@@ -316,24 +448,39 @@
           shared: false
         });
 
-        fairnessAudit.push({
-          loan,
-          selectedOfficer: assignedOfficer,
-          scoredOfficers: assignmentDecision.scoredOfficers
+          fairnessAudit.push({
+            loan,
+            selectedOfficer: assignedOfficer,
+            scoredOfficers: assignmentDecision.scoredOfficers
+          });
         });
       });
-    });
+    } catch (error) {
+      return { error: error.message || 'The fairness simulation could not complete assignments.' };
+    }
 
     return {
       loanAssignments: shuffleWithRandom(loanAssignments, randomFn),
       officerAssignments,
       fairnessAudit,
-      runningTotalsUsed: Object.fromEntries(cleanOfficers.map((officer) => [officer, normalizeOfficerStats(runningTotals.officers?.[officer])]))
+      runningTotalsUsed: Object.fromEntries(cleanOfficerNames.map((officer) => [officer, normalizeOfficerStats(runningTotals.officers?.[officer])]))
     };
   }
 
   function getDefaultAmountRange(loanType) {
     const normalizedType = String(loanType || '').toLowerCase();
+
+    if (normalizedType === 'first mortgage') {
+      return { min: 90000, max: 350000 };
+    }
+
+    if (normalizedType === 'home refi') {
+      return { min: 85000, max: 300000 };
+    }
+
+    if (normalizedType === 'heloc') {
+      return { min: 10000, max: 120000 };
+    }
 
     if (normalizedType === 'credit card') {
       return { min: 500, max: 8000 };
@@ -348,6 +495,30 @@
     }
 
     return { min: 1000, max: 25000 };
+  }
+
+  function getSimulatedLoanAmount(loanType, randomFn) {
+    const normalizedType = String(loanType || '').toLowerCase();
+    const amountRange = getDefaultAmountRange(loanType);
+
+    if (normalizedType === 'first mortgage' || normalizedType === 'home refi') {
+      const belowSixFigureProbability = 0.2;
+      const useBelowSixFigureRange = randomFn() < belowSixFigureProbability;
+      const highBandMin = 100000;
+      const highBandRange = Math.max(amountRange.max - highBandMin, 0);
+
+      if (useBelowSixFigureRange) {
+        const lowBandMin = amountRange.min;
+        const lowBandMax = Math.min(99900, amountRange.max);
+        const lowBandRange = Math.max(lowBandMax - lowBandMin, 0);
+        return Math.round((lowBandMin + (lowBandRange * randomFn())) / 100) * 100;
+      }
+
+      return Math.round((highBandMin + (highBandRange * randomFn())) / 100) * 100;
+    }
+
+    const rawAmount = amountRange.min + ((amountRange.max - amountRange.min) * randomFn());
+    return Math.round(rawAmount / 100) * 100;
   }
 
   function chooseSimulatedLoanType(activeTypes, randomFn) {
@@ -368,6 +539,18 @@
 
       if (normalizedType === 'collateralized') {
         return { typeName, weight: 0.25 };
+      }
+
+      if (normalizedType === 'first mortgage') {
+        return { typeName, weight: 0.05 };
+      }
+
+      if (normalizedType === 'home refi') {
+        return { typeName, weight: 0.05 };
+      }
+
+      if (normalizedType === 'heloc') {
+        return { typeName, weight: 0.08 };
       }
 
       return { typeName, weight: 1 / activeTypes.length };
@@ -417,9 +600,7 @@
 
     for (let index = 0; index < loanCount; index += 1) {
       const loanType = chooseSimulatedLoanType(activeTypes, randomFn);
-      const amountRange = getDefaultAmountRange(loanType);
-      const rawAmount = amountRange.min + ((amountRange.max - amountRange.min) * randomFn());
-      const roundedAmount = Math.round(rawAmount / 100) * 100;
+      const roundedAmount = getSimulatedLoanAmount(loanType, randomFn);
       const paddedSequence = String(sequence).padStart(4, '0');
 
       loans.push({
@@ -452,7 +633,10 @@
     const simulationOfficers = simulationOfficerState
       .map((entry) => ({
         name: String(entry.name || '').trim(),
-        vacationDays: Number.isFinite(entry.vacationDays) ? Math.max(0, Math.trunc(entry.vacationDays)) : 0
+        vacationDays: Number.isFinite(entry.vacationDays) ? Math.max(0, Math.trunc(entry.vacationDays)) : 0,
+        eligibility: loanCategoryUtils.normalizeOfficerEligibility(entry.eligibility),
+        weights: loanCategoryUtils.normalizeOfficerWeights(entry.weights, entry.eligibility),
+        mortgageOverride: Boolean(entry.mortgageOverride)
       }))
       .filter((entry) => entry.name);
 
@@ -517,6 +701,12 @@
       const assignedLoans = loanHistoryEntries.filter((entry) => entry.assignedOfficer === officer);
       const totalLoans = assignedLoans.length;
       const totalAmount = assignedLoans.reduce((sum, entry) => sum + getGoalAmountForLoan(entry.loan), 0);
+      const consumerLoans = assignedLoans.filter((entry) => getLoanCategoryForType(entry.loan.type) === loanCategoryUtils.LOAN_CATEGORIES.CONSUMER);
+      const mortgageLoans = assignedLoans.filter((entry) => getLoanCategoryForType(entry.loan.type) === loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE);
+      const consumerLoanCount = consumerLoans.length;
+      const mortgageLoanCount = mortgageLoans.length;
+      const consumerAmount = consumerLoans.reduce((sum, entry) => sum + getGoalAmountForLoan(entry.loan), 0);
+      const mortgageAmount = mortgageLoans.reduce((sum, entry) => sum + getGoalAmountForLoan(entry.loan), 0);
       const typeBreakdown = assignedLoans.reduce((counts, entry) => {
         counts[entry.loan.type] = (counts[entry.loan.type] || 0) + 1;
         return counts;
@@ -526,6 +716,10 @@
         officer,
         totalLoans,
         totalAmount,
+        consumerLoanCount,
+        mortgageLoanCount,
+        consumerAmount,
+        mortgageAmount,
         averageLoanAmount: totalLoans ? totalAmount / totalLoans : 0,
         percentOfGoal: eomGoalPerOfficer > 0 ? (totalAmount / eomGoalPerOfficer) * 100 : 0,
         typeBreakdown
@@ -533,40 +727,119 @@
     });
   }
 
-  function buildSimulationFairnessSummary(officerStats) {
-    const loanCounts = officerStats.map((entry) => entry.totalLoans);
-    const dollarAmounts = officerStats.map((entry) => entry.totalAmount);
-    const averageLoanCount = loanCounts.length
-      ? loanCounts.reduce((sum, value) => sum + value, 0) / loanCounts.length
+  function calculateCategoryVarianceStats(officerStats, simulationOfficers, categoryKey) {
+    const eligibleOfficerNames = simulationOfficers
+      .filter((officer) => loanCategoryUtils.isOfficerEligibleForCategory(officer, categoryKey))
+      .map((officer) => officer.name);
+    const eligibleStats = officerStats.filter((entry) => eligibleOfficerNames.includes(entry.officer));
+
+    if (!eligibleStats.length) {
+      return {
+        officerCount: 0,
+        averageLoanCount: 0,
+        averageDollarAmount: 0,
+        maxCountVariancePercent: 0,
+        maxAmountVariancePercent: 0,
+        countDistributionPass: true,
+        amountDistributionPass: true
+      };
+    }
+
+    const statsByOfficer = Object.fromEntries(officerStats.map((entry) => [entry.officer, entry]));
+    const eligibleOfficerConfigs = simulationOfficers.filter((officer) => eligibleOfficerNames.includes(officer.name));
+    const hasMortgageOnlyOfficer = eligibleOfficerConfigs.some((officer) => {
+      const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officer.eligibility);
+      return !eligibility.consumer && eligibility.mortgage;
+    });
+
+    const roleNormalizationWeights = eligibleOfficerConfigs.map((officer) => {
+      const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officer.eligibility);
+      const isFlex = eligibility.consumer && eligibility.mortgage;
+      const normalizedCategoryWeight = Math.max(loanCategoryUtils.getCategoryWeightForOfficer(officer, categoryKey), 0.05);
+      let roleNormalizationFactor = 1;
+
+      if (isFlex && categoryKey === loanCategoryUtils.LOAN_CATEGORIES.CONSUMER && hasMortgageOnlyOfficer) {
+        roleNormalizationFactor = 0.8;
+      }
+
+      if (isFlex && categoryKey === loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE && hasMortgageOnlyOfficer) {
+        roleNormalizationFactor = 0.6;
+      }
+
+      return normalizedCategoryWeight * roleNormalizationFactor;
+    });
+
+    const totalRoleWeight = roleNormalizationWeights.reduce((sum, weight) => sum + weight, 0);
+    const normalizedRoleWeights = roleNormalizationWeights.map((weight) => (totalRoleWeight ? weight / totalRoleWeight : 0));
+    const totalCategoryLoanCount = eligibleOfficerConfigs.reduce((sum, officer) => {
+      const stats = statsByOfficer[officer.name];
+      return sum + (categoryKey === loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE ? (stats?.mortgageLoanCount || 0) : (stats?.consumerLoanCount || 0));
+    }, 0);
+    const totalCategoryDollarAmount = eligibleOfficerConfigs.reduce((sum, officer) => {
+      const stats = statsByOfficer[officer.name];
+      return sum + (categoryKey === loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE ? (stats?.mortgageAmount || 0) : (stats?.consumerAmount || 0));
+    }, 0);
+
+    let maxCountVariancePercent = 0;
+    let maxAmountVariancePercent = 0;
+
+    eligibleOfficerConfigs.forEach((officer, index) => {
+      const stats = statsByOfficer[officer.name];
+      const actualCategoryLoanCount = categoryKey === loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE ? (stats?.mortgageLoanCount || 0) : (stats?.consumerLoanCount || 0);
+      const actualCategoryDollarAmount = categoryKey === loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE ? (stats?.mortgageAmount || 0) : (stats?.consumerAmount || 0);
+      const expectedCategoryLoanCount = totalCategoryLoanCount * normalizedRoleWeights[index];
+      const expectedCategoryDollarAmount = totalCategoryDollarAmount * normalizedRoleWeights[index];
+      const countVariancePercent = expectedCategoryLoanCount
+        ? (Math.abs(actualCategoryLoanCount - expectedCategoryLoanCount) / expectedCategoryLoanCount) * 100
+        : 0;
+      const amountVariancePercent = expectedCategoryDollarAmount
+        ? (Math.abs(actualCategoryDollarAmount - expectedCategoryDollarAmount) / expectedCategoryDollarAmount) * 100
+        : 0;
+
+      maxCountVariancePercent = Math.max(maxCountVariancePercent, countVariancePercent);
+      maxAmountVariancePercent = Math.max(maxAmountVariancePercent, amountVariancePercent);
+    });
+
+    const averageLoanCount = eligibleOfficerConfigs.length ? totalCategoryLoanCount / eligibleOfficerConfigs.length : 0;
+    const averageDollarAmount = eligibleOfficerConfigs.length ? totalCategoryDollarAmount / eligibleOfficerConfigs.length : 0;
+
+    return {
+      officerCount: eligibleStats.length,
+      averageLoanCount,
+      averageDollarAmount,
+      maxCountVariancePercent,
+      maxAmountVariancePercent,
+      countDistributionPass: maxCountVariancePercent <= COUNT_VARIANCE_THRESHOLD_PERCENT,
+      amountDistributionPass: maxAmountVariancePercent <= AMOUNT_VARIANCE_THRESHOLD_PERCENT
+    };
+  }
+
+  function buildSimulationFairnessSummary(officerStats, simulationOfficers) {
+    const averageLoanCount = officerStats.length
+      ? officerStats.reduce((sum, entry) => sum + entry.totalLoans, 0) / officerStats.length
       : 0;
-    const averageDollarAmount = dollarAmounts.length
-      ? dollarAmounts.reduce((sum, value) => sum + value, 0) / dollarAmounts.length
+    const averageDollarAmount = officerStats.length
+      ? officerStats.reduce((sum, entry) => sum + entry.totalAmount, 0) / officerStats.length
       : 0;
 
-    const highestLoanCount = Math.max(...loanCounts, 0);
-    const lowestLoanCount = Math.min(...loanCounts, 0);
-    const highestDollarAmount = Math.max(...dollarAmounts, 0);
-    const lowestDollarAmount = Math.min(...dollarAmounts, 0);
-
-    const maxCountVariancePercent = averageLoanCount
-      ? ((highestLoanCount - lowestLoanCount) / averageLoanCount) * 100
-      : 0;
-    const maxAmountVariancePercent = averageDollarAmount
-      ? ((highestDollarAmount - lowestDollarAmount) / averageDollarAmount) * 100
-      : 0;
-
-    const countDistributionPass = maxCountVariancePercent <= COUNT_VARIANCE_THRESHOLD_PERCENT;
-    const amountDistributionPass = maxAmountVariancePercent <= AMOUNT_VARIANCE_THRESHOLD_PERCENT;
+    const consumerVariance = calculateCategoryVarianceStats(officerStats, simulationOfficers, loanCategoryUtils.LOAN_CATEGORIES.CONSUMER);
+    const mortgageVariance = calculateCategoryVarianceStats(officerStats, simulationOfficers, loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE);
+    const maxCountVariancePercent = Math.max(consumerVariance.maxCountVariancePercent, mortgageVariance.maxCountVariancePercent);
+    const maxAmountVariancePercent = Math.max(consumerVariance.maxAmountVariancePercent, mortgageVariance.maxAmountVariancePercent);
+    const countDistributionPass = consumerVariance.countDistributionPass && mortgageVariance.countDistributionPass;
+    const amountDistributionPass = consumerVariance.amountDistributionPass && mortgageVariance.amountDistributionPass;
 
     return {
       averageLoanCount,
       averageDollarAmount,
-      highestLoanCount,
-      lowestLoanCount,
-      highestDollarAmount,
-      lowestDollarAmount,
+      highestLoanCount: officerStats.length ? Math.max(...officerStats.map((entry) => entry.totalLoans)) : 0,
+      lowestLoanCount: officerStats.length ? Math.min(...officerStats.map((entry) => entry.totalLoans)) : 0,
+      highestDollarAmount: officerStats.length ? Math.max(...officerStats.map((entry) => entry.totalAmount)) : 0,
+      lowestDollarAmount: officerStats.length ? Math.min(...officerStats.map((entry) => entry.totalAmount)) : 0,
       maxCountVariancePercent,
       maxAmountVariancePercent,
+      consumerVariance,
+      mortgageVariance,
       countDistributionPass,
       amountDistributionPass,
       overallPass: countDistributionPass && amountDistributionPass
@@ -589,14 +862,47 @@
         }).imageDataUrl
       },
       {
-        title: 'Monthly Goal Dollar Distribution',
+        title: 'Monthly Consumer Goal Dollar Distribution',
         imageDataUrl: drawDonutChart({
-          title: 'Monthly Goal Dollar Distribution',
+          title: 'Monthly Consumer Goal Dollar Distribution',
           distribution: officerStats.map((entry) => ({
             officer: entry.officer,
-            loanCount: entry.totalLoans,
-            totalAmountRequested: entry.totalAmount
+            loanCount: entry.consumerLoanCount,
+            totalAmountRequested: entry.consumerAmount
+          })).filter((entry) => entry.totalAmountRequested > 0),
+          field: 'totalAmountRequested',
+          valueFormatter: (value) => formatCurrency(value)
+        }).imageDataUrl
+      },
+      {
+        title: 'Monthly Mortgage Goal Dollar Distribution',
+        imageDataUrl: drawDonutChart({
+          title: 'Monthly Mortgage Goal Dollar Distribution',
+          distribution: officerStats.map((entry) => ({
+            officer: entry.officer,
+            loanCount: entry.mortgageLoanCount,
+            totalAmountRequested: entry.mortgageAmount
           })),
+          field: 'totalAmountRequested',
+          valueFormatter: (value) => formatCurrency(value)
+        }).imageDataUrl
+      },
+      {
+        title: 'Consumer vs Mortgage Goal Dollars',
+        imageDataUrl: drawDonutChart({
+          title: 'Consumer vs Mortgage Goal Dollars',
+          distribution: [
+            {
+              officer: 'Consumer',
+              loanCount: officerStats.reduce((sum, entry) => sum + entry.consumerLoanCount, 0),
+              totalAmountRequested: officerStats.reduce((sum, entry) => sum + entry.consumerAmount, 0)
+            },
+            {
+              officer: 'Mortgage',
+              loanCount: officerStats.reduce((sum, entry) => sum + entry.mortgageLoanCount, 0),
+              totalAmountRequested: officerStats.reduce((sum, entry) => sum + entry.mortgageAmount, 0)
+            }
+          ],
           field: 'totalAmountRequested',
           valueFormatter: (value) => formatCurrency(value)
         }).imageDataUrl
@@ -605,6 +911,15 @@
   }
 
   function buildSimulationPdfLines(simulationResult) {
+    const mortgageOnlyOfficerCount = simulationResult.simulationOfficers
+      .filter((officer) => {
+        const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officer.eligibility);
+        return !eligibility.consumer && eligibility.mortgage;
+      }).length;
+    const singleMloVarianceNote = mortgageOnlyOfficerCount === 1
+      ? 'Note: Mortgage variance can remain elevated when only one mortgage-only officer is configured.'
+      : '';
+
     const lines = [
       { text: 'SIMULATION REPORT - NOT ACTUAL PRODUCTION DATA', size: 18, gapAfter: 16 },
       { text: `Simulation month: ${simulationResult.monthLabel}`, size: 11, gapAfter: 4 },
@@ -618,8 +933,13 @@
       { text: `Overall result: ${simulationResult.fairnessSummary.overallPass ? 'PASS' : 'REVIEW'}`, size: 12, gapAfter: 4 },
       { text: `Average loans per officer: ${simulationResult.fairnessSummary.averageLoanCount.toFixed(2)}`, size: 11, gapAfter: 4 },
       { text: `Average goal dollars per officer: ${formatCurrency(simulationResult.fairnessSummary.averageDollarAmount)}`, size: 11, gapAfter: 4 },
-      { text: `Loan count variance: ${simulationResult.fairnessSummary.maxCountVariancePercent.toFixed(1)}% (threshold ${COUNT_VARIANCE_THRESHOLD_PERCENT}%)`, size: 11, gapAfter: 4 },
-      { text: `Goal dollar variance: ${simulationResult.fairnessSummary.maxAmountVariancePercent.toFixed(1)}% (threshold ${AMOUNT_VARIANCE_THRESHOLD_PERCENT}%)`, size: 11, gapAfter: 10 },
+      { text: `Consumer loan variance: ${simulationResult.fairnessSummary.consumerVariance.maxCountVariancePercent.toFixed(1)}%`, size: 11, gapAfter: 4 },
+      { text: `Consumer dollar variance: ${simulationResult.fairnessSummary.consumerVariance.maxAmountVariancePercent.toFixed(1)}%`, size: 11, gapAfter: 4 },
+      { text: 'Consumer variance is calculated from consumer-category loans only (mortgage loans excluded).', size: 10, gapAfter: 4 },
+      { text: 'Flex officers are normalized by role-share in variance calculations when MLOs are present.', size: 10, gapAfter: 4 },
+      { text: `Mortgage loan variance: ${simulationResult.fairnessSummary.mortgageVariance.maxCountVariancePercent.toFixed(1)}%`, size: 11, gapAfter: 4 },
+      { text: `Mortgage dollar variance: ${simulationResult.fairnessSummary.mortgageVariance.maxAmountVariancePercent.toFixed(1)}%`, size: 11, gapAfter: singleMloVarianceNote ? 4 : 10 },
+      ...(singleMloVarianceNote ? [{ text: singleMloVarianceNote, size: 10, gapAfter: 10 }] : []),
       { text: 'Officer Monthly Totals', size: 14, gapAfter: 10 }
     ];
 
@@ -627,7 +947,7 @@
 
     simulationResult.officerStats.forEach((entry) => {
       lines.push({
-        text: `${entry.officer} | Loans: ${entry.totalLoans} | Goal dollars: ${formatCurrency(entry.totalAmount)} | Avg loan: ${formatCurrency(entry.averageLoanAmount)} | Goal progress: ${entry.percentOfGoal.toFixed(1)}% | Vacation days: ${simulationOfficerMap[entry.officer]?.vacationDays || 0} | ${formatTypeCounts(entry.typeBreakdown)}`,
+        text: `${entry.officer} | Loans: ${entry.totalLoans} | Goal dollars: ${formatCurrency(entry.totalAmount)} | Consumer dollars: ${formatCurrency(entry.consumerAmount)} | Mortgage dollars: ${formatCurrency(entry.mortgageAmount)} | Avg loan: ${formatCurrency(entry.averageLoanAmount)} | Goal progress: ${entry.percentOfGoal.toFixed(1)}% | Vacation days: ${simulationOfficerMap[entry.officer]?.vacationDays || 0} | ${formatTypeCounts(entry.typeBreakdown)}`,
         size: 11,
         gapAfter: 6
       });
@@ -733,6 +1053,14 @@
     loanAssignmentsEl.appendChild(summaryCard);
 
     const simulationOfficerMap = Object.fromEntries(simulationResult.simulationOfficers.map((entry) => [entry.name, entry]));
+    const mortgageOnlyOfficerCount = simulationResult.simulationOfficers
+      .filter((officer) => {
+        const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officer.eligibility);
+        return !eligibility.consumer && eligibility.mortgage;
+      }).length;
+    const singleMloVarianceNote = mortgageOnlyOfficerCount === 1
+      ? 'Note: Mortgage variance can be higher when only one mortgage-only officer is configured.'
+      : '';
 
     simulationResult.officerStats.forEach((entry) => {
       const officerCard = document.createElement('div');
@@ -740,6 +1068,8 @@
       officerCard.innerHTML = `
         <h3>${escapeHtml(entry.officer)} <span class="badge">${escapeHtml(String(entry.totalLoans))} simulated loans</span></h3>
         <div class="amount-summary">Goal dollars: ${escapeHtml(formatCurrency(entry.totalAmount))}</div>
+        <div class="amount-summary">Consumer goal dollars: ${escapeHtml(formatCurrency(entry.consumerAmount))}</div>
+        <div class="amount-summary">Mortgage goal dollars: ${escapeHtml(formatCurrency(entry.mortgageAmount))}</div>
         <div class="amount-summary">Average simulated loan: ${escapeHtml(formatCurrency(entry.averageLoanAmount))}</div>
         <div class="amount-summary">Percent to EOM goal: ${escapeHtml(entry.percentOfGoal.toFixed(1))}%</div>
         <div class="amount-summary">Type mix: ${escapeHtml(formatTypeCounts(entry.typeBreakdown))}</div>
@@ -756,8 +1086,13 @@
         <div class="audit-summary-line"><strong>Overall status:</strong> ${escapeHtml(simulationResult.fairnessSummary.overallPass ? 'PASS' : 'REVIEW')}</div>
         <div class="audit-summary-line"><strong>Average loans per officer:</strong> ${escapeHtml(simulationResult.fairnessSummary.averageLoanCount.toFixed(2))}</div>
         <div class="audit-summary-line"><strong>Average goal dollars per officer:</strong> ${escapeHtml(formatCurrency(simulationResult.fairnessSummary.averageDollarAmount))}</div>
-        <div class="audit-summary-line"><strong>Loan count variance:</strong> ${escapeHtml(simulationResult.fairnessSummary.maxCountVariancePercent.toFixed(1))}% (threshold ${COUNT_VARIANCE_THRESHOLD_PERCENT}%)</div>
-        <div class="audit-summary-line"><strong>Goal dollar variance:</strong> ${escapeHtml(simulationResult.fairnessSummary.maxAmountVariancePercent.toFixed(1))}% (threshold ${AMOUNT_VARIANCE_THRESHOLD_PERCENT}%)</div>
+        <div class="audit-summary-line"><strong>Consumer loan variance:</strong> ${escapeHtml(simulationResult.fairnessSummary.consumerVariance.maxCountVariancePercent.toFixed(1))}%</div>
+        <div class="audit-summary-line"><strong>Consumer dollar variance:</strong> ${escapeHtml(simulationResult.fairnessSummary.consumerVariance.maxAmountVariancePercent.toFixed(1))}%</div>
+        <div class="audit-summary-line">Consumer variance uses consumer-category loans only (mortgage loans excluded).</div>
+        <div class="audit-summary-line">Flex officers are normalized by role-share in variance calculations when MLOs are present.</div>
+        <div class="audit-summary-line"><strong>Mortgage loan variance:</strong> ${escapeHtml(simulationResult.fairnessSummary.mortgageVariance.maxCountVariancePercent.toFixed(1))}%</div>
+        <div class="audit-summary-line"><strong>Mortgage dollar variance:</strong> ${escapeHtml(simulationResult.fairnessSummary.mortgageVariance.maxAmountVariancePercent.toFixed(1))}%</div>
+        ${singleMloVarianceNote ? `<div class="audit-summary-line">${escapeHtml(singleMloVarianceNote)}</div>` : ''}
       </div>
     `;
     fairnessAuditEl.appendChild(fairnessCard);
@@ -834,7 +1169,7 @@
       loanSequence += dayLoans.length;
 
       const dateKey = formatDateKey(date);
-      const availableOfficers = config.officerNames.filter((officer) => !vacationByOfficer[officer]?.has(dateKey));
+      const availableOfficers = config.simulationOfficers.filter((officer) => !vacationByOfficer[officer.name]?.has(dateKey));
       const dayResult = assignLoansWithRandom(availableOfficers, dayLoans, runningTotals, randomFn);
       if (dayResult.error) {
         throw new Error(dayResult.error);
@@ -851,8 +1186,8 @@
       runningTotals = buildUpdatedRunningTotals(availableOfficers, dayResult, runningTotals);
     });
 
-    const officerStats = buildSimulationOfficerStats(config.officerNames, loanHistoryEntries, config.eomGoalPerOfficer);
-    const fairnessSummary = buildSimulationFairnessSummary(officerStats);
+    const officerStats = buildSimulationOfficerStats(config.simulationOfficers.map((entry) => entry.name), loanHistoryEntries, config.eomGoalPerOfficer);
+    const fairnessSummary = buildSimulationFairnessSummary(officerStats, config.simulationOfficers);
 
     return {
       monthLabel: config.monthLabel,
