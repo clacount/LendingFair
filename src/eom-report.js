@@ -200,12 +200,39 @@
     ];
   }
 
-  function buildCustomDistributionCharts(officerStats, titlePrefix) {
-    const distribution = officerStats.map((entry) => ({
-      officer: entry.officer,
-      loanCount: entry.loanCount,
-      totalAmountRequested: entry.totalAmountRequested
-    }));
+  function buildCustomDistributionCharts(officerStats, fairnessEvaluation, titlePrefix) {
+    const engineType = fairnessEvaluation?.engineType || fairnessEngineService?.getSelectedFairnessEngine?.() || 'global';
+    const mortgageEligibleOfficerNames = new Set(
+      officerStats
+        .filter((entry) => normalizeFairnessEligibility(entry.eligibility).mortgage)
+        .map((entry) => entry.officer)
+    );
+    const distribution = officerStats.map((entry) => {
+      let consumerLoanCount = 0;
+      let mortgageLoanCount = 0;
+
+      Object.entries(entry.typeCounts || {}).forEach(([typeName, count]) => {
+        if (getLoanCategoryForType(typeName) === 'mortgage') {
+          mortgageLoanCount += Number(count) || 0;
+        } else {
+          consumerLoanCount += Number(count) || 0;
+        }
+      });
+
+      const totalAmount = Number(entry.totalAmountRequested) || 0;
+      const totalLoans = Number(entry.loanCount) || 0;
+      const consumerShare = totalLoans ? consumerLoanCount / totalLoans : 0;
+
+      return {
+        officer: entry.officer,
+        loanCount: totalLoans,
+        totalAmountRequested: totalAmount,
+        consumerLoanCount,
+        mortgageLoanCount,
+        consumerAmount: totalAmount * consumerShare,
+        mortgageAmount: totalAmount * (1 - consumerShare)
+      };
+    });
 
     return [
       {
@@ -222,6 +249,35 @@
         imageDataUrl: drawDonutChart({
           title: `${titlePrefix} Dollar Distribution`,
           distribution,
+          field: 'totalAmountRequested',
+          valueFormatter: (value) => formatCurrency(value)
+        }).imageDataUrl
+      },
+      {
+        title: `${titlePrefix} Consumer Goal Dollar Distribution`,
+        imageDataUrl: drawDonutChart({
+          title: `${titlePrefix} Consumer Goal Dollar Distribution`,
+          distribution: distribution.filter((entry) => entry.consumerAmount > 0).map((entry) => ({
+            officer: entry.officer,
+            loanCount: entry.consumerLoanCount,
+            totalAmountRequested: entry.consumerAmount
+          })),
+          field: 'totalAmountRequested',
+          valueFormatter: (value) => formatCurrency(value)
+        }).imageDataUrl
+      },
+      {
+        title: `${titlePrefix} Mortgage Goal Dollar Distribution${engineType === 'officer_lane' ? (fairnessEvaluation?.chartAnnotations?.mortgageTitleSuffix || '') : ''}`,
+        imageDataUrl: drawDonutChart({
+          title: `${titlePrefix} Mortgage Goal Dollar Distribution${engineType === 'officer_lane' ? (fairnessEvaluation?.chartAnnotations?.mortgageTitleSuffix || '') : ''}`,
+          // Match the run-time lane view by excluding consumer-only officers from mortgage-lane charts.
+          distribution: distribution
+            .filter((entry) => engineType !== 'officer_lane' || mortgageEligibleOfficerNames.has(entry.officer))
+            .map((entry) => ({
+              officer: entry.officer,
+              loanCount: entry.mortgageLoanCount,
+              totalAmountRequested: entry.mortgageAmount
+            })),
           field: 'totalAmountRequested',
           valueFormatter: (value) => formatCurrency(value)
         }).imageDataUrl
@@ -532,7 +588,7 @@
       totalLoans: filteredEntries.length,
       totalAmountRequested: filteredEntries.reduce((sum, entry) => sum + (Number(entry.amountRequested) || 0), 0),
       fairnessSummary,
-      distributionCharts: buildCustomDistributionCharts(officerStats, 'Custom Report'),
+      distributionCharts: buildCustomDistributionCharts(officerStats, fairnessSummary.evaluation, 'Custom Report'),
       ...reportSettings
     };
   }

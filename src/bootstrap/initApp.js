@@ -4332,6 +4332,23 @@ function buildOfficerAssignmentsFromLoanAssignments(officerNames, loanAssignment
   return officerAssignments;
 }
 
+function orderScoredOfficersForSelectedOfficer(scoredOfficers, selectedOfficer) {
+  if (!Array.isArray(scoredOfficers) || !scoredOfficers.length) {
+    return [];
+  }
+
+  const selectedIndex = scoredOfficers.findIndex((score) => score?.officer === selectedOfficer);
+  if (selectedIndex <= 0) {
+    return [...scoredOfficers];
+  }
+
+  const reorderedScores = [...scoredOfficers];
+  const [selectedOfficerScore] = reorderedScores.splice(selectedIndex, 1);
+  // Audit consumers treat scoredOfficers[0] as the chosen officer, so keep selectedOfficer first.
+  reorderedScores.unshift(selectedOfficerScore);
+  return reorderedScores;
+}
+
 function rebuildFairnessAuditForAssignments({ activeLoanTypes, cleanLoans, officersByName, cleanOfficerNames, runningTotals, loanToOfficerMap }) {
   const officerTypeCounts = {};
   const officerAmountTotals = {};
@@ -4378,7 +4395,7 @@ function rebuildFairnessAuditForAssignments({ activeLoanTypes, cleanLoans, offic
       fairnessAudit.push({
         loan,
         selectedOfficer,
-        scoredOfficers: scoredDecision.scoredOfficers
+        scoredOfficers: orderScoredOfficersForSelectedOfficer(scoredDecision.scoredOfficers, selectedOfficer)
       });
     });
   });
