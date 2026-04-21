@@ -16,16 +16,20 @@
         <p class="brand-slogan">Fair and transparent loan assignment with audit-ready reporting</p>
       </div>
     </div>
-    <div class="fairness-model-control">
-      <label for="fairnessModelSelect">Fairness Model</label>
-      <select id="fairnessModelSelect" aria-label="Fairness Model">
-        <option value="global">Global Fairness</option>
-        <option value="officer_lane">Officer Lane Fairness</option>
-      </select>
-    </div>
     <div class="intro-steps">
       <strong>Quick steps</strong>
       <p>1. Connect a working folder for reports and saved history. 2. Load or enter loan officers and loans. 3. Run fair assignment and generate audit-ready reports.</p>
+      <div class="fairness-model-control">
+        <div class="fairness-model-header">
+          <span class="badge fairness-model-badge" data-fairness-model-badge>Global Fairness</span>
+          <label for="fairnessModelSelect">Fairness Model</label>
+        </div>
+        <select id="fairnessModelSelect" aria-label="Fairness Model">
+          <option value="global">Global Fairness</option>
+          <option value="officer_lane">Officer Lane Fairness</option>
+        </select>
+        <p id="fairnessModelHint" class="hint fairness-model-hint">Global Fairness compares all officers more evenly across total opportunity.</p>
+      </div>
     </div>
   </header>
 
@@ -141,7 +145,7 @@
       </div>
       <div id="simulationLaunchCard" class="simulation-launch-card">
         <div class="simulation-launch-copy">
-          <strong>Monthly Fairness Simulation</strong>
+          <strong>Monthly Fairness Simulation</strong> <span class="badge fairness-model-badge" data-fairness-model-badge>Global Fairness</span>
           <p>Run a full month simulation to validate fairness distribution before using the randomizer in production.</p>
         </div>
         <button id="runSimulationBtn" type="button">Launch Simulator</button>
@@ -170,7 +174,7 @@
     </section>
 
     <section class="card full">
-      <h2>Fairness Audit</h2>
+      <h2>Fairness Audit <span class="badge fairness-model-badge" data-fairness-model-badge>Global Fairness</span></h2>
       <p class="fairness-methodology">Assignments are balanced using loan type mix, total goal dollars, loan count, and historical distribution to keep workloads more even and reduce perceived bias.</p>
       <p class="fairness-thresholds">Thresholds: PASS when overall loan-count variance ≤ 15.0% and overall dollar variance ≤ 20.0%; otherwise REVIEW.</p>
       <div id="fairnessAudit" class="results empty">No fairness audit yet.</div>
@@ -382,6 +386,14 @@
           <span>End-of-month goal per officer</span>
           <input id="simulationEomGoalInput" name="simulationEomGoal" type="number" min="0" step="0.01" required />
         </label>
+        <label class="full-width">
+          <span>Amount profile</span>
+          <select id="simulationAmountProfileInput" name="simulationAmountProfile">
+            <option value="low">Low</option>
+            <option value="mid" selected>Mid</option>
+            <option value="high">High</option>
+          </select>
+        </label>
       </div>
 
       <div class="simulation-officer-manager">
@@ -416,6 +428,11 @@
 <script src="src/integrations/graph-sharepoint-stub.js"></script>
 <script src="src/utils/loanCategoryUtils.js"></script>
 <script src="src/services/fairnessEngineService.js"></script>
+<script src="src/services/fairnessDisplayService.js"></script>
+<script src="src/ui/renderers/distributionChartRenderer.js"></script>
+<script src="src/ui/views/fairnessView.js"></script>
+<script src="src/ui/modals/officerEditorModal.js"></script>
+<script src="src/ui/modals/loanTypeEditorModal.js"></script>
 <script src="src/bootstrap/initApp.js"></script>
 <script src="src/app.js"></script>
 <script src="src/simulation.js"></script>

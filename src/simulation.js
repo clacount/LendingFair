@@ -5,6 +5,7 @@
   const DEFAULT_BUSINESS_DAYS = 22;
   const DEFAULT_MIN_LOANS_PER_DAY = 8;
   const DEFAULT_MAX_LOANS_PER_DAY = 16;
+  const DEFAULT_AMOUNT_PROFILE = 'mid';
 
   const simulationModalEl = document.getElementById('simulationModal');
   const simulationFormEl = document.getElementById('simulationForm');
@@ -16,6 +17,7 @@
   const simulationMinLoansInput = document.getElementById('simulationMinLoansInput');
   const simulationMaxLoansInput = document.getElementById('simulationMaxLoansInput');
   const simulationEomGoalInput = document.getElementById('simulationEomGoalInput');
+  const simulationAmountProfileInput = document.getElementById('simulationAmountProfileInput');
   const simulationOfficerNameInput = document.getElementById('simulationOfficerNameInput');
   const simulationAddOfficerBtn = document.getElementById('simulationAddOfficerBtn');
   const simulationOfficerListEl = document.getElementById('simulationOfficerList');
@@ -23,6 +25,7 @@
   const simulationOfficerState = [];
   const loanCategoryUtils = window.LoanCategoryUtils;
   const fairnessEngineService = window.FairnessEngineService;
+  const fairnessDisplayService = window.FairnessDisplayService;
 
   function getCurrentMonthKey() {
     const date = new Date();
@@ -53,6 +56,9 @@
     }
     if (simulationEomGoalInput) {
       simulationEomGoalInput.value = String(DEFAULT_EOM_GOAL_PER_OFFICER);
+    }
+    if (simulationAmountProfileInput) {
+      simulationAmountProfileInput.value = DEFAULT_AMOUNT_PROFILE;
     }
   }
 
@@ -330,6 +336,53 @@
     return normalizedSquaredError * 10;
   }
 
+  function getConsumerLaneCountBalancingPenalty(eligibleOfficerNames, categoryLoanTotals, selectedOfficer) {
+    if (getSelectedFairnessEngineForScoring() !== 'officer_lane' || eligibleOfficerNames.length < 2) {
+      return 0;
+    }
+
+    const projectedCounts = eligibleOfficerNames.map((officerName) => (
+      categoryLoanTotals[officerName] + (officerName === selectedOfficer ? 1 : 0)
+    ));
+    const totalProjectedCounts = projectedCounts.reduce((sum, value) => sum + value, 0);
+    if (!totalProjectedCounts) {
+      return 0;
+    }
+
+    const expectedPerOfficer = totalProjectedCounts / eligibleOfficerNames.length;
+    const meanSquaredRelativeError = projectedCounts.reduce((sum, count) => {
+      if (!expectedPerOfficer) {
+        return sum;
+      }
+      return sum + (((count - expectedPerOfficer) / expectedPerOfficer) ** 2);
+    }, 0) / projectedCounts.length;
+
+    return meanSquaredRelativeError * 8;
+  }
+
+  function getConsumerLaneUnevennessGuardPenalty(eligibleOfficerNames, categoryLoanTotals, officerActiveSessions, selectedOfficer) {
+    if (getSelectedFairnessEngineForScoring() !== 'officer_lane' || eligibleOfficerNames.length < 2) {
+      return 0;
+    }
+
+    const projectedNormalizedCounts = eligibleOfficerNames.map((officerName) => getNormalizedFairnessValue(
+      categoryLoanTotals[officerName] + (officerName === selectedOfficer ? 1 : 0),
+      officerActiveSessions[officerName]
+    ));
+    const minimumProjectedCount = Math.min(...projectedNormalizedCounts);
+    const selectedProjectedCount = getNormalizedFairnessValue(
+      categoryLoanTotals[selectedOfficer] + 1,
+      officerActiveSessions[selectedOfficer]
+    );
+    const countGap = selectedProjectedCount - minimumProjectedCount;
+
+    if (countGap <= 0) {
+      return 0;
+    }
+
+    return (countGap ** 2) * 12;
+  }
+
   function chooseOfficerForLoanWithRandom(officersByName, officerLoanTotals, officerTypeCounts, officerAmountTotals, officerActiveSessions, loan, randomFn) {
     const loanCategory = getLoanCategoryForType(loan.type);
     let eligibleOfficers = Object.values(officersByName).filter((officerConfig) => isOfficerEligibleForLoanType(officerConfig, loan));
@@ -342,11 +395,16 @@
       if (mortgageOnlyOfficers.length) {
         eligibleOfficers = mortgageOnlyOfficers;
       } else {
-        const flexCoverageOfficers = eligibleOfficers.filter((officerConfig) => {
+        const flexCoverageOfficers = Object.values(officersByName).filter((officerConfig) => {
           const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officerConfig.eligibility);
           return eligibility.consumer
             && eligibility.mortgage
-            && isOfficerEligibleForLoanType(officerConfig, loan);
+            && (
+              isOfficerEligibleForLoanType(officerConfig, loan)
+              // Simulation coverage rule: if no M-only officer is available today (for example due to vacation),
+              // Flex officers can temporarily cover full mortgage products for that day.
+              || !mortgageOnlyOfficers.length
+            );
         });
 
         if (flexCoverageOfficers.length) {
@@ -413,9 +471,23 @@
       const consumerRoleSharePenalty = loanCategory === loanCategoryUtils.LOAN_CATEGORIES.CONSUMER
         ? getConsumerRoleSharePenalty(officersByName, eligibleOfficerNames, categoryAmountTotals, officerActiveSessions, officer, goalAmount)
         : 0;
+      const consumerLaneCountBalancingPenalty = loanCategory === loanCategoryUtils.LOAN_CATEGORIES.CONSUMER
+        ? getConsumerLaneCountBalancingPenalty(eligibleOfficerNames, categoryLoanTotals, officer)
+        : 0;
+      const consumerLaneUnevennessGuardPenalty = loanCategory === loanCategoryUtils.LOAN_CATEGORIES.CONSUMER
+        ? getConsumerLaneUnevennessGuardPenalty(eligibleOfficerNames, categoryLoanTotals, officerActiveSessions, officer)
+        : 0;
       const amountWeightMultiplier = loanCategory === loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE ? 6 : consumerGuardrailSettings.consumerAmountWeight;
       const loanWeightMultiplier = loanCategory === loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE ? 1 : consumerGuardrailSettings.consumerLoanWeight;
-      const fairnessScore = (typeVariance * 4) + (amountVariance * amountWeightMultiplier) + (loanVariance * loanWeightMultiplier) + distinctTypePenalty + currentAmountPenalty + consumerDollarDriftPenalty + consumerRoleSharePenalty;
+      const fairnessScore = (typeVariance * 4)
+        + (amountVariance * amountWeightMultiplier)
+        + (loanVariance * loanWeightMultiplier)
+        + distinctTypePenalty
+        + currentAmountPenalty
+        + consumerDollarDriftPenalty
+        + consumerRoleSharePenalty
+        + consumerLaneCountBalancingPenalty
+        + consumerLaneUnevennessGuardPenalty;
       const categoryWeight = loanCategoryUtils.getCategoryWeightForOfficer(officersByName[officer], loanCategory);
       const participationBias = getOfficerCategoryParticipationBias(officersByName[officer], loanCategory, eligibleOfficers);
       const score = fairnessScore / (getCategoryWeightBias(categoryWeight) * participationBias);
@@ -432,6 +504,8 @@
         currentAmountPenalty,
         consumerDollarDriftPenalty,
         consumerRoleSharePenalty,
+        consumerLaneCountBalancingPenalty,
+        consumerLaneUnevennessGuardPenalty,
         projectedTypeLoad: getNormalizedFairnessValue((officerTypeCounts[officer][loan.type] || 0) + 1, officerActiveSessions[officer]),
         projectedAmountLoad: getNormalizedFairnessValue(officerAmountTotals[officer] + goalAmount, officerActiveSessions[officer]),
         projectedLoanLoad: getNormalizedFairnessValue(officerLoanTotals[officer] + 1, officerActiveSessions[officer])
@@ -548,19 +622,31 @@
     };
   }
 
-  function getDefaultAmountRange(loanType) {
+  function getDefaultAmountRange(loanType, amountProfile = DEFAULT_AMOUNT_PROFILE) {
     const normalizedType = String(loanType || '').toLowerCase();
+    const normalizedProfile = String(amountProfile || DEFAULT_AMOUNT_PROFILE).toLowerCase();
 
-    if (normalizedType === 'first mortgage') {
-      return { min: 90000, max: 350000 };
-    }
+    const rangeByProfile = {
+      low: {
+        'first mortgage': { min: 40000, max: 110000 },
+        'home refi': { min: 35000, max: 95000 },
+        heloc: { min: 4000, max: 45000 }
+      },
+      mid: {
+        'first mortgage': { min: 50000, max: 140000 },
+        'home refi': { min: 45000, max: 120000 },
+        heloc: { min: 6000, max: 60000 }
+      },
+      high: {
+        'first mortgage': { min: 75000, max: 220000 },
+        'home refi': { min: 70000, max: 190000 },
+        heloc: { min: 10000, max: 90000 }
+      }
+    };
 
-    if (normalizedType === 'home refi') {
-      return { min: 85000, max: 300000 };
-    }
-
-    if (normalizedType === 'heloc') {
-      return { min: 10000, max: 120000 };
+    const profileRanges = rangeByProfile[normalizedProfile] || rangeByProfile[DEFAULT_AMOUNT_PROFILE];
+    if (profileRanges[normalizedType]) {
+      return profileRanges[normalizedType];
     }
 
     if (normalizedType === 'credit card') {
@@ -578,26 +664,8 @@
     return { min: 1000, max: 25000 };
   }
 
-  function getSimulatedLoanAmount(loanType, randomFn) {
-    const normalizedType = String(loanType || '').toLowerCase();
-    const amountRange = getDefaultAmountRange(loanType);
-
-    if (normalizedType === 'first mortgage' || normalizedType === 'home refi') {
-      const belowSixFigureProbability = 0.2;
-      const useBelowSixFigureRange = randomFn() < belowSixFigureProbability;
-      const highBandMin = 100000;
-      const highBandRange = Math.max(amountRange.max - highBandMin, 0);
-
-      if (useBelowSixFigureRange) {
-        const lowBandMin = amountRange.min;
-        const lowBandMax = Math.min(99900, amountRange.max);
-        const lowBandRange = Math.max(lowBandMax - lowBandMin, 0);
-        return Math.round((lowBandMin + (lowBandRange * randomFn())) / 100) * 100;
-      }
-
-      return Math.round((highBandMin + (highBandRange * randomFn())) / 100) * 100;
-    }
-
+  function getSimulatedLoanAmount(loanType, randomFn, amountProfile = DEFAULT_AMOUNT_PROFILE) {
+    const amountRange = getDefaultAmountRange(loanType, amountProfile);
     const rawAmount = amountRange.min + ((amountRange.max - amountRange.min) * randomFn());
     return Math.round(rawAmount / 100) * 100;
   }
@@ -675,13 +743,13 @@
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   }
 
-  function generateSimulatedLoansForDate(date, loanCount, activeTypes, randomFn, startingSequence) {
+  function generateSimulatedLoansForDate(date, loanCount, activeTypes, randomFn, startingSequence, amountProfile = DEFAULT_AMOUNT_PROFILE) {
     const loans = [];
     let sequence = startingSequence;
 
     for (let index = 0; index < loanCount; index += 1) {
       const loanType = chooseSimulatedLoanType(activeTypes, randomFn);
-      const roundedAmount = getSimulatedLoanAmount(loanType, randomFn);
+      const roundedAmount = getSimulatedLoanAmount(loanType, randomFn, amountProfile);
       const paddedSequence = String(sequence).padStart(4, '0');
 
       loans.push({
@@ -710,6 +778,7 @@
     const minLoansPerDay = Number.parseInt(simulationMinLoansInput?.value || '', 10);
     const maxLoansPerDay = Number.parseInt(simulationMaxLoansInput?.value || '', 10);
     const eomGoalPerOfficer = Number.parseFloat(simulationEomGoalInput?.value || '');
+    const amountProfile = String(simulationAmountProfileInput?.value || DEFAULT_AMOUNT_PROFILE).trim().toLowerCase();
     const seed = Date.now();
     const simulationOfficers = simulationOfficerState
       .map((entry) => ({
@@ -750,6 +819,10 @@
       throw new Error('End-of-month goal dollars must be zero or greater.');
     }
 
+    if (!['low', 'mid', 'high'].includes(amountProfile)) {
+      throw new Error('Amount profile must be low, mid, or high.');
+    }
+
     if (!simulationOfficers.length) {
       throw new Error('Add at least one simulation officer before running the fairness simulation.');
     }
@@ -769,6 +842,7 @@
       minLoansPerDay,
       maxLoansPerDay,
       eomGoalPerOfficer,
+      amountProfile,
       seed
     };
   }
@@ -995,15 +1069,7 @@
   }
 
   function buildSimulationPdfLines(simulationResult) {
-    const mortgageOnlyOfficerCount = simulationResult.simulationOfficers
-      .filter((officer) => {
-        const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officer.eligibility);
-        return !eligibility.consumer && eligibility.mortgage;
-      }).length;
-    const singleMloVarianceNote = mortgageOnlyOfficerCount === 1
-      && !simulationResult.fairnessSummary.evaluation.notes.includes('Note: Mortgage variance can remain elevated when only one mortgage-only officer is configured.')
-      ? 'Note: Mortgage variance can remain elevated when only one mortgage-only officer is configured.'
-      : '';
+    const officerLaneModelNote = getOfficerLaneModelNote(simulationResult.fairnessSummary.evaluation);
 
     const lines = [
       { text: 'SIMULATION REPORT - NOT ACTUAL PRODUCTION DATA', size: 18, gapAfter: 16 },
@@ -1013,11 +1079,13 @@
       { text: `Total simulated loans: ${simulationResult.totalLoans}`, size: 11, gapAfter: 4 },
       { text: `Total simulated goal dollars: ${formatCurrency(simulationResult.totalAmount)}`, size: 11, gapAfter: 4 },
       { text: `End-of-month goal per officer: ${formatCurrency(simulationResult.eomGoalPerOfficer)}`, size: 11, gapAfter: 4 },
+      { text: `Amount profile: ${simulationResult.amountProfile}`, size: 11, gapAfter: 4 },
       { text: `Planned vacation days (all officers): ${simulationResult.simulationOfficers.reduce((sum, officer) => sum + officer.vacationDays, 0)}`, size: 11, gapAfter: 4 },
       { text: `Active simulation loan types: ${simulationResult.effectiveLoanTypes.join(', ') || 'None'}`, size: 11, gapAfter: simulationResult.excludedLoanTypes.length ? 4 : 14 },
       ...(simulationResult.excludedLoanTypes.length ? [{ text: `Excluded loan types due to officer eligibility: ${simulationResult.excludedLoanTypes.join(', ')}`, size: 10, gapAfter: 14 }] : []),
       { text: 'Fairness Summary', size: 14, gapAfter: 10 },
-      { text: `Fairness model: ${fairnessEngineService.FAIRNESS_ENGINE_LABELS[simulationResult.fairnessSummary.evaluation.engineType]}`, size: 11, gapAfter: 4 },
+      { text: `Fairness model: ${fairnessDisplayService?.getFairnessModelLabel(simulationResult.fairnessSummary.evaluation.engineType) || 'Global Fairness'}`, size: 11, gapAfter: 4 },
+      ...(officerLaneModelNote ? [{ text: `Model note: ${officerLaneModelNote}`, size: 10, gapAfter: 6 }] : []),
       { text: `Overall result: ${simulationResult.fairnessSummary.overallPass ? 'PASS' : 'REVIEW'}`, size: 12, gapAfter: 4 },
       { text: `Average loans per officer: ${simulationResult.fairnessSummary.averageLoanCount.toFixed(2)}`, size: 11, gapAfter: 4 },
       { text: `Average goal dollars per officer: ${formatCurrency(simulationResult.fairnessSummary.averageDollarAmount)}`, size: 11, gapAfter: 4 },
@@ -1031,8 +1099,7 @@
         : []),
       { text: `${simulationResult.fairnessSummary.evaluation.engineType === 'officer_lane' ? 'Mortgage loan variance (M lane)' : 'Mortgage loan variance'}: ${simulationResult.fairnessSummary.mortgageVariance.maxCountVariancePercent.toFixed(1)}%`, size: 11, gapAfter: 4 },
       { text: `${simulationResult.fairnessSummary.evaluation.engineType === 'officer_lane' ? 'Mortgage dollar variance (M lane)' : 'Mortgage dollar variance'}: ${simulationResult.fairnessSummary.mortgageVariance.maxAmountVariancePercent.toFixed(1)}%`, size: 11, gapAfter: 4 },
-      ...buildEvaluationNoteLines(simulationResult.fairnessSummary.evaluation.notes, { noteGapAfter: 4, headingGapAfter: 4 }),
-      ...(singleMloVarianceNote ? [{ text: singleMloVarianceNote.replace(/^Note:\s*/i, ''), size: 10, gapAfter: 10 }] : [{ text: '', size: 10, gapAfter: 6 }]),
+      { text: '', size: 10, gapAfter: 6 },
       { text: 'Officer Monthly Totals', size: 14, gapAfter: 10 }
     ];
 
@@ -1066,21 +1133,15 @@
     return lines;
   }
 
-  function buildEvaluationNoteLines(notes = [], options = {}) {
-    const noteGapAfter = Number.isFinite(options.noteGapAfter) ? options.noteGapAfter : 4;
-    const headingGapAfter = Number.isFinite(options.headingGapAfter) ? options.headingGapAfter : 4;
-    const normalizedNotes = notes
-      .map((note) => String(note || '').replace(/^Note:\s*/i, '').trim())
-      .filter(Boolean);
-
-    if (!normalizedNotes.length) {
-      return [];
+  function getOfficerLaneModelNote(evaluation = {}) {
+    if (evaluation?.engineType !== 'officer_lane') {
+      return '';
     }
 
-    return [
-      { text: 'Notes:', size: 12, gapAfter: headingGapAfter },
-      ...normalizedNotes.map((note) => ({ text: `- ${note}`, size: 10, gapAfter: noteGapAfter }))
-    ];
+    return (evaluation?.notes || [])
+      .map((note) => String(note || '').replace(/^Note:\s*/i, '').trim())
+      .find((note) => note.startsWith('Model note: Officer Lane variance is measured on Consumer-lane and Mortgage-lane officers'))
+      || '';
   }
 
   function buildSimulationPdfFileName(monthLabel) {
@@ -1165,15 +1226,7 @@
     loanAssignmentsEl.appendChild(summaryCard);
 
     const simulationOfficerMap = Object.fromEntries(simulationResult.simulationOfficers.map((entry) => [entry.name, entry]));
-    const mortgageOnlyOfficerCount = simulationResult.simulationOfficers
-      .filter((officer) => {
-        const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officer.eligibility);
-        return !eligibility.consumer && eligibility.mortgage;
-      }).length;
-    const singleMloVarianceNote = mortgageOnlyOfficerCount === 1
-      && !simulationResult.fairnessSummary.evaluation.notes.includes('Note: Mortgage variance can remain elevated when only one mortgage-only officer is configured.')
-      ? 'Note: Mortgage variance can be higher when only one mortgage-only officer is configured.'
-      : '';
+    const officerLaneModelNote = getOfficerLaneModelNote(simulationResult.fairnessSummary.evaluation);
 
     simulationResult.officerStats.forEach((entry) => {
       const officerCard = document.createElement('div');
@@ -1195,7 +1248,8 @@
     fairnessCard.className = 'audit-card';
     fairnessCard.innerHTML = `
       <h3>Fairness Simulation Audit</h3>
-      <div class="audit-summary-line"><strong>Fairness model:</strong> ${escapeHtml(fairnessEngineService.FAIRNESS_ENGINE_LABELS[simulationResult.fairnessSummary.evaluation.engineType])}</div>
+      <div class="audit-summary-line"><strong>Fairness model:</strong> ${escapeHtml(fairnessDisplayService?.getFairnessModelLabel(simulationResult.fairnessSummary.evaluation.engineType) || 'Global Fairness')}</div>
+      ${officerLaneModelNote ? `<div class="audit-summary-line">${escapeHtml(officerLaneModelNote)}</div>` : ''}
       <div class="audit-summary">
         <div class="audit-summary-line"><strong>Overall status:</strong> ${escapeHtml(simulationResult.fairnessSummary.overallPass ? 'PASS' : 'REVIEW')}</div>
         <div class="audit-summary-line"><strong>Average loans per officer:</strong> ${escapeHtml(simulationResult.fairnessSummary.averageLoanCount.toFixed(2))}</div>
@@ -1204,10 +1258,8 @@
         <div class="audit-summary-line"><strong>${simulationResult.fairnessSummary.evaluation.engineType === 'officer_lane' ? 'Consumer dollar variance (C lane):' : 'Consumer dollar variance:'}</strong> ${escapeHtml(simulationResult.fairnessSummary.consumerVariance.maxAmountVariancePercent.toFixed(1))}%</div>
         ${simulationResult.fairnessSummary.evaluation.metrics.flexVariance?.officerCount ? `<div class=\"audit-summary-line\"><strong>Flex consumer-vs-mortgage share variance:</strong> ${escapeHtml(simulationResult.fairnessSummary.evaluation.metrics.flexVariance.consumerShareVariancePercent.toFixed(1))}%</div>` : ''}
         ${simulationResult.fairnessSummary.evaluation.metrics.flexVariance?.officerCount ? `<div class=\"audit-summary-line\"><strong>Flex total dollars (consumer/mortgage):</strong> ${escapeHtml(formatCurrency(simulationResult.fairnessSummary.evaluation.metrics.flexVariance.totalConsumerAmount))} / ${escapeHtml(formatCurrency(simulationResult.fairnessSummary.evaluation.metrics.flexVariance.totalMortgageAmount))}</div>` : ''}
-        ${simulationResult.fairnessSummary.evaluation.notes.map((note) => `<div class=\"audit-summary-line\">- ${escapeHtml(String(note).replace(/^Note:\s*/i, ''))}</div>`).join('')}
         <div class="audit-summary-line"><strong>${simulationResult.fairnessSummary.evaluation.engineType === 'officer_lane' ? 'Mortgage loan variance (M lane):' : 'Mortgage loan variance:'}</strong> ${escapeHtml(simulationResult.fairnessSummary.mortgageVariance.maxCountVariancePercent.toFixed(1))}%</div>
         <div class="audit-summary-line"><strong>${simulationResult.fairnessSummary.evaluation.engineType === 'officer_lane' ? 'Mortgage dollar variance (M lane):' : 'Mortgage dollar variance:'}</strong> ${escapeHtml(simulationResult.fairnessSummary.mortgageVariance.maxAmountVariancePercent.toFixed(1))}%</div>
-        ${singleMloVarianceNote ? `<div class="audit-summary-line">${escapeHtml(singleMloVarianceNote)}</div>` : ''}
       </div>
     `;
     fairnessAuditEl.appendChild(fairnessCard);
@@ -1324,7 +1376,7 @@
 
     businessDates.forEach((date) => {
       const loanCount = getRandomInteger(randomFn, config.minLoansPerDay, config.maxLoansPerDay);
-      const dayLoans = generateSimulatedLoansForDate(date, loanCount, effectiveLoanTypes, randomFn, loanSequence);
+      const dayLoans = generateSimulatedLoansForDate(date, loanCount, effectiveLoanTypes, randomFn, loanSequence, config.amountProfile);
       loanSequence += dayLoans.length;
 
       const dateKey = formatDateKey(date);
@@ -1354,6 +1406,7 @@
       eomGoalPerOfficer: config.eomGoalPerOfficer,
       officers: config.officerNames,
       simulationOfficers: config.simulationOfficers,
+      amountProfile: config.amountProfile,
       totalLoans: loanHistoryEntries.length,
       totalAmount: loanHistoryEntries.reduce((sum, entry) => sum + getGoalAmountForLoan(entry.loan), 0),
       loanHistoryEntries,

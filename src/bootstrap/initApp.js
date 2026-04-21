@@ -246,9 +246,7 @@ function setSelectedFairnessEngine(engineType) {
 }
 
 function getSelectedFairnessEngineLabel() {
-  const selectedEngine = getSelectedFairnessEngine();
-  const labels = fairnessEngineService?.FAIRNESS_ENGINE_LABELS || {};
-  return labels[selectedEngine] || 'Global Fairness';
+  return window.FairnessDisplayService?.getFairnessModelLabel(getSelectedFairnessEngine()) || 'Global Fairness';
 }
 
 function getOfficerStatsFromResult(result) {
@@ -323,21 +321,14 @@ function syncFairnessModelSelect() {
 }
 
 function updateFairnessMethodologyCopy() {
-  const methodEl = document.querySelector('.fairness-methodology');
-  const thresholdEl = document.querySelector('.fairness-thresholds');
-  if (!methodEl) {
+  if (window.FairnessView?.updateFairnessMethodologyCopy) {
+    window.FairnessView.updateFairnessMethodologyCopy({ engineType: getSelectedFairnessEngine() });
     return;
   }
-  if (getSelectedFairnessEngine() === 'officer_lane') {
-    methodEl.textContent = 'Role-aware lane fairness is active: consumer fairness is evaluated on consumer-category loans, while mortgage concentration to M officers can be expected by design.';
-    if (thresholdEl) {
-      thresholdEl.textContent = 'Thresholds: PASS when Consumer-lane and Mortgage-lane count variance are each ≤ 15.0%, Consumer-lane and Mortgage-lane dollar variance are each ≤ 20.0%, Flex-lane count/dollar variance are within the same limits, and lane routing checks pass; otherwise REVIEW.';
-    }
-  } else {
+
+  const methodEl = document.querySelector('.fairness-methodology');
+  if (methodEl) {
     methodEl.textContent = 'Assignments are balanced using loan type mix, total goal dollars, loan count, and historical distribution to keep workloads more even and reduce perceived bias.';
-    if (thresholdEl) {
-      thresholdEl.textContent = 'Thresholds: PASS when overall loan-count variance ≤ 15.0% and overall dollar variance ≤ 20.0%; otherwise REVIEW will be displayed.';
-    }
   }
 }
 
@@ -1057,6 +1048,10 @@ function updateOfficerRowDisplay(row) {
 }
 
 function setOfficerEditorModalMessage(text = '', tone = 'warning') {
+  if (window.OfficerEditorModal?.setModalMessage) {
+    window.OfficerEditorModal.setModalMessage(officerEditorModalMessageEl, text, tone);
+    return;
+  }
   if (!officerEditorModalMessageEl) {
     return;
   }
@@ -1065,6 +1060,13 @@ function setOfficerEditorModalMessage(text = '', tone = 'warning') {
 }
 
 function closeOfficerEditorModal() {
+  if (window.OfficerEditorModal?.closeModal) {
+    window.OfficerEditorModal.closeModal(officerEditorModalEl, () => {
+      activeOfficerEditRow = null;
+      setOfficerEditorModalMessage('');
+    });
+    return;
+  }
   activeOfficerEditRow = null;
   setOfficerEditorModalMessage('');
   if (officerEditorModalEl) {
@@ -1073,6 +1075,10 @@ function closeOfficerEditorModal() {
 }
 
 function setLoanTypeEditorModalMessage(text = '', tone = 'warning') {
+  if (window.LoanTypeEditorModal?.setModalMessage) {
+    window.LoanTypeEditorModal.setModalMessage(loanTypeEditorModalMessageEl, text, tone);
+    return;
+  }
   if (!loanTypeEditorModalMessageEl) {
     return;
   }
@@ -1081,22 +1087,24 @@ function setLoanTypeEditorModalMessage(text = '', tone = 'warning') {
 }
 
 function syncLoanTypeEditorAvailability() {
-  const isSeasonal = loanTypeEditorAvailabilityInput?.value === 'seasonal';
-  if (loanTypeEditorStartInput) {
-    loanTypeEditorStartInput.disabled = !isSeasonal;
-    if (!isSeasonal) {
-      loanTypeEditorStartInput.value = '';
-    }
-  }
-  if (loanTypeEditorEndInput) {
-    loanTypeEditorEndInput.disabled = !isSeasonal;
-    if (!isSeasonal) {
-      loanTypeEditorEndInput.value = '';
-    }
+  if (window.LoanTypeEditorModal?.syncSeasonalAvailability) {
+    window.LoanTypeEditorModal.syncSeasonalAvailability({
+      availabilityInput: loanTypeEditorAvailabilityInput,
+      startInput: loanTypeEditorStartInput,
+      endInput: loanTypeEditorEndInput
+    });
+    return;
   }
 }
 
 function closeLoanTypeEditorModal() {
+  if (window.LoanTypeEditorModal?.closeModal) {
+    window.LoanTypeEditorModal.closeModal(loanTypeEditorModalEl, () => {
+      editingLoanTypeOriginalName = null;
+      setLoanTypeEditorModalMessage('');
+    });
+    return;
+  }
   editingLoanTypeOriginalName = null;
   setLoanTypeEditorModalMessage('');
   if (loanTypeEditorModalEl) {
@@ -1897,6 +1905,48 @@ function getAfterRunDistribution(result, officers, runningTotals) {
   });
 }
 
+function getConsumerDollarBeforeRunDistribution(runningTotals, officers) {
+  const cleanOfficers = [...new Set(officers.map((officer) => normalizeOfficerConfig(officer).name).filter(Boolean))];
+
+  return cleanOfficers.map((officer) => {
+    const priorStats = normalizeOfficerStats(runningTotals.officers?.[officer]);
+    const totalAmountRequested = Number(priorStats.totalAmountRequested) || 0;
+    const estimatedMortgageAmount = getEstimatedCategoryAmountTotal(
+      priorStats.typeCounts || {},
+      totalAmountRequested,
+      loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE
+    );
+
+    return {
+      officer,
+      totalAmountRequested: Math.max(0, totalAmountRequested - estimatedMortgageAmount)
+    };
+  });
+}
+
+function getConsumerDollarAfterRunDistribution(result, officers, runningTotals) {
+  const cleanOfficers = [...new Set(officers.map((officer) => normalizeOfficerConfig(officer).name).filter(Boolean))];
+
+  return cleanOfficers.map((officer) => {
+    const priorStats = normalizeOfficerStats(runningTotals.officers?.[officer]);
+    const totalAmountRequested = Number(priorStats.totalAmountRequested) || 0;
+    const estimatedMortgageAmount = getEstimatedCategoryAmountTotal(
+      priorStats.typeCounts || {},
+      totalAmountRequested,
+      loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE
+    );
+    const priorConsumerAmount = Math.max(0, totalAmountRequested - estimatedMortgageAmount);
+    const assignedConsumerAmount = (result.officerAssignments?.[officer] || [])
+      .filter((loan) => getLoanCategoryForType(loan.type) === loanCategoryUtils.LOAN_CATEGORIES.CONSUMER)
+      .reduce((sum, loan) => sum + getGoalAmountForLoan(loan), 0);
+
+    return {
+      officer,
+      totalAmountRequested: priorConsumerAmount + assignedConsumerAmount
+    };
+  });
+}
+
 function getChartSegments(distribution, field) {
   const total = distribution.reduce((sum, entry) => sum + entry[field], 0);
 
@@ -1939,20 +1989,23 @@ function drawDonutChart(config) {
   } = config;
 
   const canvas = document.createElement('canvas');
-  canvas.width = 360;
-  canvas.height = 320;
+  canvas.width = 420;
+  canvas.height = 340;
 
   const ctx = canvas.getContext('2d');
   const centerX = 120;
-  const centerY = 130;
+  const centerY = 145;
   const outerRadius = 70;
   const innerRadius = 40;
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   ctx.fillStyle = '#1c2430';
-  ctx.font = 'bold 16px Arial';
-  ctx.fillText(title, 20, 28);
+  ctx.font = 'bold 15px Arial';
+  const titleLines = wrapChartTitle(ctx, title, 380);
+  titleLines.forEach((line, index) => {
+    ctx.fillText(line, 20, 28 + (index * 18));
+  });
 
   const segments = getChartSegments(distribution, field);
   const totalValue = distribution.reduce((sum, entry) => sum + entry[field], 0);
@@ -1993,10 +2046,10 @@ function drawDonutChart(config) {
   ctx.fillText(field === 'loanCount' ? String(totalValue) : valueFormatter(totalValue), centerX, centerY + 18);
 
   ctx.textAlign = 'left';
-  let legendY = 60;
+  let legendY = 76;
 
   segments.forEach((segment, index) => {
-    const legendX = 215;
+    const legendX = 225;
     ctx.fillStyle = getDonutColor(index);
     ctx.fillRect(legendX, legendY - 10, 12, 12);
 
@@ -2013,6 +2066,27 @@ function drawDonutChart(config) {
   return { canvas, imageDataUrl: canvas.toDataURL('image/png') };
 }
 
+function wrapChartTitle(ctx, title, maxWidth) {
+  const words = String(title || '').split(/\s+/).filter(Boolean);
+  if (!words.length) {
+    return [''];
+  }
+
+  const lines = [];
+  let currentLine = words[0];
+  for (let index = 1; index < words.length; index += 1) {
+    const nextLine = `${currentLine} ${words[index]}`;
+    if (ctx.measureText(nextLine).width <= maxWidth) {
+      currentLine = nextLine;
+    } else {
+      lines.push(currentLine);
+      currentLine = words[index];
+    }
+  }
+  lines.push(currentLine);
+  return lines.slice(0, 2);
+}
+
 function renderDistributionCharts(result, officers, runningTotals) {
   if (!distributionChartsEl) {
     return;
@@ -2020,6 +2094,8 @@ function renderDistributionCharts(result, officers, runningTotals) {
 
   const beforeDistribution = getBeforeRunDistribution(runningTotals, officers);
   const afterDistribution = getAfterRunDistribution(result, officers, runningTotals);
+  const consumerDollarBeforeDistribution = getConsumerDollarBeforeRunDistribution(runningTotals, officers);
+  const consumerDollarAfterDistribution = getConsumerDollarAfterRunDistribution(result, officers, runningTotals);
   const fairnessEvaluation = result.fairnessEvaluation || evaluateResultFairness(result);
   const selectedEngine = getSelectedFairnessEngine();
 
@@ -2037,6 +2113,19 @@ function renderDistributionCharts(result, officers, runningTotals) {
     ? afterDistribution.filter((entry) => mortgageEligibleOfficerNames.has(entry.officer))
     : afterDistribution;
 
+  const consumerEligibleOfficerNames = new Set(
+    officers
+      .map(normalizeOfficerConfig)
+      .filter((officer) => loanCategoryUtils.normalizeOfficerEligibility(officer.eligibility).consumer)
+      .map((officer) => officer.name)
+  );
+  const consumerDollarBeforeLaneDistribution = selectedEngine === 'officer_lane'
+    ? consumerDollarBeforeDistribution.filter((entry) => consumerEligibleOfficerNames.has(entry.officer))
+    : consumerDollarBeforeDistribution;
+  const consumerDollarAfterLaneDistribution = selectedEngine === 'officer_lane'
+    ? consumerDollarAfterDistribution.filter((entry) => consumerEligibleOfficerNames.has(entry.officer))
+    : consumerDollarAfterDistribution;
+
   const chartConfigs = [
     {
       title: 'Loan Count Before Run',
@@ -2049,6 +2138,18 @@ function renderDistributionCharts(result, officers, runningTotals) {
       distribution: afterDistribution,
       field: 'loanCount',
       valueFormatter: (value) => `${value} loans`
+    },
+    {
+      title: `${selectedEngine === 'officer_lane' ? 'Consumer Goal Dollars Before Run (Role-Based)' : 'Consumer Goal Dollars Before Run'}`,
+      distribution: consumerDollarBeforeLaneDistribution,
+      field: 'totalAmountRequested',
+      valueFormatter: (value) => formatCurrency(value)
+    },
+    {
+      title: `${selectedEngine === 'officer_lane' ? 'Consumer Goal Dollars After Run (Role-Based)' : 'Consumer Goal Dollars After Run'}`,
+      distribution: consumerDollarAfterLaneDistribution,
+      field: 'totalAmountRequested',
+      valueFormatter: (value) => formatCurrency(value)
     },
     {
       title: `${selectedEngine === 'officer_lane' ? 'Mortgage Goal Dollars Before Run' : 'Goal Dollars Before Run'}${fairnessEvaluation.chartAnnotations?.mortgageTitleSuffix || ''}`,
@@ -2073,7 +2174,10 @@ function renderDistributionCharts(result, officers, runningTotals) {
     const chartCard = document.createElement('div');
     chartCard.className = 'distribution-chart-card';
 
-    const { canvas, imageDataUrl } = drawDonutChart(config);
+      const chartRenderer = window.DistributionChartRenderer;
+    const { canvas, imageDataUrl } = chartRenderer?.drawDonutChart
+      ? chartRenderer.drawDonutChart(config)
+      : drawDonutChart(config);
     chartImages.push({
       title: config.title,
       imageDataUrl
@@ -3700,6 +3804,53 @@ function getConsumerRoleSharePenalty(officersByName, eligibleOfficerNames, categ
   return normalizedSquaredError * 10;
 }
 
+function getConsumerLaneCountBalancingPenalty(eligibleOfficerNames, categoryLoanTotals, selectedOfficer) {
+  if (getSelectedFairnessEngineForScoring() !== 'officer_lane' || eligibleOfficerNames.length < 2) {
+    return 0;
+  }
+
+  const projectedCounts = eligibleOfficerNames.map((officerName) => (
+    categoryLoanTotals[officerName] + (officerName === selectedOfficer ? 1 : 0)
+  ));
+  const totalProjectedCounts = projectedCounts.reduce((sum, value) => sum + value, 0);
+  if (!totalProjectedCounts) {
+    return 0;
+  }
+
+  const expectedPerOfficer = totalProjectedCounts / eligibleOfficerNames.length;
+  const meanSquaredRelativeError = projectedCounts.reduce((sum, count) => {
+    if (!expectedPerOfficer) {
+      return sum;
+    }
+    return sum + (((count - expectedPerOfficer) / expectedPerOfficer) ** 2);
+  }, 0) / projectedCounts.length;
+
+  return meanSquaredRelativeError * 8;
+}
+
+function getConsumerLaneUnevennessGuardPenalty(eligibleOfficerNames, categoryLoanTotals, officerActiveSessions, selectedOfficer) {
+  if (getSelectedFairnessEngineForScoring() !== 'officer_lane' || eligibleOfficerNames.length < 2) {
+    return 0;
+  }
+
+  const projectedNormalizedCounts = eligibleOfficerNames.map((officerName) => getNormalizedFairnessValue(
+    categoryLoanTotals[officerName] + (officerName === selectedOfficer ? 1 : 0),
+    officerActiveSessions[officerName]
+  ));
+  const minimumProjectedCount = Math.min(...projectedNormalizedCounts);
+  const selectedProjectedCount = getNormalizedFairnessValue(
+    categoryLoanTotals[selectedOfficer] + 1,
+    officerActiveSessions[selectedOfficer]
+  );
+  const countGap = selectedProjectedCount - minimumProjectedCount;
+
+  if (countGap <= 0) {
+    return 0;
+  }
+
+  return (countGap ** 2) * 12;
+}
+
 function getOfficerCategoryParticipationBias(officerConfig, loanCategory, eligibleOfficerConfigs) {
   if (loanCategory !== loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE) {
     return 1;
@@ -3817,11 +3968,26 @@ function chooseOfficerForLoan(officersByName, officerLoanTotals, officerTypeCoun
     const consumerRoleSharePenalty = loanCategory === loanCategoryUtils.LOAN_CATEGORIES.CONSUMER
       ? getConsumerRoleSharePenalty(officersByName, eligibleOfficerNames, categoryAmountTotals, officerActiveSessions, officer, goalAmount)
       : 0;
+    const consumerLaneCountBalancingPenalty = loanCategory === loanCategoryUtils.LOAN_CATEGORIES.CONSUMER
+      ? getConsumerLaneCountBalancingPenalty(eligibleOfficerNames, categoryLoanTotals, officer)
+      : 0;
+    const consumerLaneUnevennessGuardPenalty = loanCategory === loanCategoryUtils.LOAN_CATEGORIES.CONSUMER
+      ? getConsumerLaneUnevennessGuardPenalty(eligibleOfficerNames, categoryLoanTotals, officerActiveSessions, officer)
+      : 0;
     const amountWeightMultiplier = loanCategory === loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE ? 6 : consumerGuardrailSettings.consumerAmountWeight;
     const loanWeightMultiplier = loanCategory === loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE ? 1 : consumerGuardrailSettings.consumerLoanWeight;
     const runAssignmentCount = Number(runAssignmentCounts?.[officer] || 0);
     const runConcentrationPenalty = (getSelectedFairnessEngineForScoring() === 'officer_lane' ? 0.08 : 0.35) * (runAssignmentCount ** 2);
-    const fairnessScore = (typeVariance * 4) + (amountVariance * amountWeightMultiplier) + (loanVariance * loanWeightMultiplier) + distinctTypePenalty + currentAmountPenalty + consumerDollarDriftPenalty + consumerRoleSharePenalty + runConcentrationPenalty;
+    const fairnessScore = (typeVariance * 4)
+      + (amountVariance * amountWeightMultiplier)
+      + (loanVariance * loanWeightMultiplier)
+      + distinctTypePenalty
+      + currentAmountPenalty
+      + consumerDollarDriftPenalty
+      + consumerRoleSharePenalty
+      + consumerLaneCountBalancingPenalty
+      + consumerLaneUnevennessGuardPenalty
+      + runConcentrationPenalty;
     const categoryWeight = loanCategoryUtils.getCategoryWeightForOfficer(officersByName[officer], loanCategory);
     const participationBias = getOfficerCategoryParticipationBias(officersByName[officer], loanCategory, eligibleOfficers);
     const score = fairnessScore / (getCategoryWeightBias(categoryWeight) * participationBias);
@@ -3838,6 +4004,8 @@ function chooseOfficerForLoan(officersByName, officerLoanTotals, officerTypeCoun
       distinctTypePenalty,
       currentAmountPenalty,
       consumerDollarDriftPenalty,
+      consumerLaneCountBalancingPenalty,
+      consumerLaneUnevennessGuardPenalty,
       projectedTypeLoad: getNormalizedFairnessValue((officerTypeCounts[officer][loan.type] || 0) + 1, officerActiveSessions[officer]),
       projectedAmountLoad: getNormalizedFairnessValue(officerAmountTotals[officer] + goalAmount, officerActiveSessions[officer]),
       projectedLoanLoad: getNormalizedFairnessValue(officerLoanTotals[officer] + 1, officerActiveSessions[officer])
@@ -4320,17 +4488,19 @@ function renderResults(result) {
     officerAssignmentsEl.appendChild(group);
   });
 
-  const fairnessSummaryCard = document.createElement('div');
-  fairnessSummaryCard.className = 'audit-card';
-  fairnessSummaryCard.innerHTML = `
-    <h3>Live Fairness Summary <span class="badge">${escapeHtml(fairnessEvaluation.overallResult)}</span></h3>
-    <div class="audit-summary">
-      <div class="audit-summary-line"><strong>Fairness model:</strong> ${escapeHtml(getSelectedFairnessEngineLabel())}</div>
-      ${fairnessEvaluation.summaryItems.map((item) => `<div class="audit-summary-line">${escapeHtml(item)}</div>`).join('')}
-      ${fairnessEvaluation.notes.map((note) => `<div class="audit-summary-line">${escapeHtml(note)}</div>`).join('')}
-    </div>
-  `;
-  fairnessAuditEl.appendChild(fairnessSummaryCard);
+  if (window.FairnessView?.renderLiveFairnessSummaryCard) {
+    window.FairnessView.renderLiveFairnessSummaryCard(fairnessAuditEl, fairnessEvaluation);
+  } else {
+    const fairnessSummaryCard = document.createElement('div');
+    fairnessSummaryCard.className = 'audit-card';
+    fairnessSummaryCard.innerHTML = `
+      <h3>Live Fairness Summary <span class="badge">${escapeHtml(fairnessEvaluation.overallResult)}</span></h3>
+      <div class="audit-summary">
+        <div class="audit-summary-line"><strong>Fairness model:</strong> ${escapeHtml(getSelectedFairnessEngineLabel())}</div>
+      </div>
+    `;
+    fairnessAuditEl.appendChild(fairnessSummaryCard);
+  }
 
   result.fairnessAudit.forEach((entry) => {
     const auditCard = document.createElement('div');
