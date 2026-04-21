@@ -183,3 +183,37 @@ test('optimizer applies tie-break improvements when consumer variance is unchang
   assert.equal(result.bestLoanToOfficerMap.get(loans[0]), 'Consumer B');
   assert.equal(result.finalVariancePercent, result.initialVariancePercent);
 });
+
+test('optimizer applies tie-break improvements when consumer variance is unchanged', () => {
+  const consumerOfficers = ['Consumer A', 'Consumer B'];
+  const loans = [
+    { name: 'L1', type: 'Personal', amountRequested: 100 }
+  ];
+
+  const initialMap = new Map([[loans[0], 'Consumer A']]);
+  const eligibleOfficersByLoan = new Map([[loans[0], [...consumerOfficers]]]);
+
+  const result = optimizeConsumerLaneAssignments({
+    initialLoanToOfficerMap: initialMap,
+    eligibleOfficersByLoan,
+    isConsumerLoan: () => true,
+    shouldIncludeLoan: () => true,
+    maxEvaluations: 25,
+    evaluateCandidate: (candidateMap) => {
+      const assignedOfficer = candidateMap.get(loans[0]);
+      return {
+        metrics: {
+          consumerVariance: {
+            maxAmountVariancePercent: 30
+          },
+          maxAmountVariancePercent: assignedOfficer === 'Consumer B' ? 10 : 15
+        }
+      };
+    }
+  });
+
+  assert.equal(result.optimizationRan, true);
+  assert.equal(result.improved, true);
+  assert.equal(result.bestLoanToOfficerMap.get(loans[0]), 'Consumer B');
+  assert.equal(result.finalVariancePercent, result.initialVariancePercent);
+});
