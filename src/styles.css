@@ -76,11 +76,17 @@ header p {
 }
 
 .fairness-model-control {
-  float: right;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.fairness-model-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
+  gap: 12px;
 }
 
 .fairness-model-control label {
@@ -94,8 +100,19 @@ header p {
   border-radius: 8px;
   padding: 6px 10px;
   background: #fff;
+  width: 100%;
 }
 
+
+.fairness-model-hint {
+  margin: 0;
+  width: 100%;
+  font-size: 0.8rem;
+}
+
+.fairness-model-badge {
+  white-space: nowrap;
+}
 .brand-slogan {
   font-size: 1.05rem;
   font-weight: 600;
@@ -146,7 +163,7 @@ header p {
 .section-header,
 .toolbar {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
@@ -154,7 +171,7 @@ header p {
 
 .section-actions {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   flex-wrap: wrap;
 }
@@ -289,7 +306,7 @@ button:disabled {
 
 .officer-name-value {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   min-height: 42px;
   padding: 8px 10px;
   border: 1px solid var(--border);
@@ -381,7 +398,7 @@ select {
 
 .officer-class-label {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   min-width: 64px;
   min-height: 42px;
@@ -454,7 +471,7 @@ select {
 
 .output-step-top {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
@@ -467,7 +484,7 @@ select {
 
 .output-step-compact {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   flex-wrap: wrap;
 }
@@ -480,7 +497,7 @@ select {
 .priority-action {
   display: flex;
   justify-content: center;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   flex-wrap: wrap;
   margin: 12px 0;
@@ -610,6 +627,7 @@ select {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex-wrap: wrap;
   padding: 10px 12px;
   border-radius: 10px;
   background: #f6f9fc;
@@ -625,11 +643,12 @@ select {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .audit-metric {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   padding: 7px 10px;
   border-radius: 999px;
   background: #ffffff;
@@ -742,7 +761,7 @@ select {
   background: linear-gradient(135deg, #f8fbff 0%, #f2f7fc 100%);
   border-bottom: 1px solid transparent;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
 }
@@ -783,8 +802,9 @@ select {
 
 .loan-type-summary-stats {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
+  flex-wrap: wrap;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
@@ -798,7 +818,7 @@ select {
   grid-template-columns: minmax(0, 1fr) 180px 180px auto;
   gap: 10px;
   margin-bottom: 16px;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .loan-type-action-btn {
@@ -838,8 +858,9 @@ select {
 
 .loan-type-action-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
+  flex-wrap: wrap;
   margin-top: 10px;
 }
 
@@ -933,6 +954,7 @@ select {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex-wrap: wrap;
   font-weight: 600;
 }
 
@@ -973,7 +995,7 @@ select {
 
 .simulation-launch-card {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 14px;
@@ -1019,7 +1041,7 @@ select {
   position: fixed;
   inset: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 24px;
   background: rgba(28, 36, 48, 0.55);
@@ -1076,6 +1098,7 @@ select {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex-wrap: wrap;
   color: var(--text);
   font-weight: 600;
 }
@@ -1196,6 +1219,7 @@ select {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 #removeLoanHistoryBtn {
@@ -1267,6 +1291,7 @@ select {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex-wrap: wrap;
   font-weight: 600;
 }
 
@@ -1307,7 +1332,7 @@ select {
 
 .simulation-launch-card {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 20px;
 }
@@ -1449,7 +1474,7 @@ select {
 
   .app-footer {
     min-height: 108px;
-    align-items: center;
+    align-items: flex-start;
     justify-content: flex-start;
     flex-direction: column;
     gap: 10px;
