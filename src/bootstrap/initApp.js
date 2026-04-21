@@ -4059,6 +4059,22 @@ function formatScoreGapPercent(bestScore, comparedScore) {
   return `${Math.max(percent, 0).toFixed(1)}%`;
 }
 
+function getSelectedOfficerScoreForAuditEntry(entry) {
+  if (!Array.isArray(entry?.scoredOfficers) || !entry.scoredOfficers.length) {
+    return null;
+  }
+
+  return entry.scoredOfficers.find((score) => score?.officer === entry.selectedOfficer) || entry.scoredOfficers[0];
+}
+
+function getRunnerUpScoreForAuditEntry(entry, selectedOfficerScore) {
+  if (!Array.isArray(entry?.scoredOfficers) || entry.scoredOfficers.length < 2) {
+    return null;
+  }
+
+  return entry.scoredOfficers.find((score) => score?.officer !== selectedOfficerScore?.officer) || null;
+}
+
 function getAuditReasonLabels(selectedOfficerScore, runnerUpScore, loanType) {
   if (!runnerUpScore) {
     return ['Only available officer'];
@@ -4094,8 +4110,13 @@ function getAuditReasonLabels(selectedOfficerScore, runnerUpScore, loanType) {
 }
 
 function buildAuditExplanation(entry) {
-  const [selectedOfficerScore, runnerUpScore] = entry.scoredOfficers;
+  const selectedOfficerScore = getSelectedOfficerScoreForAuditEntry(entry);
+  const runnerUpScore = getRunnerUpScoreForAuditEntry(entry, selectedOfficerScore);
   const reasonLabels = getAuditReasonLabels(selectedOfficerScore, runnerUpScore, entry.loan.type);
+
+  if (!selectedOfficerScore) {
+    return `${entry.selectedOfficer} was selected for this loan.`;
+  }
 
   if (!runnerUpScore) {
     return `${entry.selectedOfficer} was the only available officer for this loan.`;
@@ -4109,15 +4130,18 @@ function buildAuditExplanation(entry) {
 }
 
 function getAuditStatusLabel(entry, scoredOfficer, index) {
+  const selectedOfficerScore = getSelectedOfficerScoreForAuditEntry(entry);
+  const selectedScoreValue = selectedOfficerScore?.score;
+
   if (scoredOfficer.officer === entry.selectedOfficer) {
     return 'Chosen';
   }
 
   if (index === 1) {
-    return `Next best (+${formatScoreGapPercent(entry.scoredOfficers[0].score, scoredOfficer.score)})`;
+    return `Next best (+${formatScoreGapPercent(selectedScoreValue, scoredOfficer.score)})`;
   }
 
-  return `Behind winner (+${formatScoreGapPercent(entry.scoredOfficers[0].score, scoredOfficer.score)})`;
+  return `Behind winner (+${formatScoreGapPercent(selectedScoreValue, scoredOfficer.score)})`;
 }
 
 function buildPdfLines(result, officers, loans, generatedAt) {
@@ -4714,8 +4738,17 @@ function renderResults(result) {
       `)
       .join('');
 
-    const selectedOfficerScore = entry.scoredOfficers[0];
-    const runnerUpScore = entry.scoredOfficers[1];
+    const selectedOfficerScore = getSelectedOfficerScoreForAuditEntry(entry);
+    const runnerUpScore = getRunnerUpScoreForAuditEntry(entry, selectedOfficerScore);
+    const selectedTypeLoadLabel = Number.isFinite(selectedOfficerScore?.projectedTypeLoad)
+      ? `${selectedOfficerScore.projectedTypeLoad.toFixed(2)} per active session`
+      : 'N/A';
+    const selectedAmountLoadLabel = Number.isFinite(selectedOfficerScore?.projectedAmountLoad)
+      ? formatProjectedCurrencyLoad(selectedOfficerScore.projectedAmountLoad)
+      : 'N/A';
+    const selectedLoanLoadLabel = Number.isFinite(selectedOfficerScore?.projectedLoanLoad)
+      ? formatProjectedCountLoad(selectedOfficerScore.projectedLoanLoad)
+      : 'N/A';
 
     auditCard.innerHTML = `
       <h3>${escapeHtml(entry.loan.name)} <span class="type-badge">${escapeHtml(entry.loan.type)}</span></h3>
@@ -4723,9 +4756,9 @@ function renderResults(result) {
         <div class="audit-summary-line"><strong>Chosen officer:</strong> ${escapeHtml(entry.selectedOfficer)}</div>
         <div class="audit-summary-line">${escapeHtml(buildAuditExplanation(entry))}</div>
         <div class="audit-summary-metrics">
-          <span class="audit-metric"><strong>${escapeHtml(entry.loan.type)} load after assignment:</strong> ${selectedOfficerScore.projectedTypeLoad.toFixed(2)} per active session</span>
-          <span class="audit-metric"><strong>Projected goal dollars:</strong> ${escapeHtml(formatProjectedCurrencyLoad(selectedOfficerScore.projectedAmountLoad))}</span>
-          <span class="audit-metric"><strong>Projected total loans:</strong> ${escapeHtml(formatProjectedCountLoad(selectedOfficerScore.projectedLoanLoad))}</span>
+          <span class="audit-metric"><strong>${escapeHtml(entry.loan.type)} load after assignment:</strong> ${escapeHtml(selectedTypeLoadLabel)}</span>
+          <span class="audit-metric"><strong>Projected goal dollars:</strong> ${escapeHtml(selectedAmountLoadLabel)}</span>
+          <span class="audit-metric"><strong>Projected total loans:</strong> ${escapeHtml(selectedLoanLoadLabel)}</span>
         </div>
         ${runnerUpScore ? `<div class="audit-summary-line">Closest alternative: ${escapeHtml(runnerUpScore.officer)}.</div>` : ''}
       </div>
