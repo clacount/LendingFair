@@ -5067,7 +5067,7 @@ mortgageFocusedSecondaryInput?.addEventListener('input', () => {
 saveFocusWeightsBtn?.addEventListener('click', () => {
   const consumerConsumer = normalizeFocusPercentInput(consumerFocusedPrimaryInput?.value, 70);
   const mortgageMortgage = normalizeFocusPercentInput(mortgageFocusedPrimaryInput?.value, 70);
-  const saved = focusWeightSettingsService?.saveFocusWeights?.({
+  const saveResult = focusWeightSettingsService?.saveFocusWeights?.({
     consumerFocused: {
       consumer: consumerConsumer,
       mortgage: 100 - consumerConsumer
@@ -5078,8 +5078,11 @@ saveFocusWeightsBtn?.addEventListener('click', () => {
     }
   });
 
-  if (!saved) {
-    setFocusWeightSettingsMessage('Could not save focus weights in this browser session.', 'warning');
+  if (!saveResult?.success) {
+    const storageFailureMessage = saveResult?.error === 'readback_mismatch'
+      ? 'Could not verify that focus weights were persisted. Changes may be temporary for this session only.'
+      : 'Could not persist focus weights in this browser. Changes may be temporary for this session only.';
+    setFocusWeightSettingsMessage(storageFailureMessage, 'warning');
     return;
   }
 
@@ -5092,7 +5095,16 @@ resetFocusWeightsBtn?.addEventListener('click', () => {
     consumerFocused: { consumer: 70, mortgage: 30 },
     mortgageFocused: { consumer: 30, mortgage: 70 }
   };
-  focusWeightSettingsService?.saveFocusWeights?.(defaults);
+  const saveResult = focusWeightSettingsService?.saveFocusWeights?.(defaults);
+  if (!saveResult?.success) {
+    const storageFailureMessage = saveResult?.error === 'readback_mismatch'
+      ? 'Focus weights were reset for this session, but persistence could not be verified.'
+      : 'Focus weights were reset for this session, but could not be persisted in this browser.';
+    setFocusWeightSettingsMessage(storageFailureMessage, 'warning');
+    refreshFocusWeightSettingsState();
+    syncOfficerEditorFromClassPreset();
+    return;
+  }
   refreshFocusWeightSettingsState();
   syncOfficerEditorFromClassPreset();
   setFocusWeightSettingsMessage('Focus weights reset to defaults (70/30).', 'success');

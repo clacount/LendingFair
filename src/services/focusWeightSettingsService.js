@@ -58,11 +58,49 @@
     }
   }
 
+  function getStorageErrorCode(error) {
+    const message = String(error?.message || '').toLowerCase();
+    const name = String(error?.name || '').toLowerCase();
+
+    if (
+      name.includes('quotaexceeded') ||
+      message.includes('quota') ||
+      message.includes('storage full')
+    ) {
+      return 'quota_exceeded';
+    }
+
+    if (
+      name.includes('securityerror') ||
+      message.includes('security') ||
+      message.includes('access is denied') ||
+      message.includes('not allowed')
+    ) {
+      return 'security_restricted';
+    }
+
+    if (
+      message.includes('localstorage') ||
+      message.includes('storage') ||
+      name.includes('invalidstateerror') ||
+      name.includes('notsupportederror')
+    ) {
+      return 'storage_unavailable';
+    }
+
+    return 'unknown_storage_error';
+  }
+
   function writeSettings(settings) {
     try {
       globalScope.localStorage?.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+      return { success: true };
     } catch (error) {
-      // no-op
+      return {
+        success: false,
+        error: getStorageErrorCode(error),
+        message: String(error?.message || 'Failed to write settings.')
+      };
     }
   }
 
@@ -98,9 +136,38 @@
 
   function saveFocusWeights(weights) {
     const settings = readSettings();
-    settings.focusWeights = normalizeFocusWeights(weights);
-    writeSettings(settings);
-    return settings.focusWeights;
+    const normalizedWeights = normalizeFocusWeights(weights);
+    settings.focusWeights = normalizedWeights;
+
+    const writeResult = writeSettings(settings);
+    if (!writeResult.success) {
+      return {
+        success: false,
+        persisted: false,
+        error: writeResult.error,
+        message: writeResult.message,
+        weights: normalizedWeights
+      };
+    }
+
+    const persistedWeights = normalizeFocusWeights(readSettings().focusWeights);
+    const didPersist = JSON.stringify(persistedWeights) === JSON.stringify(normalizedWeights);
+
+    if (!didPersist) {
+      return {
+        success: false,
+        persisted: false,
+        error: 'readback_mismatch',
+        message: 'Settings write completed but persisted focus weights could not be verified.',
+        weights: normalizedWeights
+      };
+    }
+
+    return {
+      success: true,
+      persisted: true,
+      weights: normalizedWeights
+    };
   }
 
   function getConsumerFocusedWeights() {
