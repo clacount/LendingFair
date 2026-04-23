@@ -2293,10 +2293,40 @@ function getOfficerLaneStatusMetricDescriptor(fairnessEvaluation) {
     return descriptor;
   }
 
+  const consumerValue = Number(metrics.consumerVariance?.maxAmountVariancePercent);
+  if (Number.isFinite(consumerValue)) {
+    return {
+      key: 'consumer_lane_dollar_variance',
+      label: 'Consumer lane dollar variance',
+      valuePercent: consumerValue,
+      contextLabel: 'Consumer lane thresholds'
+    };
+  }
+
+  const flexValue = Number(metrics.flexVariance?.maxAmountVariancePercent);
+  if (Number.isFinite(flexValue)) {
+    return {
+      key: 'flex_lane_dollar_variance',
+      label: 'Flex lane dollar variance',
+      valuePercent: flexValue,
+      contextLabel: 'Flex lane thresholds'
+    };
+  }
+
+  const mortgageValue = Number(metrics.mortgageVariance?.maxAmountVariancePercent);
+  if (Number.isFinite(mortgageValue)) {
+    return {
+      key: 'mortgage_lane_dollar_variance',
+      label: 'Mortgage lane dollar variance',
+      valuePercent: mortgageValue,
+      contextLabel: 'Mortgage lane thresholds'
+    };
+  }
+
   return {
-    key: 'flex_lane_dollar_variance',
-    label: 'Flex lane dollar variance',
-    valuePercent: Number(metrics.flexVariance?.maxAmountVariancePercent) || 0,
+    key: 'consumer_lane_dollar_variance',
+    label: 'Consumer lane dollar variance',
+    valuePercent: 0,
     contextLabel: null
   };
 }
@@ -2309,7 +2339,13 @@ function getOfficerLaneChartParityNotes({ fairnessEvaluation, chartLane }) {
   const statusContextSuffix = descriptor.contextLabel ? ` (${descriptor.contextLabel})` : '';
   const statusMetricLine = `Variance/status view: ${descriptor.label} ${statusValueText}${statusContextSuffix}`;
   const laneLabel = chartLane === 'consumer' ? 'consumer-lane composition' : chartLane === 'mortgage' ? 'mortgage-lane composition' : 'composition';
-  const descriptorLane = descriptor.key?.startsWith('consumer') ? 'consumer' : descriptor.key?.startsWith('flex') ? 'flex' : null;
+  const descriptorLane = descriptor.key?.startsWith('consumer')
+    ? 'consumer'
+    : descriptor.key?.startsWith('flex')
+      ? 'flex'
+      : descriptor.key?.startsWith('mortgage')
+        ? 'mortgage'
+        : null;
   const alignmentLine = descriptorLane && descriptorLane === chartLane
     ? `Composition view: This donut shows ${laneLabel}; status is using the same lane metric.`
     : descriptorLane

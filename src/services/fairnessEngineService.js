@@ -474,6 +474,34 @@
         valuePercent: Number(categoryMetrics.consumerVariance.maxAmountVariancePercent) || 0,
         contextLabel: 'Consumer lane thresholds'
       };
+    } else if (hasMortgageLane && !adjustedMortgageLanePass) {
+      statusMetricDescriptor = {
+        key: 'mortgage_lane_dollar_variance',
+        label: 'Mortgage lane dollar variance',
+        valuePercent: Number(categoryMetrics.mortgageVariance.maxAmountVariancePercent) || 0,
+        contextLabel: 'Mortgage lane thresholds'
+      };
+    } else if (hasMortgageLane && !mortgageRoutingPass) {
+      statusMetricDescriptor = {
+        key: 'mortgage_routing_policy',
+        label: 'Mortgage routing share to M officers',
+        valuePercent: mortgageRoutingShareToM * 100,
+        contextLabel: 'Mortgage lane policy checks'
+      };
+    } else if (hasMortgageLane && !mortgageLeadershipPreserved) {
+      statusMetricDescriptor = {
+        key: 'mortgage_leadership_policy',
+        label: 'Mortgage leadership preservation',
+        valuePercent: mortgageRoutingShareToM * 100,
+        contextLabel: 'Mortgage lane policy checks'
+      };
+    } else if (hasMortgageLane && flexParticipationViolation) {
+      statusMetricDescriptor = {
+        key: 'flex_participation_policy',
+        label: 'Flex mortgage participation policy',
+        valuePercent: mortgageRoutingShareToM * 100,
+        contextLabel: 'Mortgage lane policy checks'
+      };
     } else if (hasFlexLane && !adjustedFlexLanePass) {
       statusMetricDescriptor = {
         key: 'flex_lane_dollar_variance',
@@ -494,6 +522,13 @@
         label: 'Flex lane dollar variance',
         valuePercent: Number(categoryMetrics.flexVariance.maxAmountVariancePercent) || 0,
         contextLabel: 'Flex lane thresholds'
+      };
+    } else if (hasMortgageLane) {
+      statusMetricDescriptor = {
+        key: 'mortgage_lane_dollar_variance',
+        label: 'Mortgage lane dollar variance',
+        valuePercent: Number(categoryMetrics.mortgageVariance.maxAmountVariancePercent) || 0,
+        contextLabel: 'Mortgage lane thresholds'
       };
     }
 
