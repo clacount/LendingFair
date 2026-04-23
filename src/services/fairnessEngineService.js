@@ -2,6 +2,8 @@
   const COUNT_VARIANCE_THRESHOLD_PERCENT = 15;
   const AMOUNT_VARIANCE_THRESHOLD_PERCENT = 20;
   const ADVISORY_AMOUNT_VARIANCE_UPPER_PERCENT = 25;
+  const HELOC_SUPPORT_COUNT_THRESHOLD_PERCENT = 20;
+  const HELOC_SUPPORT_AMOUNT_THRESHOLD_PERCENT = 20;
   const SETTINGS_STORAGE_KEY = 'loan-randomizer-settings-v1';
 
   const FAIRNESS_ENGINES = {
@@ -311,6 +313,45 @@
     };
   }
 
+
+  function isHomogeneousHelocSupportPool({ officers = [], hasConsumerLoans = false, loanTypeNames = [] } = {}) {
+    const normalizedOfficers = Array.isArray(officers) ? officers.map((officer) => normalizeOfficer(officer)) : [];
+    const hasMortgageOnlyOfficer = normalizedOfficers.some((officer) => isMortgageOnlyOfficer(officer));
+    const hasFlexOfficer = normalizedOfficers.some((officer) => isFlexOfficer(officer));
+    if (!hasMortgageOnlyOfficer || !hasFlexOfficer) {
+      return false;
+    }
+
+    if (hasConsumerLoans) {
+      return false;
+    }
+
+    const normalizedLoanTypes = Array.isArray(loanTypeNames)
+      ? loanTypeNames.map((typeName) => String(typeName || '').trim().toLowerCase()).filter(Boolean)
+      : [];
+    if (!normalizedLoanTypes.length) {
+      return false;
+    }
+
+    return normalizedLoanTypes.every((typeName) => typeName === 'heloc');
+  }
+
+  function evaluateHelocSupportFlexThresholds(flexVariance = {}) {
+    const countVariance = Number(flexVariance.maxCountVariancePercent) || 0;
+    const amountVariance = Number(flexVariance.maxAmountVariancePercent) || 0;
+    const strictPass = countVariance <= HELOC_SUPPORT_COUNT_THRESHOLD_PERCENT && amountVariance <= HELOC_SUPPORT_AMOUNT_THRESHOLD_PERCENT;
+    const advisoryPass = countVariance <= ADVISORY_AMOUNT_VARIANCE_UPPER_PERCENT && amountVariance <= ADVISORY_AMOUNT_VARIANCE_UPPER_PERCENT;
+
+    return {
+      countVariance,
+      amountVariance,
+      strictPass,
+      advisoryPass,
+      overAdvisory: !advisoryPass,
+      advisoryBandApplied: !strictPass && advisoryPass
+    };
+  }
+
   function evaluateOfficerLaneFairness(context) {
     const {
       officers,
@@ -326,6 +367,9 @@
     const consumerLaneEntries = officerStats.filter((entry) => officerClassMap[entry.officer] === 'C');
     const mortgageOfficers = normalizedOfficers.filter((officer) => isMortgageOnlyOfficer(officer)).map((officer) => officer.name);
     const flexOfficers = normalizedOfficers.filter((officer) => isFlexOfficer(officer)).map((officer) => officer.name);
+    const hasConsumerLane = normalizedOfficers.some((officer) => getOfficerClassCode(officer) === 'C');
+    const hasMortgageLane = normalizedOfficers.some((officer) => getOfficerClassCode(officer) === 'M');
+    const hasFlexLane = normalizedOfficers.some((officer) => getOfficerClassCode(officer) === 'F');
 
     const activeMortgageOnlyOfficerCount = normalizedOfficers.filter((officer) => isMortgageOnlyOfficer(officer) && !officer.isOnVacation).length;
     const hasAnyMortgageOnlyOfficer = mortgageOfficers.length > 0;
@@ -337,7 +381,7 @@
       .reduce((sum, entry) => sum + (Number(entry.amount) || 0), 0);
 
     const mortgageRoutingShareToM = totalMortgageAmount ? (mortgageAmountForM / totalMortgageAmount) : 1;
-    const mortgageRoutingPass = singleMlo ? true : mortgageRoutingShareToM >= 0.5;
+    const mortgageRoutingPass = !hasMortgageLane || singleMlo || !totalMortgageAmount || mortgageRoutingShareToM >= 0.5;
     const flexMortgageTypesByOfficer = Object.fromEntries(
       flexOfficers.map((officerName) => [officerName, mortgageByTypeByOfficer[officerName] || {}])
     );
@@ -349,6 +393,36 @@
       hasAnyMortgageOnlyOfficer,
       allowBroadFlexMortgageCoverage
     });
+
+    const totalConsumerLoans = officerStats.reduce((sum, entry) => sum + (Number(entry.consumerLoanCount) || 0), 0);
+    const allMortgageTypes = officerStats
+      .flatMap((entry) => Object.entries(entry.typeBreakdown || {}))
+      .filter(([, count]) => (Number(count) || 0) > 0)
+      .map(([typeName]) => String(typeName || '').trim().toLowerCase());
+    const isHelocOnlySupportPool = isHomogeneousHelocSupportPool({
+      officers: normalizedOfficers,
+      hasConsumerLoans: totalConsumerLoans > 0,
+      loanTypeNames: allMortgageTypes
+    });
+    const helocSupportThresholds = evaluateHelocSupportFlexThresholds(categoryMetrics.flexVariance);
+    const optimizationMetrics = context.optimizationMetrics || {};
+    const parsedHelocWeightedVariancePercent = Number(optimizationMetrics.helocWeightedVariancePercent);
+    const helocWeightedVariancePercent = Number.isFinite(parsedHelocWeightedVariancePercent)
+      ? parsedHelocWeightedVariancePercent
+      : null;
+    const helocWeightedTargetPass = Number.isFinite(helocWeightedVariancePercent)
+      ? helocWeightedVariancePercent <= HELOC_SUPPORT_AMOUNT_THRESHOLD_PERCENT
+      : false;
+    const flexMortgageParticipationCount = Object.values(flexMortgageTypesByOfficer).reduce((sum, typeBreakdown) => {
+      const helocCount = Number(typeBreakdown?.HELOC) || Number(typeBreakdown?.heloc) || 0;
+      return sum + helocCount;
+    }, 0);
+    const flexParticipationMeaningful = flexMortgageParticipationCount > 0;
+    const mortgageOfficerLoanCounts = mortgageOfficers.map((officerName) => Number((officerStats.find((entry) => entry.officer === officerName)?.mortgageLoanCount) || 0));
+    const flexOfficerLoanCounts = flexOfficers.map((officerName) => Number((officerStats.find((entry) => entry.officer === officerName)?.mortgageLoanCount) || 0));
+    const maxMortgageOfficerLoanCount = mortgageOfficerLoanCounts.length ? Math.max(...mortgageOfficerLoanCounts) : 0;
+    const maxFlexOfficerLoanCount = flexOfficerLoanCounts.length ? Math.max(...flexOfficerLoanCounts) : 0;
+    const mortgageLeadershipPreserved = !hasMortgageLane || maxMortgageOfficerLoanCount >= maxFlexOfficerLoanCount;
 
     const consumerAmountVariancePercent = categoryMetrics.consumerVariance.maxAmountVariancePercent;
     const isConsumerDollarInAdvisoryBand = categoryMetrics.consumerVariance.countDistributionPass
@@ -363,21 +437,65 @@
       && categoryMetrics.mortgageVariance.amountDistributionPass;
     const flexLanePass = categoryMetrics.flexVariance.countDistributionPass
       && categoryMetrics.flexVariance.amountDistributionPass;
-    const hasConsumerLane = normalizedOfficers.some((officer) => getOfficerClassCode(officer) === 'C');
-    const hasMortgageLane = normalizedOfficers.some((officer) => getOfficerClassCode(officer) === 'M');
-    const hasFlexLane = normalizedOfficers.some((officer) => getOfficerClassCode(officer) === 'F');
     const adjustedConsumerPass = !hasConsumerLane || consumerPass;
     const adjustedMortgageLanePass = !hasMortgageLane || mortgageLanePass;
-    const adjustedFlexLanePass = !hasFlexLane || flexLanePass;
+    const helocSupportPolicyPass = mortgageRoutingPass && !flexParticipationViolation && mortgageLeadershipPreserved && flexParticipationMeaningful;
+    const helocSupportPass = isHelocOnlySupportPool
+      && helocSupportPolicyPass
+      && helocWeightedTargetPass
+      && !helocSupportThresholds.overAdvisory;
+    const adjustedFlexLanePass = isHelocOnlySupportPool
+      ? helocSupportPass
+      : (!hasFlexLane || flexLanePass);
 
-    const overallPass = determineOfficerLaneOverallPass({
-      singleMlo,
-      consumerPass: adjustedConsumerPass,
-      mortgageLanePass: adjustedMortgageLanePass,
-      flexLanePass: adjustedFlexLanePass,
-      mortgageRoutingPass,
-      flexParticipationViolation
-    });
+    const overallPass = isHelocOnlySupportPool
+      ? (adjustedConsumerPass && adjustedMortgageLanePass && adjustedFlexLanePass)
+      : determineOfficerLaneOverallPass({
+        singleMlo,
+        consumerPass: adjustedConsumerPass,
+        mortgageLanePass: adjustedMortgageLanePass,
+        flexLanePass: adjustedFlexLanePass,
+        mortgageRoutingPass,
+        flexParticipationViolation
+      });
+
+    let statusMetricDescriptor;
+    if (isHelocOnlySupportPool) {
+      statusMetricDescriptor = {
+        key: 'heloc_weighted_variance',
+        label: 'Weighted HELOC variance',
+        valuePercent: helocWeightedVariancePercent,
+        contextLabel: 'HELOC-only support thresholds'
+      };
+    } else if (hasConsumerLane && !adjustedConsumerPass) {
+      statusMetricDescriptor = {
+        key: 'consumer_lane_dollar_variance',
+        label: 'Consumer lane dollar variance',
+        valuePercent: Number(categoryMetrics.consumerVariance.maxAmountVariancePercent) || 0,
+        contextLabel: 'Consumer lane thresholds'
+      };
+    } else if (hasFlexLane && !adjustedFlexLanePass) {
+      statusMetricDescriptor = {
+        key: 'flex_lane_dollar_variance',
+        label: 'Flex lane dollar variance',
+        valuePercent: Number(categoryMetrics.flexVariance.maxAmountVariancePercent) || 0,
+        contextLabel: 'Flex lane thresholds'
+      };
+    } else if (hasConsumerLane) {
+      statusMetricDescriptor = {
+        key: 'consumer_lane_dollar_variance',
+        label: 'Consumer lane dollar variance',
+        valuePercent: Number(categoryMetrics.consumerVariance.maxAmountVariancePercent) || 0,
+        contextLabel: 'Consumer lane thresholds'
+      };
+    } else if (hasFlexLane) {
+      statusMetricDescriptor = {
+        key: 'flex_lane_dollar_variance',
+        label: 'Flex lane dollar variance',
+        valuePercent: Number(categoryMetrics.flexVariance.maxAmountVariancePercent) || 0,
+        contextLabel: 'Flex lane thresholds'
+      };
+    }
 
     return {
       overallResult: overallPass ? 'PASS' : 'REVIEW',
@@ -400,6 +518,10 @@
           `Flex total dollars (consumer/mortgage): ${flexVariance.totalConsumerAmount.toFixed(0)} / ${flexVariance.totalMortgageAmount.toFixed(0)}`
         ] : []),
         ...(hasMortgageLane ? [`Mortgage lane routing to M officers: ${(mortgageRoutingShareToM * 100).toFixed(1)}%`] : []),
+        ...(isHelocOnlySupportPool ? [
+          `HELOC-only support thresholds applied: ${HELOC_SUPPORT_COUNT_THRESHOLD_PERCENT.toFixed(1)}% count / ${HELOC_SUPPORT_AMOUNT_THRESHOLD_PERCENT.toFixed(1)}% dollar with advisory to ${ADVISORY_AMOUNT_VARIANCE_UPPER_PERCENT.toFixed(1)}%.`,
+          `Weighted HELOC optimization variance: ${Number.isFinite(helocWeightedVariancePercent) ? helocWeightedVariancePercent.toFixed(1) : 'n/a'}%`
+        ] : []),
         ...(isConsumerDollarInAdvisoryBand ? [
           `Consumer dollar variance advisory band applied: ${AMOUNT_VARIANCE_THRESHOLD_PERCENT.toFixed(1)}%–${ADVISORY_AMOUNT_VARIANCE_UPPER_PERCENT.toFixed(1)}%`
         ] : [])
@@ -409,7 +531,10 @@
         ...(isConsumerDollarInAdvisoryBand
           ? [`Advisory note: Consumer dollar variance is slightly above the primary ${AMOUNT_VARIANCE_THRESHOLD_PERCENT.toFixed(1)}% threshold but within the ${ADVISORY_AMOUNT_VARIANCE_UPPER_PERCENT.toFixed(1)}% advisory band; flag for monitoring.`]
           : []),
-        ...(hasFlexLane ? ['Flex officers are support roles and may cover HELOC or approved mortgage coverage scenarios.'] : [])
+        ...(hasFlexLane ? ['Flex officers are support roles and may cover HELOC or approved mortgage coverage scenarios.'] : []),
+        ...(isHelocOnlySupportPool && helocSupportThresholds.advisoryBandApplied
+          ? [`Advisory note: HELOC-only support flex variance is above ${HELOC_SUPPORT_AMOUNT_THRESHOLD_PERCENT.toFixed(1)}% and within ${ADVISORY_AMOUNT_VARIANCE_UPPER_PERCENT.toFixed(1)}%; monitor distribution.`]
+          : [])
       ],
       chartAnnotations: {
         mortgageTitleSuffix: ' (Role-Based)',
@@ -421,17 +546,31 @@
         hasSingleMortgageOnlyOfficer: singleMlo,
         mortgageVarianceExpected: singleMlo,
         consumerDollarAdvisoryBandApplied: isConsumerDollarInAdvisoryBand,
+        helocOnlySupportThresholdsApplied: isHelocOnlySupportPool,
         flexParticipationExpected: isFlexMortgageParticipationExpected({
           totalMortgageAmount,
           activeMortgageOnlyOfficerCount,
           hasAnyMortgageOnlyOfficer,
           allowBroadFlexMortgageCoverage
         })
-      }
+      },
+      statusMetricDescriptor
     };
   }
 
-  function evaluateFairness({ engineType, officers = [], officerStats = [] } = {}) {
+
+  function isMortgageTypeName(typeName = '') {
+    const normalizedType = String(typeName || '').trim().toLowerCase();
+    if (!normalizedType) {
+      return false;
+    }
+    if (globalScope.getLoanCategoryForType) {
+      return globalScope.getLoanCategoryForType(typeName) === 'mortgage';
+    }
+    return normalizedType.includes('mortgage') || normalizedType.includes('refi') || normalizedType === 'heloc';
+  }
+
+  function evaluateFairness({ engineType, officers = [], officerStats = [], optimizationMetrics = {} } = {}) {
     const normalizedEngine = normalizeEngineType(engineType);
     const safeOfficers = Array.isArray(officers) ? officers.map((officer) => normalizeOfficer(officer)) : [];
     const safeOfficerStats = Array.isArray(officerStats)
@@ -477,10 +616,7 @@
       safeOfficerStats.map((entry) => {
         const typeBreakdown = entry.typeBreakdown || {};
         const mortgageTypes = Object.fromEntries(
-          Object.entries(typeBreakdown).filter(([typeName]) => {
-            const category = globalScope.getLoanCategoryForType ? globalScope.getLoanCategoryForType(typeName) : 'consumer';
-            return category === 'mortgage';
-          })
+Object.entries(typeBreakdown).filter(([typeName]) => isMortgageTypeName(typeName))
         );
         return [entry.officer, mortgageTypes];
       })
@@ -492,7 +628,8 @@
       categoryMetrics,
       mortgageByOfficer,
       mortgageByTypeByOfficer,
-      flexVariance
+      flexVariance,
+      optimizationMetrics
     };
 
     const engineResult = normalizedEngine === FAIRNESS_ENGINES.OFFICER_LANE
@@ -506,9 +643,13 @@
       notes: engineResult.notes || [],
       chartAnnotations: engineResult.chartAnnotations || {},
       roleAwareFlags: engineResult.roleAwareFlags || {},
+      statusMetricDescriptor: engineResult.statusMetricDescriptor || null,
       metrics: {
         averageLoanCount: overallAverageLoanCount,
         averageDollarAmount: overallAverageDollarAmount,
+        helocWeightedVariancePercent: Number.isFinite(Number(optimizationMetrics.helocWeightedVariancePercent))
+          ? Number(optimizationMetrics.helocWeightedVariancePercent)
+          : null,
         consumerVariance: categoryMetrics.consumerVariance,
         mortgageVariance: categoryMetrics.mortgageVariance,
         flexVariance: categoryMetrics.flexVariance,
@@ -525,6 +666,7 @@
     setSelectedFairnessEngine,
     getOfficerClassCode,
     hasSingleMortgageOnlyOfficer,
+    isHomogeneousHelocSupportPool,
     evaluateFairness
   };
 })(window);

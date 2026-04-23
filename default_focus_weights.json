@@ -1,0 +1,10 @@
+{
+  "consumerFocused": {
+    "consumer": 70,
+    "mortgage": 30
+  },
+  "mortgageFocused": {
+    "consumer": 30,
+    "mortgage": 70
+  }
+}

@@ -1,5 +1,21 @@
 (function initializeFocusWeightSettingsService(globalScope) {
-  const SETTINGS_STORAGE_KEY = 'loan-randomizer-settings-v1';
+  const DEFAULT_FOCUS_WEIGHTS_FILE = './default_focus_weights.json';
+  const SAVED_FOCUS_WEIGHTS_FILE = 'focus_weights.json';
+
+  const HARD_DEFAULT_FOCUS_WEIGHTS = {
+    consumerFocused: {
+      consumer: 70,
+      mortgage: 30
+    },
+    mortgageFocused: {
+      consumer: 30,
+      mortgage: 70
+    }
+  };
+
+  let fileAdapter = null;
+  let cachedDefaultWeights = { ...HARD_DEFAULT_FOCUS_WEIGHTS };
+  let cachedEffectiveWeights = { ...HARD_DEFAULT_FOCUS_WEIGHTS };
 
   function clampPercent(value, fallback = 0) {
     const parsed = Number(value);
@@ -36,76 +52,21 @@
     };
   }
 
-  function getDefaultFocusWeights() {
+  function getHardDefaultFocusWeights() {
     return {
       consumerFocused: {
-        consumer: 70,
-        mortgage: 30
+        consumer: HARD_DEFAULT_FOCUS_WEIGHTS.consumerFocused.consumer,
+        mortgage: HARD_DEFAULT_FOCUS_WEIGHTS.consumerFocused.mortgage
       },
       mortgageFocused: {
-        consumer: 30,
-        mortgage: 70
+        consumer: HARD_DEFAULT_FOCUS_WEIGHTS.mortgageFocused.consumer,
+        mortgage: HARD_DEFAULT_FOCUS_WEIGHTS.mortgageFocused.mortgage
       }
     };
   }
 
-  function readSettings() {
-    try {
-      const raw = globalScope.localStorage?.getItem(SETTINGS_STORAGE_KEY);
-      return raw ? JSON.parse(raw) : {};
-    } catch (error) {
-      return {};
-    }
-  }
-
-  function getStorageErrorCode(error) {
-    const message = String(error?.message || '').toLowerCase();
-    const name = String(error?.name || '').toLowerCase();
-
-    if (
-      name.includes('quotaexceeded') ||
-      message.includes('quota') ||
-      message.includes('storage full')
-    ) {
-      return 'quota_exceeded';
-    }
-
-    if (
-      name.includes('securityerror') ||
-      message.includes('security') ||
-      message.includes('access is denied') ||
-      message.includes('not allowed')
-    ) {
-      return 'security_restricted';
-    }
-
-    if (
-      message.includes('localstorage') ||
-      message.includes('storage') ||
-      name.includes('invalidstateerror') ||
-      name.includes('notsupportederror')
-    ) {
-      return 'storage_unavailable';
-    }
-
-    return 'unknown_storage_error';
-  }
-
-  function writeSettings(settings) {
-    try {
-      globalScope.localStorage?.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
-      return { success: true };
-    } catch (error) {
-      return {
-        success: false,
-        error: getStorageErrorCode(error),
-        message: String(error?.message || 'Failed to write settings.')
-      };
-    }
-  }
-
   function normalizeFocusWeights(weights = {}) {
-    const defaults = getDefaultFocusWeights();
+    const defaults = getHardDefaultFocusWeights();
     const consumerPair = normalizeFocusWeightPair(
       weights?.consumerFocused?.consumer,
       weights?.consumerFocused?.mortgage,
@@ -129,45 +90,125 @@
     };
   }
 
-  function getSavedFocusWeights() {
-    const settings = readSettings();
-    return normalizeFocusWeights(settings.focusWeights);
+  async function loadDefaultFocusWeights() {
+    try {
+      const response = await globalScope.fetch(DEFAULT_FOCUS_WEIGHTS_FILE, { cache: 'no-store' });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const parsed = await response.json();
+      cachedDefaultWeights = normalizeFocusWeights(parsed);
+      return cachedDefaultWeights;
+    } catch (error) {
+      cachedDefaultWeights = normalizeFocusWeights(getHardDefaultFocusWeights());
+      return cachedDefaultWeights;
+    }
   }
 
-  function saveFocusWeights(weights) {
-    const settings = readSettings();
+  async function loadSavedFocusWeights() {
+    if (!fileAdapter?.readJson) {
+      return null;
+    }
+
+    try {
+      const parsed = await fileAdapter.readJson(SAVED_FOCUS_WEIGHTS_FILE);
+      if (!parsed || typeof parsed !== 'object') {
+        return null;
+      }
+      return normalizeFocusWeights(parsed);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  async function loadEffectiveFocusWeights() {
+    const savedWeights = await loadSavedFocusWeights();
+    if (savedWeights) {
+      cachedEffectiveWeights = savedWeights;
+      return cachedEffectiveWeights;
+    }
+
+    const defaultWeights = await loadDefaultFocusWeights();
+    cachedEffectiveWeights = normalizeFocusWeights(defaultWeights || getHardDefaultFocusWeights());
+    return cachedEffectiveWeights;
+  }
+
+  async function saveFocusWeights(weights) {
     const normalizedWeights = normalizeFocusWeights(weights);
-    settings.focusWeights = normalizedWeights;
 
-    const writeResult = writeSettings(settings);
-    if (!writeResult.success) {
+    if (!fileAdapter?.writeJson) {
+      cachedEffectiveWeights = normalizedWeights;
       return {
         success: false,
         persisted: false,
-        error: writeResult.error,
-        message: writeResult.message,
+        error: 'storage_unavailable',
+        message: 'Focus weight override storage is not available.',
         weights: normalizedWeights
       };
     }
 
-    const persistedWeights = normalizeFocusWeights(readSettings().focusWeights);
-    const didPersist = JSON.stringify(persistedWeights) === JSON.stringify(normalizedWeights);
+    try {
+      await fileAdapter.writeJson(SAVED_FOCUS_WEIGHTS_FILE, normalizedWeights);
+      const persistedWeights = await loadSavedFocusWeights();
+      const didPersist = JSON.stringify(persistedWeights) === JSON.stringify(normalizedWeights);
 
-    if (!didPersist) {
+      cachedEffectiveWeights = normalizedWeights;
+
+      if (!didPersist) {
+        return {
+          success: false,
+          persisted: false,
+          error: 'readback_mismatch',
+          message: 'Focus weight override write completed but persisted values could not be verified.',
+          weights: normalizedWeights
+        };
+      }
+
+      return {
+        success: true,
+        persisted: true,
+        weights: normalizedWeights
+      };
+    } catch (error) {
+      cachedEffectiveWeights = normalizedWeights;
       return {
         success: false,
         persisted: false,
-        error: 'readback_mismatch',
-        message: 'Settings write completed but persisted focus weights could not be verified.',
+        error: 'storage_write_failed',
+        message: String(error?.message || 'Failed to write focus weight override.'),
         weights: normalizedWeights
       };
     }
+  }
 
+  async function deleteSavedFocusWeights() {
+    if (!fileAdapter?.deleteFile) {
+      return false;
+    }
+
+    try {
+      return await fileAdapter.deleteFile(SAVED_FOCUS_WEIGHTS_FILE);
+    } catch (error) {
+      return false;
+    }
+  }
+
+  async function resetFocusWeightsToDefaults() {
+    await deleteSavedFocusWeights();
+    const defaultWeights = await loadDefaultFocusWeights();
+    cachedEffectiveWeights = normalizeFocusWeights(defaultWeights || getHardDefaultFocusWeights());
     return {
       success: true,
-      persisted: true,
-      weights: normalizedWeights
+      weights: cachedEffectiveWeights
     };
+  }
+
+  function getDefaultFocusWeights() {
+    return normalizeFocusWeights(cachedDefaultWeights || getHardDefaultFocusWeights());
+  }
+
+  function getSavedFocusWeights() {
+    return normalizeFocusWeights(cachedEffectiveWeights || getHardDefaultFocusWeights());
   }
 
   function getConsumerFocusedWeights() {
@@ -178,10 +219,21 @@
     return getSavedFocusWeights().mortgageFocused;
   }
 
+  function setFileAdapter(adapter) {
+    fileAdapter = adapter;
+  }
+
   globalScope.FocusWeightSettingsService = {
+    setFileAdapter,
     getDefaultFocusWeights,
+    loadDefaultFocusWeights,
+    loadSavedFocusWeights,
+    loadEffectiveFocusWeights,
     getSavedFocusWeights,
     saveFocusWeights,
+    resetFocusWeightsToDefaults,
+    deleteSavedFocusWeights,
+    normalizeFocusWeights,
     normalizeFocusWeightPair,
     getConsumerFocusedWeights,
     getMortgageFocusedWeights

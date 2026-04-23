@@ -149,3 +149,23 @@ test('optimizer applies tie-break improvements when consumer variance is unchang
   assert.equal(result.bestLoanToOfficerMap.get(loans[0]), 'Consumer B');
   assert.equal(result.finalVariancePercent, result.initialVariancePercent);
 });
+
+test('optimizer does not coerce missing target variance metric to 0', () => {
+  const officers = ['A', 'B'];
+  const loan = { name: 'L1', type: 'HELOC', amountRequested: 100 };
+  const initialMap = new Map([[loan, 'A']]);
+  const eligibleOfficersByLoan = new Map([[loan, [...officers]]]);
+
+  const result = optimizeConsumerLaneAssignments({
+    initialLoanToOfficerMap: initialMap,
+    eligibleOfficersByLoan,
+    isConsumerLoan: () => true,
+    shouldIncludeLoan: () => true,
+    forceOptimizationRun: true,
+    getVariancePercent: () => undefined,
+    evaluateCandidate: () => ({ metrics: {} })
+  });
+
+  assert.equal(Number.isFinite(result.initialVariancePercent), false);
+  assert.equal(result.tierReached, 'best_available_over_25');
+});

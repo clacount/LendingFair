@@ -27,7 +27,7 @@
 
   function buildFairnessThresholdCopy(engineType) {
     if (normalizeFairnessEngineType(engineType) === 'officer_lane') {
-      return 'Thresholds: PASS when applicable lane count/dollar variance checks are within 15.0% / 20.0% and mortgage routing/policy checks pass; consumer-dollar variance in the 20.0%–25.0% advisory band may pass with monitoring note.';
+      return 'Thresholds: PASS when applicable lane count/dollar variance checks are within 15.0% / 20.0% and mortgage routing/policy checks pass; consumer-dollar variance in the 20.0%–25.0% advisory band may pass with monitoring note. Donut slice shares are composition views and are not the fairness variance formula.';
     }
 
     return 'Thresholds: PASS when overall loan-count variance ≤ 15.0% and overall dollar variance ≤ 20.0%; otherwise REVIEW will be displayed.';
@@ -35,7 +35,7 @@
 
   function buildFairnessMethodologyCopy(engineType) {
     if (normalizeFairnessEngineType(engineType) === 'officer_lane') {
-      return 'Role-aware lane fairness is active: consumer fairness is evaluated within consumer-lane participation, while mortgage concentration to M officers may be expected by design.';
+      return 'Role-aware lane fairness is active: consumer fairness is evaluated within consumer-lane participation, while mortgage concentration to M officers may be expected by design. Fairness variance is calculated separately from chart share percentages.';
     }
 
     return 'Assignments are balanced using loan type mix, total goal dollars, loan count, and historical distribution to keep workloads more even and reduce perceived bias.';
