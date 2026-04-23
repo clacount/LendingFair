@@ -21,7 +21,11 @@
     return new Map(baseAssignmentMap);
   }
 
-  function getConsumerVariancePercent(fairnessEvaluation = {}) {
+  function getTargetVariancePercent(fairnessEvaluation = {}, getVariancePercent) {
+    if (typeof getVariancePercent === 'function') {
+      return Number(getVariancePercent(fairnessEvaluation)) || 0;
+    }
+
     return Number(fairnessEvaluation?.metrics?.consumerVariance?.maxAmountVariancePercent) || 0;
   }
 
@@ -29,37 +33,37 @@
     return Number(fairnessEvaluation?.metrics?.maxAmountVariancePercent) || 0;
   }
 
-  function getTierRank(consumerVariancePercent) {
-    if (consumerVariancePercent <= PRIMARY_TARGET_PERCENT) {
+  function getTierRank(variancePercent) {
+    if (variancePercent <= PRIMARY_TARGET_PERCENT) {
       return 0;
     }
-    if (consumerVariancePercent <= ADVISORY_TARGET_PERCENT) {
+    if (variancePercent <= ADVISORY_TARGET_PERCENT) {
       return 1;
     }
     return 2;
   }
 
-  function getTierLabel(consumerVariancePercent) {
-    if (consumerVariancePercent <= PRIMARY_TARGET_PERCENT) {
+  function getTierLabel(variancePercent) {
+    if (variancePercent <= PRIMARY_TARGET_PERCENT) {
       return 'under_20';
     }
-    if (consumerVariancePercent <= ADVISORY_TARGET_PERCENT) {
+    if (variancePercent <= ADVISORY_TARGET_PERCENT) {
       return 'under_25';
     }
     return 'best_available_over_25';
   }
 
-  function buildSummaryMessage(consumerVariancePercent, optimized) {
+  function buildSummaryMessage(variancePercent, optimized, targetLabel = 'consumer-dollar variance') {
     if (!optimized) {
       return 'Initial assignment remained the selected result after bounded optimization review.';
     }
 
-    if (consumerVariancePercent <= PRIMARY_TARGET_PERCENT) {
-      return 'Optimization reached the primary consumer-dollar variance target band (<= 20.0%).';
+    if (variancePercent <= PRIMARY_TARGET_PERCENT) {
+      return `Optimization reached the primary ${targetLabel} target band (<= 20.0%).`;
     }
 
-    if (consumerVariancePercent <= ADVISORY_TARGET_PERCENT) {
-      return 'Optimization reached the consumer-dollar advisory band (> 20.0% and <= 25.0%).';
+    if (variancePercent <= ADVISORY_TARGET_PERCENT) {
+      return `Optimization reached the ${targetLabel} advisory band (> 20.0% and <= 25.0%).`;
     }
 
     return 'This is the most optimized result achievable from the available loan distribution.';
@@ -70,14 +74,14 @@
       return true;
     }
 
-    const candidateTier = getTierRank(candidate.consumerVariancePercent);
-    const currentTier = getTierRank(currentBest.consumerVariancePercent);
+    const candidateTier = getTierRank(candidate.targetVariancePercent);
+    const currentTier = getTierRank(currentBest.targetVariancePercent);
     if (candidateTier !== currentTier) {
       return candidateTier < currentTier;
     }
 
-    if (candidate.consumerVariancePercent !== currentBest.consumerVariancePercent) {
-      return candidate.consumerVariancePercent < currentBest.consumerVariancePercent;
+    if (candidate.targetVariancePercent !== currentBest.targetVariancePercent) {
+      return candidate.targetVariancePercent < currentBest.targetVariancePercent;
     }
 
     return candidate.overallVariancePercent < currentBest.overallVariancePercent;
@@ -89,7 +93,10 @@
     evaluateCandidate,
     isConsumerLoan,
     shouldIncludeLoan = () => true,
-    maxEvaluations = DEFAULT_MAX_EVALUATIONS
+    getVariancePercent,
+    targetLabel = 'consumer-dollar variance',
+    maxEvaluations = DEFAULT_MAX_EVALUATIONS,
+    forceOptimizationRun = false
   } = {}) {
     if (!(initialLoanToOfficerMap instanceof Map) || typeof evaluateCandidate !== 'function') {
       return {
@@ -105,15 +112,14 @@
     }
 
     const baselineFairness = evaluateCandidate(initialLoanToOfficerMap);
-    const baselineVariance = getConsumerVariancePercent(baselineFairness);
-    const consumerLoans = sortLoansDeterministically(
+    const baselineVariance = getTargetVariancePercent(baselineFairness, getVariancePercent);
+    const optimizedLoans = sortLoansDeterministically(
       [...initialLoanToOfficerMap.keys()]
         .filter((loan) => isConsumerLoan?.(loan))
         .filter((loan) => shouldIncludeLoan(loan))
     );
 
-    // Tiered entry rule: if initial variance is already below 20%, keep the baseline result.
-    if (baselineVariance < PRIMARY_TARGET_PERCENT || !consumerLoans.length) {
+    if ((!forceOptimizationRun && baselineVariance < PRIMARY_TARGET_PERCENT) || !optimizedLoans.length) {
       return {
         improved: false,
         optimizationRan: false,
@@ -131,7 +137,7 @@
     let best = {
       loanToOfficerMap: initialLoanToOfficerMap,
       fairnessEvaluation: baselineFairness,
-      consumerVariancePercent: baselineVariance,
+      targetVariancePercent: baselineVariance,
       overallVariancePercent: scoreFairness(baselineFairness)
     };
 
@@ -146,7 +152,7 @@
       const candidate = {
         loanToOfficerMap: candidateMap,
         fairnessEvaluation,
-        consumerVariancePercent: getConsumerVariancePercent(fairnessEvaluation),
+        targetVariancePercent: getTargetVariancePercent(fairnessEvaluation, getVariancePercent),
         overallVariancePercent: scoreFairness(fairnessEvaluation)
       };
 
@@ -155,8 +161,8 @@
       }
     };
 
-    for (let loanIndex = 0; loanIndex < consumerLoans.length && evaluations < boundedMaxEvaluations; loanIndex += 1) {
-      const loan = consumerLoans[loanIndex];
+    for (let loanIndex = 0; loanIndex < optimizedLoans.length && evaluations < boundedMaxEvaluations; loanIndex += 1) {
+      const loan = optimizedLoans[loanIndex];
       const currentOfficer = best.loanToOfficerMap.get(loan);
       const eligibleOfficers = [...(eligibleOfficersByLoan.get(loan) || [])]
         .map((officer) => String(officer || '').trim())
@@ -173,8 +179,8 @@
         tryCandidate(candidateMap);
       });
 
-      for (let otherIndex = loanIndex + 1; otherIndex < consumerLoans.length && evaluations < boundedMaxEvaluations; otherIndex += 1) {
-        const otherLoan = consumerLoans[otherIndex];
+      for (let otherIndex = loanIndex + 1; otherIndex < optimizedLoans.length && evaluations < boundedMaxEvaluations; otherIndex += 1) {
+        const otherLoan = optimizedLoans[otherIndex];
         const officerA = best.loanToOfficerMap.get(loan);
         const officerB = best.loanToOfficerMap.get(otherLoan);
         if (!officerA || !officerB || officerA === officerB) {
@@ -193,8 +199,7 @@
         tryCandidate(candidateMap);
       }
 
-      // Stop once we hit the primary tier, otherwise continue searching within bounded effort.
-      if (best.consumerVariancePercent <= PRIMARY_TARGET_PERCENT) {
+      if (best.targetVariancePercent <= PRIMARY_TARGET_PERCENT) {
         break;
       }
     }
@@ -206,9 +211,9 @@
       bestLoanToOfficerMap: best.loanToOfficerMap,
       evaluations,
       initialVariancePercent: baselineVariance,
-      finalVariancePercent: best.consumerVariancePercent,
-      tierReached: getTierLabel(best.consumerVariancePercent),
-      summaryMessage: buildSummaryMessage(best.consumerVariancePercent, improved),
+      finalVariancePercent: best.targetVariancePercent,
+      tierReached: getTierLabel(best.targetVariancePercent),
+      summaryMessage: buildSummaryMessage(best.targetVariancePercent, improved, targetLabel),
       bestFairnessEvaluation: best.fairnessEvaluation
     };
   }

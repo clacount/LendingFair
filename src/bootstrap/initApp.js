@@ -245,6 +245,47 @@ let allLoanTypes = [...DEFAULT_LOAN_TYPES];
 const loanCategoryUtils = window.LoanCategoryUtils;
 const fairnessEngineService = window.FairnessEngineService;
 const focusWeightSettingsService = window.FocusWeightSettingsService;
+const mortgageFocusRoutingService = window.MortgageFocusRoutingService;
+
+focusWeightSettingsService?.setFileAdapter?.({
+  async readJson(fileName) {
+    if (!outputDirectoryHandle) {
+      return null;
+    }
+    const dataDirectoryHandle = await getActiveDataDirectoryHandle();
+    const fileHandle = await dataDirectoryHandle.getFileHandle(fileName);
+    const file = await fileHandle.getFile();
+    return JSON.parse(await file.text());
+  },
+  async writeJson(fileName, value) {
+    if (!outputDirectoryHandle) {
+      throw new Error('No output folder has been selected.');
+    }
+    const dataDirectoryHandle = await getActiveDataDirectoryHandle();
+    const fileHandle = await dataDirectoryHandle.getFileHandle(fileName, { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(JSON.stringify(value, null, 2));
+    await writable.close();
+  },
+  async deleteFile(fileName) {
+    if (!outputDirectoryHandle) {
+      return false;
+    }
+    const dataDirectoryHandle = await getActiveDataDirectoryHandle();
+    if (typeof dataDirectoryHandle.removeEntry !== 'function') {
+      return false;
+    }
+    try {
+      await dataDirectoryHandle.removeEntry(fileName);
+      return true;
+    } catch (error) {
+      if (error?.name === 'NotFoundError') {
+        return false;
+      }
+      throw error;
+    }
+  }
+});
 
 function getSelectedFairnessEngine() {
   return fairnessEngineService?.getSelectedFairnessEngine?.() || 'global';
@@ -318,7 +359,12 @@ function evaluateResultFairness(result) {
   return fairnessEngineService.evaluateFairness({
     engineType: getSelectedFairnessEngine(),
     officers,
-    officerStats
+    officerStats,
+    optimizationMetrics: {
+      helocWeightedVariancePercent: Number.isFinite(Number(result?.optimizationFinalHelocWeightedVariancePercent))
+        ? Number(result.optimizationFinalHelocWeightedVariancePercent)
+        : Number(result?.optimizationFinalConsumerDollarVariance)
+    }
   });
 }
 
@@ -389,7 +435,10 @@ function syncFocusWeightInputsFromSettings() {
   }
 }
 
-function refreshFocusWeightSettingsState() {
+async function refreshFocusWeightSettingsState({ reload = true } = {}) {
+  if (reload) {
+    await focusWeightSettingsService?.loadEffectiveFocusWeights?.();
+  }
   OFFICER_CLASS_PRESETS = buildOfficerClassPresets();
   syncFocusWeightSummary();
   syncFocusWeightInputsFromSettings();
@@ -2051,6 +2100,51 @@ function getConsumerDollarAfterRunDistribution(result, officers, runningTotals) 
   });
 }
 
+function getMortgageDollarBeforeRunDistribution(runningTotals, officers) {
+  const cleanOfficers = [...new Set(officers.map((officer) => normalizeOfficerConfig(officer).name).filter(Boolean))];
+
+  return cleanOfficers.map((officer) => {
+    const priorStats = normalizeOfficerStats(runningTotals.officers?.[officer]);
+    const totalAmountRequested = Number(priorStats.totalAmountRequested) || 0;
+    const estimatedMortgageAmount = getEstimatedCategoryAmountTotal(
+      priorStats.typeCounts || {},
+      totalAmountRequested,
+      loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE
+    );
+
+    return {
+      officer,
+      totalAmountRequested: estimatedMortgageAmount
+    };
+  });
+}
+
+function getMortgageDollarAfterRunDistribution(result, officers, runningTotals) {
+  const cleanOfficers = [...new Set(officers.map((officer) => normalizeOfficerConfig(officer).name).filter(Boolean))];
+
+  return cleanOfficers.map((officer) => {
+    const priorStats = normalizeOfficerStats(runningTotals.officers?.[officer]);
+    const totalAmountRequested = Number(priorStats.totalAmountRequested) || 0;
+    const priorMortgageAmount = getEstimatedCategoryAmountTotal(
+      priorStats.typeCounts || {},
+      totalAmountRequested,
+      loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE
+    );
+    const assignedMortgageAmount = (result.officerAssignments?.[officer] || [])
+      .filter((loan) => getLoanCategoryForType(loan.type) === loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE)
+      .reduce((sum, loan) => sum + getGoalAmountForLoan(loan), 0);
+
+    return {
+      officer,
+      totalAmountRequested: priorMortgageAmount + assignedMortgageAmount
+    };
+  });
+}
+
+function getOfficerLaneMortgageChartDistribution(distribution) {
+  return (distribution || []).filter((entry) => (Number(entry.totalAmountRequested) || 0) > 0);
+}
+
 function getChartSegments(distribution, field) {
   const total = distribution.reduce((sum, entry) => sum + entry[field], 0);
 
@@ -2191,6 +2285,43 @@ function wrapChartTitle(ctx, title, maxWidth) {
   return lines.slice(0, 2);
 }
 
+
+function getOfficerLaneStatusMetricDescriptor(fairnessEvaluation) {
+  const descriptor = fairnessEvaluation?.statusMetricDescriptor;
+  const metrics = fairnessEvaluation?.metrics || {};
+  if (descriptor && descriptor.label) {
+    return descriptor;
+  }
+
+  return {
+    key: 'flex_lane_dollar_variance',
+    label: 'Flex lane dollar variance',
+    valuePercent: Number(metrics.flexVariance?.maxAmountVariancePercent) || 0,
+    contextLabel: null
+  };
+}
+
+function getOfficerLaneChartParityNotes({ fairnessEvaluation, chartLane }) {
+  const descriptor = getOfficerLaneStatusMetricDescriptor(fairnessEvaluation);
+  const statusValueText = Number.isFinite(Number(descriptor.valuePercent))
+    ? `${Number(descriptor.valuePercent).toFixed(1)}%`
+    : 'n/a';
+  const statusContextSuffix = descriptor.contextLabel ? ` (${descriptor.contextLabel})` : '';
+  const statusMetricLine = `Variance/status view: ${descriptor.label} ${statusValueText}${statusContextSuffix}`;
+  const laneLabel = chartLane === 'consumer' ? 'consumer-lane composition' : chartLane === 'mortgage' ? 'mortgage-lane composition' : 'composition';
+  const descriptorLane = descriptor.key?.startsWith('consumer') ? 'consumer' : descriptor.key?.startsWith('flex') ? 'flex' : null;
+  const alignmentLine = descriptorLane && descriptorLane === chartLane
+    ? `Composition view: This donut shows ${laneLabel}; status is using the same lane metric.`
+    : descriptorLane
+      ? `Composition view: This donut shows ${laneLabel}; PASS/REVIEW is currently driven by ${descriptorLane}-lane variance.`
+      : `Composition view: This donut shows ${laneLabel}; PASS/REVIEW is currently driven by a specialized status basis.`;
+
+  return {
+    statusMetricLine,
+    alignmentLine
+  };
+}
+
 function renderDistributionCharts(result, officers, runningTotals) {
   if (!distributionChartsEl) {
     return;
@@ -2200,24 +2331,19 @@ function renderDistributionCharts(result, officers, runningTotals) {
   const afterDistribution = getAfterRunDistribution(result, officers, runningTotals);
   const consumerDollarBeforeDistribution = getConsumerDollarBeforeRunDistribution(runningTotals, officers);
   const consumerDollarAfterDistribution = getConsumerDollarAfterRunDistribution(result, officers, runningTotals);
+  const mortgageDollarBeforeDistribution = getMortgageDollarBeforeRunDistribution(runningTotals, officers);
+  const mortgageDollarAfterDistribution = getMortgageDollarAfterRunDistribution(result, officers, runningTotals);
   const fairnessEvaluation = applyOptimizationSummaryToFairnessEvaluation(
     result,
     result.fairnessEvaluation || evaluateResultFairness(result)
   );
   const selectedEngine = getSelectedFairnessEngine();
 
-  const mortgageEligibleOfficerNames = new Set(
-    officers
-      .map(normalizeOfficerConfig)
-      .filter((officer) => loanCategoryUtils.normalizeOfficerEligibility(officer.eligibility).mortgage)
-      .map((officer) => officer.name)
-  );
-
   const dollarBeforeDistribution = selectedEngine === 'officer_lane'
-    ? beforeDistribution.filter((entry) => mortgageEligibleOfficerNames.has(entry.officer))
+    ? getOfficerLaneMortgageChartDistribution(mortgageDollarBeforeDistribution)
     : beforeDistribution;
   const dollarAfterDistribution = selectedEngine === 'officer_lane'
-    ? afterDistribution.filter((entry) => mortgageEligibleOfficerNames.has(entry.officer))
+    ? getOfficerLaneMortgageChartDistribution(mortgageDollarAfterDistribution)
     : afterDistribution;
 
   const consumerEligibleOfficerNames = new Set(
@@ -2238,19 +2364,25 @@ function renderDistributionCharts(result, officers, runningTotals) {
       title: 'Loan Count Before Run',
       distribution: beforeDistribution,
       field: 'loanCount',
-      valueFormatter: (value) => `${value} loans`
+      valueFormatter: (value) => `${value} loans`,
+      chartScopeNote: 'Distribution share view: slice percentages show composition, not fairness variance.'
     },
     {
       title: 'Loan Count After Run',
       distribution: afterDistribution,
       field: 'loanCount',
-      valueFormatter: (value) => `${value} loans`
+      valueFormatter: (value) => `${value} loans`,
+      chartScopeNote: 'Distribution share view: slice percentages show composition, not fairness variance.'
     },
     {
       title: `${selectedEngine === 'officer_lane' ? 'Consumer Goal Dollars Before Run (Role-Based)' : 'Consumer Goal Dollars Before Run'}`,
       distribution: consumerDollarBeforeLaneDistribution,
       field: 'totalAmountRequested',
       showMortgageNote: false,
+      chartScopeNote: selectedEngine === 'officer_lane'
+        ? 'Distribution share view: this donut shows lane-dollar composition; fairness PASS/REVIEW uses lane variance formulas.'
+        : 'Distribution share view: slice percentages show composition, not fairness variance.',
+      chartLane: 'consumer',
       valueFormatter: (value) => formatCurrency(value)
     },
     {
@@ -2258,6 +2390,10 @@ function renderDistributionCharts(result, officers, runningTotals) {
       distribution: consumerDollarAfterLaneDistribution,
       field: 'totalAmountRequested',
       showMortgageNote: false,
+      chartScopeNote: selectedEngine === 'officer_lane'
+        ? 'Distribution share view: this donut shows lane-dollar composition; fairness PASS/REVIEW uses lane variance formulas.'
+        : 'Distribution share view: slice percentages show composition, not fairness variance.',
+      chartLane: 'consumer',
       valueFormatter: (value) => formatCurrency(value)
     },
     {
@@ -2265,6 +2401,8 @@ function renderDistributionCharts(result, officers, runningTotals) {
       distribution: dollarBeforeDistribution,
       field: 'totalAmountRequested',
       showMortgageNote: true,
+      chartScopeNote: 'Distribution share view: this donut is composition only; fairness status is based on lane variance metrics.',
+      chartLane: 'mortgage',
       valueFormatter: (value) => formatCurrency(value)
     },
     {
@@ -2272,6 +2410,8 @@ function renderDistributionCharts(result, officers, runningTotals) {
       distribution: dollarAfterDistribution,
       field: 'totalAmountRequested',
       showMortgageNote: true,
+      chartScopeNote: 'Distribution share view: this donut is composition only; fairness status is based on lane variance metrics.',
+      chartLane: 'mortgage',
       valueFormatter: (value) => formatCurrency(value)
     }
   ];
@@ -2295,14 +2435,31 @@ function renderDistributionCharts(result, officers, runningTotals) {
     });
 
     chartCard.appendChild(canvas);
+    const chartNotes = [];
+    if (config.chartScopeNote) {
+      chartNotes.push(config.chartScopeNote);
+    }
     if (config.showMortgageNote && fairnessEvaluation.chartAnnotations?.mortgageNote) {
+      chartNotes.push(selectedEngine === 'officer_lane'
+        ? `${fairnessEvaluation.chartAnnotations.mortgageNote} Officers with zero mortgage-category dollars are excluded from this mortgage lane chart.`
+        : fairnessEvaluation.chartAnnotations.mortgageNote);
+    }
+    if (selectedEngine === 'officer_lane' && config.chartLane) {
+      const parityNotes = getOfficerLaneChartParityNotes({
+        fairnessEvaluation,
+        chartLane: config.chartLane
+      });
+      chartNotes.push(parityNotes.statusMetricLine);
+      chartNotes.push(parityNotes.alignmentLine);
+    }
+
+    chartNotes.forEach((noteText) => {
       const note = document.createElement('p');
       note.className = 'distribution-chart-note';
-      note.textContent = selectedEngine === 'officer_lane'
-        ? `${fairnessEvaluation.chartAnnotations.mortgageNote} Consumer-only officers are excluded from this mortgage lane chart.`
-        : fairnessEvaluation.chartAnnotations.mortgageNote;
+      note.textContent = noteText;
       chartCard.appendChild(note);
-    }
+    });
+
     distributionChartsEl.appendChild(chartCard);
   });
 
@@ -2500,6 +2657,9 @@ async function activateSessionInDirectory(directoryHandle, sessionMode = 'produc
   if (isDemoMode) {
     await ensureDemoDataSeeded();
   }
+
+  await refreshFocusWeightSettingsState();
+  syncOfficerEditorFromClassPreset();
 
   await loadLoanTypes();
   const { runningTotals, fileWasCreated } = await loadRunningTotals();
@@ -3962,7 +4122,119 @@ function getConsumerLaneUnevennessGuardPenalty(eligibleOfficerNames, categoryLoa
   return (countGap ** 2) * 12;
 }
 
-function getOfficerCategoryParticipationBias(officerConfig, loanCategory, eligibleOfficerConfigs) {
+function getHelocLaneCompetitionPenalty(officersByName, eligibleOfficerNames, officerTypeCounts, officerActiveSessions, selectedOfficer, loanType) {
+  if (getSelectedFairnessEngineForScoring() !== 'officer_lane' || eligibleOfficerNames.length < 2) {
+    return 0;
+  }
+
+  const eligibleOfficerConfigs = eligibleOfficerNames.map((name) => officersByName[name]).filter(Boolean);
+  const hasMortgageOnlyOfficer = eligibleOfficerConfigs.some((officerConfig) => {
+    const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officerConfig?.eligibility);
+    return !eligibility.consumer && eligibility.mortgage;
+  });
+
+  const strengthByOfficer = Object.fromEntries(eligibleOfficerNames.map((officerName) => {
+    const officerConfig = officersByName[officerName];
+    const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officerConfig?.eligibility);
+    const rawMortgageWeight = getRawCategoryWeightForOfficer(officerConfig, loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE);
+
+    return [officerName, mortgageFocusRoutingService?.getMortgageCompetitionStrength?.({
+      rawWeight: rawMortgageWeight,
+      mortgagePermissionLevel: 'heloc',
+      hasMortgageOnlyOfficer,
+      isMortgageOnly: !eligibility.consumer && eligibility.mortgage,
+      isFlex: eligibility.consumer && eligibility.mortgage
+    }) || 1];
+  }));
+
+  const totalStrength = Object.values(strengthByOfficer).reduce((sum, value) => sum + value, 0);
+  if (!totalStrength) {
+    return 0;
+  }
+
+  const projectedCounts = Object.fromEntries(eligibleOfficerNames.map((officerName) => [
+    officerName,
+    getNormalizedFairnessValue((officerTypeCounts[officerName]?.[loanType] || 0) + (officerName === selectedOfficer ? 1 : 0), officerActiveSessions[officerName])
+  ]));
+  const totalProjectedCounts = Object.values(projectedCounts).reduce((sum, value) => sum + value, 0);
+  if (!totalProjectedCounts) {
+    return 0;
+  }
+
+  const meanSquaredRelativeError = eligibleOfficerNames.reduce((sum, officerName) => {
+    const expectedCount = totalProjectedCounts * (strengthByOfficer[officerName] / totalStrength);
+    if (!expectedCount) {
+      return sum;
+    }
+    return sum + (((projectedCounts[officerName] - expectedCount) / expectedCount) ** 2);
+  }, 0) / eligibleOfficerNames.length;
+
+  let overflowPenalty = 0;
+  const selectedProjectedCount = projectedCounts[selectedOfficer] || 0;
+  const expectedSelectedCount = totalProjectedCounts * (strengthByOfficer[selectedOfficer] / totalStrength);
+
+  // Apply this guardrail as soon as a second HELOC assignment would concentrate too aggressively.
+  // This keeps M officers advantaged by expected weighted share while preserving meaningful flex participation.
+  if (totalProjectedCounts >= 2 && expectedSelectedCount > 0 && selectedProjectedCount > (expectedSelectedCount * 1.3)) {
+    const overflowRatio = (selectedProjectedCount - (expectedSelectedCount * 1.3)) / expectedSelectedCount;
+    overflowPenalty = (overflowRatio ** 2) * 60;
+  }
+
+  return (meanSquaredRelativeError * 28) + overflowPenalty;
+}
+
+
+function getHomogeneousHelocSharePenalty(officersByName, eligibleOfficerNames, runTypeAssignmentCounts, selectedOfficer, loanType) {
+  if (loanType !== 'HELOC' || eligibleOfficerNames.length < 2) {
+    return 0;
+  }
+
+  const eligibleOfficerConfigs = eligibleOfficerNames.map((name) => officersByName[name]).filter(Boolean);
+  const hasMortgageOnlyOfficer = eligibleOfficerConfigs.some((officerConfig) => {
+    const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officerConfig?.eligibility);
+    return !eligibility.consumer && eligibility.mortgage;
+  });
+
+  const strengthByOfficer = Object.fromEntries(eligibleOfficerNames.map((officerName) => {
+    const officerConfig = officersByName[officerName];
+    const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officerConfig?.eligibility);
+    const rawMortgageWeight = getRawCategoryWeightForOfficer(officerConfig, loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE);
+
+    return [officerName, mortgageFocusRoutingService?.getMortgageCompetitionStrength?.({
+      rawWeight: rawMortgageWeight,
+      mortgagePermissionLevel: 'heloc',
+      hasMortgageOnlyOfficer,
+      isMortgageOnly: !eligibility.consumer && eligibility.mortgage,
+      isFlex: eligibility.consumer && eligibility.mortgage
+    }) || 1];
+  }));
+
+  const totalStrength = Object.values(strengthByOfficer).reduce((sum, value) => sum + value, 0);
+  if (!totalStrength) {
+    return 0;
+  }
+
+  const projectedCounts = Object.fromEntries(eligibleOfficerNames.map((officerName) => [
+    officerName,
+    (runTypeAssignmentCounts?.[officerName]?.[loanType] || 0) + (officerName === selectedOfficer ? 1 : 0)
+  ]));
+  const totalProjectedCounts = Object.values(projectedCounts).reduce((sum, value) => sum + value, 0);
+  if (!totalProjectedCounts) {
+    return 0;
+  }
+
+  const meanSquaredRelativeError = eligibleOfficerNames.reduce((sum, officerName) => {
+    const expectedCount = totalProjectedCounts * (strengthByOfficer[officerName] / totalStrength);
+    if (!expectedCount) {
+      return sum;
+    }
+    return sum + (((projectedCounts[officerName] - expectedCount) / expectedCount) ** 2);
+  }, 0) / eligibleOfficerNames.length;
+
+  return meanSquaredRelativeError * 32;
+}
+
+function getOfficerCategoryParticipationBias(officerConfig, loanCategory, eligibleOfficerConfigs, mortgagePermissionLevel = 'full-mortgage') {
   if (loanCategory !== loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE) {
     return 1;
   }
@@ -3980,41 +4252,46 @@ function getOfficerCategoryParticipationBias(officerConfig, loanCategory, eligib
   const isMortgageOnly = !eligibility.consumer && eligibility.mortgage;
   const isFlex = eligibility.consumer && eligibility.mortgage;
 
-  if (isMortgageOnly) {
-    return 1.15;
-  }
-
-  if (isFlex) {
-    return 0.6;
-  }
-
-  return 1;
+  return mortgageFocusRoutingService?.getMortgageParticipationBias?.({
+    mortgagePermissionLevel,
+    hasMortgageOnlyOfficer,
+    isMortgageOnly,
+    isFlex
+  }) || 1;
 }
 
-function chooseOfficerForLoan(officersByName, officerLoanTotals, officerTypeCounts, officerAmountTotals, officerActiveSessions, runAssignmentCounts, loan) {
+function getRawCategoryWeightForOfficer(officerConfig, loanCategory) {
+  const weights = loanCategoryUtils.normalizeOfficerWeights(officerConfig?.weights, officerConfig?.eligibility);
+  return loanCategory === loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE
+    ? Number(weights.mortgage) || 0
+    : Number(weights.consumer) || 0;
+}
+
+function filterEligibleOfficersByFocusWeight(eligibleOfficers, loanCategory) {
+  if (getSelectedFairnessEngineForScoring() !== 'officer_lane' || eligibleOfficers.length < 2) {
+    return eligibleOfficers;
+  }
+
+  const weightedEligibleOfficers = eligibleOfficers.filter((officerConfig) => getRawCategoryWeightForOfficer(officerConfig, loanCategory) > 0);
+  return weightedEligibleOfficers.length ? weightedEligibleOfficers : eligibleOfficers;
+}
+
+function chooseOfficerForLoan(officersByName, officerLoanTotals, officerTypeCounts, officerAmountTotals, officerActiveSessions, runAssignmentCounts, runTypeAssignmentCounts, routingContext, loan) {
   const loanCategory = getLoanCategoryForType(loan.type);
   let eligibleOfficers = Object.values(officersByName).filter((officerConfig) => isOfficerEligibleForLoanType(officerConfig, loan));
-  const isHelocLoan = String(loan?.type || '').trim().toLowerCase() === 'heloc';
-  if (loanCategory === loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE && !isHelocLoan) {
-    const mortgageOnlyOfficers = eligibleOfficers.filter((officerConfig) => {
-      const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officerConfig.eligibility);
-      return !eligibility.consumer && eligibility.mortgage;
-    });
-    if (mortgageOnlyOfficers.length) {
-      eligibleOfficers = mortgageOnlyOfficers;
-    } else {
-      const flexCoverageOfficers = eligibleOfficers.filter((officerConfig) => {
-        const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officerConfig.eligibility);
-        return eligibility.consumer
-          && eligibility.mortgage
-          && isOfficerEligibleForLoanType(officerConfig, loan);
-      });
-
-      if (flexCoverageOfficers.length) {
-        eligibleOfficers = flexCoverageOfficers;
-      }
+  const mortgagePermissionLevel = getMortgageLoanPermissionLevel(loan.type);
+  const isHelocLoan = mortgagePermissionLevel === 'heloc';
+  if (loanCategory === loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE) {
+    const preferredMortgagePool = mortgageFocusRoutingService?.selectMortgageCompetitionPool?.(
+      eligibleOfficers,
+      mortgagePermissionLevel
+    );
+    if (Array.isArray(preferredMortgagePool) && preferredMortgagePool.length) {
+      eligibleOfficers = preferredMortgagePool;
     }
   }
+
+  eligibleOfficers = filterEligibleOfficersByFocusWeight(eligibleOfficers, loanCategory);
 
   if (!eligibleOfficers.length) {
     return {
@@ -4085,6 +4362,12 @@ function chooseOfficerForLoan(officersByName, officerLoanTotals, officerTypeCoun
     const consumerLaneUnevennessGuardPenalty = loanCategory === loanCategoryUtils.LOAN_CATEGORIES.CONSUMER
       ? getConsumerLaneUnevennessGuardPenalty(eligibleOfficerNames, categoryLoanTotals, officerActiveSessions, officer)
       : 0;
+    const helocCompetitionPenalty = mortgagePermissionLevel === 'heloc'
+      ? getHelocLaneCompetitionPenalty(officersByName, eligibleOfficerNames, officerTypeCounts, officerActiveSessions, officer, loan.type)
+      : 0;
+    const homogeneousHelocPenalty = (routingContext?.isHomogeneousHelocPool && mortgagePermissionLevel === 'heloc')
+      ? getHomogeneousHelocSharePenalty(officersByName, eligibleOfficerNames, runTypeAssignmentCounts, officer, loan.type)
+      : 0;
     const amountWeightMultiplier = loanCategory === loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE ? 6 : consumerGuardrailSettings.consumerAmountWeight;
     const loanWeightMultiplier = loanCategory === loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE ? 1 : consumerGuardrailSettings.consumerLoanWeight;
     const runAssignmentCount = Number(runAssignmentCounts?.[officer] || 0);
@@ -4098,9 +4381,16 @@ function chooseOfficerForLoan(officersByName, officerLoanTotals, officerTypeCoun
       + consumerRoleSharePenalty
       + consumerLaneCountBalancingPenalty
       + consumerLaneUnevennessGuardPenalty
+      + helocCompetitionPenalty
+      + homogeneousHelocPenalty
       + runConcentrationPenalty;
     const categoryWeight = loanCategoryUtils.getCategoryWeightForOfficer(officersByName[officer], loanCategory);
-    const participationBias = getOfficerCategoryParticipationBias(officersByName[officer], loanCategory, eligibleOfficers);
+    const participationBias = getOfficerCategoryParticipationBias(
+      officersByName[officer],
+      loanCategory,
+      eligibleOfficers,
+      mortgagePermissionLevel
+    );
     const score = fairnessScore / (getCategoryWeightBias(categoryWeight) * participationBias);
 
     return {
@@ -4117,6 +4407,8 @@ function chooseOfficerForLoan(officersByName, officerLoanTotals, officerTypeCoun
       consumerDollarDriftPenalty,
       consumerLaneCountBalancingPenalty,
       consumerLaneUnevennessGuardPenalty,
+      helocCompetitionPenalty,
+      homogeneousHelocPenalty,
       projectedTypeLoad: getNormalizedFairnessValue((officerTypeCounts[officer][loan.type] || 0) + 1, officerActiveSessions[officer]),
       projectedAmountLoad: getNormalizedFairnessValue(officerAmountTotals[officer] + goalAmount, officerActiveSessions[officer]),
       projectedLoanLoad: getNormalizedFairnessValue(officerLoanTotals[officer] + 1, officerActiveSessions[officer])
@@ -4467,6 +4759,7 @@ function rebuildFairnessAuditForAssignments({ activeLoanTypes, cleanLoans, offic
   const officerLoanTotals = {};
   const officerActiveSessions = {};
   const runAssignmentCounts = {};
+  const runTypeAssignmentCounts = {};
   const fairnessAudit = [];
 
   cleanOfficerNames.forEach((officerName) => {
@@ -4476,6 +4769,7 @@ function rebuildFairnessAuditForAssignments({ activeLoanTypes, cleanLoans, offic
     officerLoanTotals[officerName] = priorStats.loanCount;
     officerActiveSessions[officerName] = priorStats.activeSessionCount + 1;
     runAssignmentCounts[officerName] = 0;
+    runTypeAssignmentCounts[officerName] = {};
   });
 
   activeLoanTypes.forEach((loanType) => {
@@ -4491,6 +4785,8 @@ function rebuildFairnessAuditForAssignments({ activeLoanTypes, cleanLoans, offic
         officerAmountTotals,
         officerActiveSessions,
         runAssignmentCounts,
+        runTypeAssignmentCounts,
+        { isHomogeneousHelocPool: activeLoanTypes.length === 1 && activeLoanTypes[0] === 'HELOC' },
         loan
       );
       const selectedOfficer = loanToOfficerMap.get(loan) || scoredDecision.selectedOfficer;
@@ -4503,6 +4799,7 @@ function rebuildFairnessAuditForAssignments({ activeLoanTypes, cleanLoans, offic
       officerAmountTotals[selectedOfficer] += getGoalAmountForLoan(loan);
       officerLoanTotals[selectedOfficer] += 1;
       runAssignmentCounts[selectedOfficer] += 1;
+      runTypeAssignmentCounts[selectedOfficer][loanType] = (runTypeAssignmentCounts[selectedOfficer][loanType] || 0) + 1;
 
       fairnessAudit.push({
         loan,
@@ -4515,20 +4812,173 @@ function rebuildFairnessAuditForAssignments({ activeLoanTypes, cleanLoans, offic
   return fairnessAudit;
 }
 
+function getLaneOptimizationCompositePercent(countVariancePercent, amountVariancePercent) {
+  const normalizedCountPercent = (Number(countVariancePercent) || 0) * (20 / 15);
+  const normalizedAmountPercent = Number(amountVariancePercent) || 0;
+  return Math.max(normalizedCountPercent, normalizedAmountPercent);
+}
+
+
+
+function isHomogeneousHelocSupportPool(cleanLoans, officersByName) {
+  if (!Array.isArray(cleanLoans) || !cleanLoans.length) {
+    return false;
+  }
+
+  const allHeloc = cleanLoans.every((loan) => getMortgageLoanPermissionLevel(loan.type) === 'heloc');
+  if (!allHeloc) {
+    return false;
+  }
+
+  const officerConfigs = Object.values(officersByName || {}).map((officer) => normalizeOfficerConfig(officer));
+  const mortgageOnlyCount = officerConfigs.filter((officer) => {
+    const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officer?.eligibility);
+    return !eligibility.consumer && eligibility.mortgage;
+  }).length;
+  const flexCount = officerConfigs.filter((officer) => {
+    const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officer?.eligibility);
+    return eligibility.consumer && eligibility.mortgage;
+  }).length;
+
+  return mortgageOnlyCount >= 1 && flexCount >= 2;
+}
+
+function getHomogeneousHelocWeightedVariancePercent({ loanToOfficerMap, cleanLoans, cleanOfficerNames, officersByName }) {
+  const helocLoans = cleanLoans.filter((loan) => getMortgageLoanPermissionLevel(loan.type) === 'heloc');
+  if (!helocLoans.length) {
+    return 0;
+  }
+
+  const helocEligibleOfficers = cleanOfficerNames
+    .map((officerName) => officersByName[officerName])
+    .filter((officerConfig) => isOfficerEligibleForLoanType(officerConfig, { type: 'HELOC' }))
+    .filter(Boolean);
+  if (!helocEligibleOfficers.length) {
+    return 0;
+  }
+
+  const hasMortgageOnlyOfficer = helocEligibleOfficers.some((officerConfig) => {
+    const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officerConfig?.eligibility);
+    return !eligibility.consumer && eligibility.mortgage;
+  });
+
+  const strengthByOfficer = Object.fromEntries(helocEligibleOfficers.map((officerConfig) => {
+    const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officerConfig?.eligibility);
+    const rawMortgageWeight = getRawCategoryWeightForOfficer(officerConfig, loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE);
+    return [officerConfig.name, mortgageFocusRoutingService?.getMortgageCompetitionStrength?.({
+      rawWeight: rawMortgageWeight,
+      mortgagePermissionLevel: 'heloc',
+      hasMortgageOnlyOfficer,
+      isMortgageOnly: !eligibility.consumer && eligibility.mortgage,
+      isFlex: eligibility.consumer && eligibility.mortgage
+    }) || 1];
+  }));
+
+  const totalStrength = Object.values(strengthByOfficer).reduce((sum, value) => sum + value, 0);
+  if (!totalStrength) {
+    return 0;
+  }
+
+  const countByOfficer = Object.fromEntries(helocEligibleOfficers.map((officerConfig) => [officerConfig.name, 0]));
+  const amountByOfficer = Object.fromEntries(helocEligibleOfficers.map((officerConfig) => [officerConfig.name, 0]));
+
+  helocLoans.forEach((loan) => {
+    const assignedOfficer = loanToOfficerMap.get(loan);
+    if (!countByOfficer[assignedOfficer] && countByOfficer[assignedOfficer] !== 0) {
+      return;
+    }
+    countByOfficer[assignedOfficer] += 1;
+    amountByOfficer[assignedOfficer] += getGoalAmountForLoan(loan);
+  });
+
+  const totalCount = helocLoans.length;
+  const totalAmount = helocLoans.reduce((sum, loan) => sum + getGoalAmountForLoan(loan), 0);
+
+  const countVariancePercent = Math.max(...Object.keys(countByOfficer).map((officerName) => {
+    const expectedCount = totalCount * (strengthByOfficer[officerName] / totalStrength);
+    if (!expectedCount) {
+      return 0;
+    }
+    return (Math.abs(countByOfficer[officerName] - expectedCount) / totalCount) * 100;
+  }));
+
+  const amountVariancePercent = totalAmount ? Math.max(...Object.keys(amountByOfficer).map((officerName) => {
+    const expectedAmount = totalAmount * (strengthByOfficer[officerName] / totalStrength);
+    if (!expectedAmount) {
+      return 0;
+    }
+    return (Math.abs(amountByOfficer[officerName] - expectedAmount) / totalAmount) * 100;
+  })) : 0;
+
+  return getLaneOptimizationCompositePercent(countVariancePercent, amountVariancePercent);
+}
+
 function optimizeOfficerLaneAssignmentsResult({ activeLoanTypes, cleanLoans, cleanOfficerNames, officersByName, runningTotals, result }) {
   if (getSelectedFairnessEngine() !== 'officer_lane' || !window.OfficerLaneOptimizationService?.optimizeConsumerLaneAssignments) {
     return result;
   }
 
   const baselineFairnessEvaluation = evaluateResultFairness(result);
-  const baselineConsumerVariance = Number(baselineFairnessEvaluation?.metrics?.consumerVariance?.maxAmountVariancePercent) || 0;
-  // Tiered entry rule: start optimization only once consumer-dollar variance reaches 20% or higher.
-  if (baselineConsumerVariance < window.OfficerLaneOptimizationService.PRIMARY_TARGET_PERCENT) {
+  const isHelocOnlySupportPool = isHomogeneousHelocSupportPool(cleanLoans, officersByName);
+
+  const officerConfigs = cleanOfficerNames
+    .map((officerName) => normalizeOfficerConfig(officersByName[officerName]))
+    .filter((officer) => officer?.name);
+  const consumerLaneCount = officerConfigs.filter((officer) => {
+    const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officer.eligibility);
+    return eligibility.consumer && !eligibility.mortgage;
+  }).length;
+  const flexLaneCount = officerConfigs.filter((officer) => {
+    const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officer.eligibility);
+    return eligibility.consumer && eligibility.mortgage;
+  }).length;
+
+  const optimizationTarget = isHelocOnlySupportPool
+    ? {
+      getVariancePercent: (fairnessEvaluation) => Number(fairnessEvaluation?.metrics?.helocWeightedVariancePercent || 0),
+      targetLabel: 'weighted HELOC variance',
+      shouldOptimizeLoan: (loan) => getMortgageLoanPermissionLevel(loan.type) === 'heloc'
+    }
+    : (consumerLaneCount >= 2
+      ? {
+        getVariancePercent: (fairnessEvaluation) => getLaneOptimizationCompositePercent(
+          fairnessEvaluation?.metrics?.consumerVariance?.maxCountVariancePercent,
+          fairnessEvaluation?.metrics?.consumerVariance?.maxAmountVariancePercent
+        ),
+        targetLabel: 'consumer-lane variance',
+        shouldOptimizeLoan: (loan) => getLoanCategoryForType(loan.type) === loanCategoryUtils.LOAN_CATEGORIES.CONSUMER
+      }
+      : {
+        getVariancePercent: (fairnessEvaluation) => getLaneOptimizationCompositePercent(
+          fairnessEvaluation?.metrics?.flexVariance?.maxCountVariancePercent,
+          fairnessEvaluation?.metrics?.flexVariance?.maxAmountVariancePercent
+        ),
+        targetLabel: 'flex-lane variance',
+        shouldOptimizeLoan: (loan, eligibleOfficerNames) => {
+          const flexEligibleCount = eligibleOfficerNames.filter((officerName) => {
+            const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officersByName[officerName]?.eligibility);
+            return eligibility.consumer && eligibility.mortgage;
+          }).length;
+          return flexLaneCount >= 2 && flexEligibleCount >= 2;
+        }
+      });
+
+  const baselineTargetVariance = isHelocOnlySupportPool
+    ? getHomogeneousHelocWeightedVariancePercent({
+      loanToOfficerMap: new Map(result.loanAssignments.map((entry) => [entry.loan, entry.officers?.[0]])),
+      cleanLoans,
+      cleanOfficerNames,
+      officersByName
+    })
+    : optimizationTarget.getVariancePercent(baselineFairnessEvaluation);
+  if (!isHelocOnlySupportPool && baselineTargetVariance < window.OfficerLaneOptimizationService.PRIMARY_TARGET_PERCENT) {
     result.fairnessEvaluation = baselineFairnessEvaluation;
     result.optimizationApplied = false;
     result.optimizationIterations = 0;
-    result.optimizationInitialConsumerDollarVariance = baselineConsumerVariance;
-    result.optimizationFinalConsumerDollarVariance = baselineConsumerVariance;
+    result.optimizationInitialConsumerDollarVariance = baselineTargetVariance;
+    result.optimizationFinalConsumerDollarVariance = baselineTargetVariance;
+    result.optimizationInitialHelocWeightedVariancePercent = null;
+    result.optimizationFinalHelocWeightedVariancePercent = null;
     result.optimizationTierReached = 'under_20';
     result.optimizationSummaryMessage = '';
     return result;
@@ -4542,10 +4992,13 @@ function optimizeOfficerLaneAssignmentsResult({ activeLoanTypes, cleanLoans, cle
   const optimization = window.OfficerLaneOptimizationService.optimizeConsumerLaneAssignments({
     initialLoanToOfficerMap,
     eligibleOfficersByLoan,
-    isConsumerLoan: (loan) => getLoanCategoryForType(loan.type) === loanCategoryUtils.LOAN_CATEGORIES.CONSUMER,
+    isConsumerLoan: (loan) => optimizationTarget.shouldOptimizeLoan(loan, eligibleOfficersByLoan.get(loan) || []),
     shouldIncludeLoan: (loan) => getGoalAmountForLoan(loan) > 0,
+    getVariancePercent: optimizationTarget.getVariancePercent,
+    targetLabel: optimizationTarget.targetLabel,
     // Bounded candidate evaluations keep this deterministic enough for audits and prevent unbounded retry loops.
     maxEvaluations: Math.min(250, Math.max(100, cleanLoans.length * Math.max(cleanOfficerNames.length, 2))),
+    forceOptimizationRun: isHelocOnlySupportPool,
     evaluateCandidate: (loanToOfficerMap) => {
       const candidateLoanAssignments = cleanLoans.map((loan) => ({
         loan,
@@ -4557,6 +5010,16 @@ function optimizeOfficerLaneAssignmentsResult({ activeLoanTypes, cleanLoans, cle
         loanAssignments: candidateLoanAssignments,
         officerAssignments: buildOfficerAssignmentsFromLoanAssignments(cleanOfficerNames, candidateLoanAssignments)
       };
+
+      if (isHelocOnlySupportPool) {
+        candidateResult.optimizationFinalHelocWeightedVariancePercent = getHomogeneousHelocWeightedVariancePercent({
+          loanToOfficerMap,
+          cleanLoans,
+          cleanOfficerNames,
+          officersByName
+        });
+      }
+
       return evaluateResultFairness(candidateResult);
     }
   });
@@ -4565,12 +5028,15 @@ function optimizeOfficerLaneAssignmentsResult({ activeLoanTypes, cleanLoans, cle
   result.optimizationIterations = optimization.evaluations;
   result.optimizationInitialConsumerDollarVariance = optimization.initialVariancePercent;
   result.optimizationFinalConsumerDollarVariance = optimization.finalVariancePercent;
+  result.optimizationInitialHelocWeightedVariancePercent = isHelocOnlySupportPool ? optimization.initialVariancePercent : null;
+  result.optimizationFinalHelocWeightedVariancePercent = isHelocOnlySupportPool ? optimization.finalVariancePercent : null;
   result.optimizationTierReached = optimization.tierReached;
   result.optimizationSummaryMessage = optimization.summaryMessage;
 
   if (!optimization.improved) {
     // The loan mix may make <=25% unattainable; keep the best available result even if it remains above advisory.
-    result.fairnessEvaluation = applyOptimizationSummaryToFairnessEvaluation(result, baselineFairnessEvaluation);
+    const selectedFairnessEvaluation = evaluateResultFairness(result);
+    result.fairnessEvaluation = applyOptimizationSummaryToFairnessEvaluation(result, selectedFairnessEvaluation);
     return result;
   }
 
@@ -4589,7 +5055,7 @@ function optimizeOfficerLaneAssignmentsResult({ activeLoanTypes, cleanLoans, cle
     runningTotals,
     loanToOfficerMap: optimization.bestLoanToOfficerMap
   });
-  const optimizedFairnessEvaluation = optimization.bestFairnessEvaluation || evaluateResultFairness(result);
+  const optimizedFairnessEvaluation = evaluateResultFairness(result);
   result.fairnessEvaluation = applyOptimizationSummaryToFairnessEvaluation(result, optimizedFairnessEvaluation);
   return result;
 }
@@ -4643,6 +5109,7 @@ function assignLoans(officers, loans, runningTotals = { officers: {} }) {
   const officerLoanTotals = {};
   const officerActiveSessions = {};
   const runAssignmentCounts = {};
+  const runTypeAssignmentCounts = {};
 
   cleanOfficerNames.forEach((officerName) => {
     const priorStats = normalizeOfficerStats(runningTotals.officers?.[officerName]);
@@ -4652,6 +5119,7 @@ function assignLoans(officers, loans, runningTotals = { officers: {} }) {
     officerLoanTotals[officerName] = priorStats.loanCount;
     officerActiveSessions[officerName] = priorStats.activeSessionCount + 1;
     runAssignmentCounts[officerName] = 0;
+    runTypeAssignmentCounts[officerName] = {};
   });
 
   const loanAssignments = [];
@@ -4668,7 +5136,7 @@ function assignLoans(officers, loans, runningTotals = { officers: {} }) {
       const orderedLoansForType = [...loansForType].sort((loanA, loanB) => getGoalAmountForLoan(loanB) - getGoalAmountForLoan(loanA));
 
       orderedLoansForType.forEach((loan) => {
-        const assignmentDecision = chooseOfficerForLoan(officersByName, officerLoanTotals, officerTypeCounts, officerAmountTotals, officerActiveSessions, runAssignmentCounts, loan);
+        const assignmentDecision = chooseOfficerForLoan(officersByName, officerLoanTotals, officerTypeCounts, officerAmountTotals, officerActiveSessions, runAssignmentCounts, runTypeAssignmentCounts, { isHomogeneousHelocPool: cleanLoans.length > 0 && cleanLoans.every((candidateLoan) => getMortgageLoanPermissionLevel(candidateLoan.type) === 'heloc') }, loan);
         if (assignmentDecision.error) {
           throw new Error(assignmentDecision.error);
         }
@@ -4684,6 +5152,7 @@ function assignLoans(officers, loans, runningTotals = { officers: {} }) {
       officerAmountTotals[assignedOfficer] += getGoalAmountForLoan(loan);
       officerLoanTotals[assignedOfficer] += 1;
       runAssignmentCounts[assignedOfficer] += 1;
+      runTypeAssignmentCounts[assignedOfficer][loanType] = (runTypeAssignmentCounts[assignedOfficer][loanType] || 0) + 1;
 
       loanAssignments.push({
         loan,
@@ -5064,10 +5533,10 @@ mortgageFocusedPrimaryInput?.addEventListener('input', () => {
 mortgageFocusedSecondaryInput?.addEventListener('input', () => {
   syncFocusWeightPair(mortgageFocusedSecondaryInput, mortgageFocusedPrimaryInput, 30);
 });
-saveFocusWeightsBtn?.addEventListener('click', () => {
+saveFocusWeightsBtn?.addEventListener('click', async () => {
   const consumerConsumer = normalizeFocusPercentInput(consumerFocusedPrimaryInput?.value, 70);
   const mortgageMortgage = normalizeFocusPercentInput(mortgageFocusedPrimaryInput?.value, 70);
-  const saveResult = focusWeightSettingsService?.saveFocusWeights?.({
+  const saveResult = await focusWeightSettingsService?.saveFocusWeights?.({
     consumerFocused: {
       consumer: consumerConsumer,
       mortgage: 100 - consumerConsumer
@@ -5081,33 +5550,26 @@ saveFocusWeightsBtn?.addEventListener('click', () => {
   if (!saveResult?.success) {
     const storageFailureMessage = saveResult?.error === 'readback_mismatch'
       ? 'Could not verify that focus weights were persisted. Changes may be temporary for this session only.'
-      : 'Could not persist focus weights in this browser. Changes may be temporary for this session only.';
+      : 'Could not write focus weights to focus_weights.json. Changes may be temporary for this session only.';
     setFocusWeightSettingsMessage(storageFailureMessage, 'warning');
     return;
   }
 
-  refreshFocusWeightSettingsState();
+  await refreshFocusWeightSettingsState({ reload: false });
   syncOfficerEditorFromClassPreset();
   setFocusWeightSettingsMessage('Focus weights saved. New Consumer-Focused and Mortgage-Focused assignments will use these values.', 'success');
 });
-resetFocusWeightsBtn?.addEventListener('click', () => {
-  const defaults = focusWeightSettingsService?.getDefaultFocusWeights?.() || {
-    consumerFocused: { consumer: 70, mortgage: 30 },
-    mortgageFocused: { consumer: 30, mortgage: 70 }
-  };
-  const saveResult = focusWeightSettingsService?.saveFocusWeights?.(defaults);
-  if (!saveResult?.success) {
-    const storageFailureMessage = saveResult?.error === 'readback_mismatch'
-      ? 'Focus weights were reset for this session, but persistence could not be verified.'
-      : 'Focus weights were reset for this session, but could not be persisted in this browser.';
-    setFocusWeightSettingsMessage(storageFailureMessage, 'warning');
-    refreshFocusWeightSettingsState();
+resetFocusWeightsBtn?.addEventListener('click', async () => {
+  const resetResult = await focusWeightSettingsService?.resetFocusWeightsToDefaults?.();
+  if (!resetResult?.success) {
+    setFocusWeightSettingsMessage('Focus weights were reset in memory, but the override file could not be removed.', 'warning');
+    await refreshFocusWeightSettingsState({ reload: false });
     syncOfficerEditorFromClassPreset();
     return;
   }
-  refreshFocusWeightSettingsState();
+  await refreshFocusWeightSettingsState({ reload: false });
   syncOfficerEditorFromClassPreset();
-  setFocusWeightSettingsMessage('Focus weights reset to defaults (70/30).', 'success');
+  setFocusWeightSettingsMessage('Focus weights reset to defaults by removing the saved override.', 'success');
 });
 loanTypeEditorAvailabilityInput?.addEventListener('change', syncLoanTypeEditorAvailability);
 closeLoanTypeEditorModalBtn?.addEventListener('click', closeLoanTypeEditorModal);
@@ -5364,7 +5826,7 @@ clearBtn.addEventListener('click', () => {
 });
 
 (async function initializeApp() {
-  refreshFocusWeightSettingsState();
+  await refreshFocusWeightSettingsState();
   updateFairnessMethodologyCopy();
   renderLoanTypes();
 
