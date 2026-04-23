@@ -2346,8 +2346,12 @@ function getOfficerLaneChartParityNotes({ fairnessEvaluation, chartLane }) {
       : descriptor.key?.startsWith('mortgage')
         ? 'mortgage'
         : null;
+  const isMortgagePolicyDescriptor = typeof descriptor.key === 'string'
+    && descriptor.key.startsWith('mortgage')
+    && descriptor.key.includes('policy');
+
   const alignmentLine = descriptorLane && descriptorLane === chartLane
-    ? `Composition view: This donut shows ${laneLabel}; status is using the mortgage policy check.`
+    ? `Composition view: This donut shows ${laneLabel}; status is using ${isMortgagePolicyDescriptor ? 'the same mortgage policy check' : 'the same lane metric'}.`
     : descriptorLane
       ? `Composition view: This donut shows ${laneLabel}; PASS/REVIEW is currently driven by ${descriptorLane}-lane variance.`
       : `Composition view: This donut shows ${laneLabel}; PASS/REVIEW is currently driven by a specialized status basis.`;
