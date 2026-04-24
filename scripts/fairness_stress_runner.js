@@ -201,6 +201,20 @@ function loadAppContext(seedForMath = 42) {
   return context;
 }
 
+function hashContextSeed(seed, engine) {
+  const input = `${Number(seed) || 0}:${String(engine || 'global')}`;
+  let hash = 2166136261;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) || 1;
+}
+
+function loadScenarioAppContext(seed, engine) {
+  return loadAppContext(hashContextSeed(seed, engine));
+}
+
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
@@ -961,7 +975,6 @@ function initLogs(outputDir) {
 
 function replayCase(args) {
   const logs = initLogs(args.outputDir);
-  const context = loadAppContext(42);
   const casePayload = JSON.parse(fs.readFileSync(args.replay, 'utf8'));
 
   const scenario = {
@@ -974,6 +987,7 @@ function replayCase(args) {
   };
 
   const engine = String(casePayload.engine || 'global');
+  const context = loadScenarioAppContext(scenario.seed, engine);
   const startedAt = nowIso();
   appendLine(logs.summaryLog, `[${startedAt}] replay start seed=${scenario.seed} engine=${engine}`);
 
@@ -1054,7 +1068,6 @@ function replayCase(args) {
 
 function runStress(args) {
   const logs = initLogs(args.outputDir);
-  const context = loadAppContext(42);
   const startedAt = nowIso();
   const endTime = Date.now() + Math.floor(args.durationMinutes * 60 * 1000);
 
@@ -1106,6 +1119,7 @@ function runStress(args) {
         engineRunStats[engine].attemptedRuns += 1;
       }
       try {
+        const context = loadScenarioAppContext(seed, engine);
         const run = runOneScenario(context, scenario, engine, {
           selectedEngine: enginePlan.preferred.selectedEngine,
           officerPopulationType: enginePlan.preferred.officerPopulationType,
@@ -1338,5 +1352,7 @@ module.exports = {
   recordEngineCompletionOutcome,
   classifyReviewBasis,
   updateReviewAggregation,
-  flushReviewAggregation
+  flushReviewAggregation,
+  hashContextSeed,
+  loadScenarioAppContext
 };

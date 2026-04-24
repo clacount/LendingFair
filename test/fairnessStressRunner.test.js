@@ -14,7 +14,8 @@ const {
   recordEngineCompletionOutcome,
   classifyReviewBasis,
   updateReviewAggregation,
-  flushReviewAggregation
+  flushReviewAggregation,
+  hashContextSeed
 } = require('../scripts/fairness_stress_runner.js');
 
 function makeScenario(officers) {
@@ -428,4 +429,26 @@ test('PASS runs are not added to review_counts aggregation', () => {
   const payload = JSON.parse(fs.readFileSync(outputPath, 'utf8'));
   assert.deepEqual(payload, {});
   fs.rmSync(outputPath, { force: true });
+});
+
+test('hashContextSeed is deterministic and varies by seed/engine', () => {
+  const sameA = hashContextSeed(123, 'global');
+  const sameB = hashContextSeed(123, 'global');
+  const differentEngine = hashContextSeed(123, 'officer_lane');
+  const differentSeed = hashContextSeed(124, 'global');
+
+  assert.equal(sameA, sameB);
+  assert.notEqual(sameA, differentEngine);
+  assert.notEqual(sameA, differentSeed);
+  assert.equal(Number.isInteger(sameA), true);
+  assert.equal(sameA > 0, true);
+  assert.equal(sameA <= 0xFFFFFFFF, true);
+});
+
+test('stress and replay paths both use scenario+engine context seed derivation', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../scripts/fairness_stress_runner.js'), 'utf8');
+
+  assert.match(source, /function replayCase\([\s\S]*?loadScenarioAppContext\(scenario\.seed,\s*engine\)/);
+  assert.match(source, /function runStress\([\s\S]*?loadScenarioAppContext\(seed,\s*engine\)/);
+  assert.doesNotMatch(source, /function runStress\([\s\S]*?const context = loadAppContext\(42\)/);
 });
