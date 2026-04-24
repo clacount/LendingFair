@@ -269,49 +269,6 @@
     );
   }
 
-  function buildLaneVarianceStatusDescriptor({ laneKeyPrefix, laneLabel, laneVariance, contextLabel }) {
-    const countVariance = Number(laneVariance?.maxCountVariancePercent) || 0;
-    const dollarVariance = Number(laneVariance?.maxAmountVariancePercent) || 0;
-    const countFail = !Boolean(laneVariance?.countDistributionPass);
-    const dollarFail = !Boolean(laneVariance?.amountDistributionPass);
-
-    if (countFail && dollarFail) {
-      const countNormalizedMargin = (countVariance - COUNT_VARIANCE_THRESHOLD_PERCENT) / COUNT_VARIANCE_THRESHOLD_PERCENT;
-      const dollarNormalizedMargin = (dollarVariance - AMOUNT_VARIANCE_THRESHOLD_PERCENT) / AMOUNT_VARIANCE_THRESHOLD_PERCENT;
-      if (countNormalizedMargin >= dollarNormalizedMargin) {
-        return {
-          key: `${laneKeyPrefix}_count_variance`,
-          label: `${laneLabel} count variance`,
-          valuePercent: countVariance,
-          contextLabel
-        };
-      }
-
-      return {
-        key: `${laneKeyPrefix}_dollar_variance`,
-        label: `${laneLabel} dollar variance`,
-        valuePercent: dollarVariance,
-        contextLabel
-      };
-    }
-
-    if (countFail) {
-      return {
-        key: `${laneKeyPrefix}_count_variance`,
-        label: `${laneLabel} count variance`,
-        valuePercent: countVariance,
-        contextLabel
-      };
-    }
-
-    return {
-      key: `${laneKeyPrefix}_dollar_variance`,
-      label: `${laneLabel} dollar variance`,
-      valuePercent: dollarVariance,
-      contextLabel
-    };
-  }
-
   function evaluateGlobalFairness(context) {
     const { categoryMetrics } = context;
     const overallCountVariance = calculateMaxVariance(context.officerStats || [], 'totalLoans');
@@ -514,19 +471,19 @@
         contextLabel: 'HELOC-only support thresholds'
       };
     } else if (hasConsumerLane && !adjustedConsumerPass) {
-      statusMetricDescriptor = buildLaneVarianceStatusDescriptor({
-        laneKeyPrefix: 'consumer_lane',
-        laneLabel: 'Consumer lane',
-        laneVariance: categoryMetrics.consumerVariance,
+      statusMetricDescriptor = {
+        key: 'consumer_lane_dollar_variance',
+        label: 'Consumer lane dollar variance',
+        valuePercent: Number(categoryMetrics.consumerVariance.maxAmountVariancePercent) || 0,
         contextLabel: 'Consumer lane thresholds'
-      });
+      };
     } else if (hasMortgageLane && !adjustedMortgageLanePass) {
-      statusMetricDescriptor = buildLaneVarianceStatusDescriptor({
-        laneKeyPrefix: 'mortgage_lane',
-        laneLabel: 'Mortgage lane',
-        laneVariance: categoryMetrics.mortgageVariance,
+      statusMetricDescriptor = {
+        key: 'mortgage_lane_dollar_variance',
+        label: 'Mortgage lane dollar variance',
+        valuePercent: Number(categoryMetrics.mortgageVariance.maxAmountVariancePercent) || 0,
         contextLabel: 'Mortgage lane thresholds'
-      });
+      };
     } else if (hasMortgageLane && !mortgageRoutingPass) {
       statusMetricDescriptor = {
         key: 'mortgage_routing_policy',
@@ -549,33 +506,33 @@
         contextLabel: 'Mortgage lane policy checks'
       };
     } else if (hasFlexLane && !adjustedFlexLanePass) {
-      statusMetricDescriptor = buildLaneVarianceStatusDescriptor({
-        laneKeyPrefix: 'flex_lane',
-        laneLabel: 'Flex lane',
-        laneVariance: categoryMetrics.flexVariance,
+      statusMetricDescriptor = {
+        key: 'flex_lane_dollar_variance',
+        label: 'Flex lane dollar variance',
+        valuePercent: Number(categoryMetrics.flexVariance.maxAmountVariancePercent) || 0,
         contextLabel: 'Flex lane thresholds'
-      });
+      };
     } else if (hasConsumerLane) {
-      statusMetricDescriptor = buildLaneVarianceStatusDescriptor({
-        laneKeyPrefix: 'consumer_lane',
-        laneLabel: 'Consumer lane',
-        laneVariance: categoryMetrics.consumerVariance,
+      statusMetricDescriptor = {
+        key: 'consumer_lane_dollar_variance',
+        label: 'Consumer lane dollar variance',
+        valuePercent: Number(categoryMetrics.consumerVariance.maxAmountVariancePercent) || 0,
         contextLabel: 'Consumer lane thresholds'
-      });
+      };
     } else if (hasFlexLane) {
-      statusMetricDescriptor = buildLaneVarianceStatusDescriptor({
-        laneKeyPrefix: 'flex_lane',
-        laneLabel: 'Flex lane',
-        laneVariance: categoryMetrics.flexVariance,
+      statusMetricDescriptor = {
+        key: 'flex_lane_dollar_variance',
+        label: 'Flex lane dollar variance',
+        valuePercent: Number(categoryMetrics.flexVariance.maxAmountVariancePercent) || 0,
         contextLabel: 'Flex lane thresholds'
-      });
+      };
     } else if (hasMortgageLane) {
-      statusMetricDescriptor = buildLaneVarianceStatusDescriptor({
-        laneKeyPrefix: 'mortgage_lane',
-        laneLabel: 'Mortgage lane',
-        laneVariance: categoryMetrics.mortgageVariance,
+      statusMetricDescriptor = {
+        key: 'mortgage_lane_dollar_variance',
+        label: 'Mortgage lane dollar variance',
+        valuePercent: Number(categoryMetrics.mortgageVariance.maxAmountVariancePercent) || 0,
         contextLabel: 'Mortgage lane thresholds'
-      });
+      };
     }
 
     return {
