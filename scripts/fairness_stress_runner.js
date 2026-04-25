@@ -509,12 +509,27 @@ function isExpectedInvalidScenarioError(message) {
 
 function getMetricForVarianceDescriptor(descriptorKey, metrics = {}) {
   const varianceDescriptors = {
+    consumer_lane_count_variance: metrics.consumerVariance?.maxCountVariancePercent,
     consumer_lane_dollar_variance: metrics.consumerVariance?.maxAmountVariancePercent,
+    flex_lane_count_variance: metrics.flexVariance?.maxCountVariancePercent,
     flex_lane_dollar_variance: metrics.flexVariance?.maxAmountVariancePercent,
+    mortgage_lane_count_variance: metrics.mortgageVariance?.maxCountVariancePercent,
     mortgage_lane_dollar_variance: metrics.mortgageVariance?.maxAmountVariancePercent,
     heloc_weighted_variance: metrics.helocWeightedVariancePercent
   };
   return varianceDescriptors[descriptorKey];
+}
+
+function isVarianceDescriptorKey(descriptorKey) {
+  return descriptorKey in {
+    consumer_lane_count_variance: true,
+    consumer_lane_dollar_variance: true,
+    flex_lane_count_variance: true,
+    flex_lane_dollar_variance: true,
+    mortgage_lane_count_variance: true,
+    mortgage_lane_dollar_variance: true,
+    heloc_weighted_variance: true
+  };
 }
 
 function isPolicyDescriptorKey(descriptorKey) {
@@ -590,12 +605,7 @@ function collectValidationFlags({ scenario, engine, result, officerStats, contex
 
     const descriptorKey = descriptor?.key;
     const metricUsed = getMetricForVarianceDescriptor(descriptorKey, metrics);
-    const descriptorUsesVarianceMetric = descriptorKey in {
-      consumer_lane_dollar_variance: true,
-      flex_lane_dollar_variance: true,
-      mortgage_lane_dollar_variance: true,
-      heloc_weighted_variance: true
-    };
+    const descriptorUsesVarianceMetric = isVarianceDescriptorKey(descriptorKey);
 
     if (descriptorUsesVarianceMetric
       && descriptor
@@ -831,7 +841,7 @@ function classifyLaneVarianceBasis(variance = {}, lanePrefix) {
 
 function classifyOfficerLaneReviewBasis(fairnessEvaluation = {}) {
   const descriptorKey = fairnessEvaluation?.statusMetricDescriptor?.key;
-  if (descriptorKey) {
+  if (isVarianceDescriptorKey(descriptorKey) || isPolicyDescriptorKey(descriptorKey)) {
     return descriptorKey;
   }
 

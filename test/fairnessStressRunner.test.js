@@ -304,6 +304,81 @@ test('mortgage policy descriptors are not compared against lane variance metrics
   assert.equal(flags.suspicious.includes('statusMetricDescriptor inconsistent with actual result basis'), false);
 });
 
+test('count variance descriptors validate against count metrics (not amount metrics)', () => {
+  const scenario = makeScenario([
+    { name: 'C1', eligibility: { consumer: true, mortgage: false } },
+    { name: 'C2', eligibility: { consumer: true, mortgage: false } }
+  ]);
+  const result = {
+    fairnessEvaluation: {
+      overallResult: 'REVIEW',
+      summaryItems: ['ok'],
+      roleAwareFlags: {},
+      statusMetricDescriptor: {
+        key: 'consumer_lane_count_variance',
+        valuePercent: 19,
+        contextLabel: 'Consumer count variance'
+      },
+      metrics: {
+        maxCountVariancePercent: 19,
+        maxAmountVariancePercent: 2,
+        consumerVariance: { maxCountVariancePercent: 19, maxAmountVariancePercent: 4 },
+        flexVariance: { maxCountVariancePercent: 0, maxAmountVariancePercent: 0 },
+        mortgageVariance: { maxCountVariancePercent: 0, maxAmountVariancePercent: 0 },
+        helocWeightedVariancePercent: null
+      }
+    }
+  };
+  const flags = collectValidationFlags({ scenario, engine: 'officer_lane', result, officerStats: [], context: {} });
+  assert.equal(flags.suspicious.includes('statusMetricDescriptor inconsistent with actual result basis'), false);
+  assert.equal(flags.suspicious.includes('null/undefined metric silently treated as success'), false);
+});
+
+test('dollar variance descriptors continue validating against amount metrics', () => {
+  const scenario = makeScenario([
+    { name: 'F1', eligibility: { consumer: true, mortgage: true } },
+    { name: 'F2', eligibility: { consumer: true, mortgage: true } }
+  ]);
+  const result = {
+    fairnessEvaluation: {
+      overallResult: 'REVIEW',
+      summaryItems: ['ok'],
+      roleAwareFlags: {},
+      statusMetricDescriptor: {
+        key: 'flex_lane_dollar_variance',
+        valuePercent: 23,
+        contextLabel: 'Flex amount variance'
+      },
+      metrics: {
+        maxCountVariancePercent: 10,
+        maxAmountVariancePercent: 23,
+        consumerVariance: { maxCountVariancePercent: 0, maxAmountVariancePercent: 0 },
+        flexVariance: { maxCountVariancePercent: 11, maxAmountVariancePercent: 23 },
+        mortgageVariance: { maxCountVariancePercent: 0, maxAmountVariancePercent: 0 },
+        helocWeightedVariancePercent: null
+      }
+    }
+  };
+  const flags = collectValidationFlags({ scenario, engine: 'officer_lane', result, officerStats: [], context: {} });
+  assert.equal(flags.suspicious.includes('statusMetricDescriptor inconsistent with actual result basis'), false);
+});
+
+test('officer-lane review classification buckets count descriptors as distinct reasons', () => {
+  const run = {
+    result: {
+      fairnessEvaluation: {
+        statusMetricDescriptor: { key: 'mortgage_lane_count_variance' },
+        metrics: {
+          consumerVariance: { maxCountVariancePercent: 2, maxAmountVariancePercent: 3 },
+          mortgageVariance: { maxCountVariancePercent: 22, maxAmountVariancePercent: 4 },
+          flexVariance: { maxCountVariancePercent: 1, maxAmountVariancePercent: 2 }
+        }
+      }
+    }
+  };
+  assert.equal(classifyReviewBasis(run, 'officer_lane'), 'mortgage_lane_count_variance');
+});
+
 test('stress summary includes attempted/suspicious/skipped/failure counts by engine', () => {
   const outputDir = path.resolve(__dirname, '../stress_runs/test_engine_stats');
   fs.rmSync(outputDir, { recursive: true, force: true });
