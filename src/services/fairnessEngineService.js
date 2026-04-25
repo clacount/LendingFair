@@ -698,29 +698,30 @@
 
   function evaluateFairness({ engineType, officers = [], officerStats = [], optimizationMetrics = {} } = {}) {
     const normalizedEngine = normalizeEngineType(engineType);
-    const safeOfficers = Array.isArray(officers) ? officers.map((officer) => normalizeOfficer(officer)) : [];
+    const normalizedOfficers = Array.isArray(officers) ? officers.map((officer) => normalizeOfficer(officer)) : [];
     const safeOfficerStats = Array.isArray(officerStats)
       ? officerStats.map((entry) => normalizeOfficerStatsEntry(entry)).filter((entry) => entry.officer)
       : [];
+    const participatingOfficerStats = safeOfficerStats;
 
-    const overallAverageLoanCount = safeOfficerStats.length
-      ? safeOfficerStats.reduce((sum, entry) => sum + (Number(entry.totalLoans) || 0), 0) / safeOfficerStats.length
+    const overallAverageLoanCount = participatingOfficerStats.length
+      ? participatingOfficerStats.reduce((sum, entry) => sum + (Number(entry.totalLoans) || 0), 0) / participatingOfficerStats.length
       : 0;
-    const overallAverageDollarAmount = safeOfficerStats.length
-      ? safeOfficerStats.reduce((sum, entry) => sum + (Number(entry.totalAmount) || 0), 0) / safeOfficerStats.length
+    const overallAverageDollarAmount = participatingOfficerStats.length
+      ? participatingOfficerStats.reduce((sum, entry) => sum + (Number(entry.totalAmount) || 0), 0) / participatingOfficerStats.length
       : 0;
 
-    const officerClassMap = buildOfficerClassMap(safeOfficers);
-    const consumerLaneEntries = safeOfficerStats.filter((entry) => officerClassMap[entry.officer] === 'C');
-    const flexEntries = safeOfficerStats.filter((entry) => officerClassMap[entry.officer] === 'F');
-    const mortgageLaneEntries = safeOfficerStats.filter((entry) => officerClassMap[entry.officer] === 'M');
+    const officerClassMap = buildOfficerClassMap(normalizedOfficers);
+    const consumerLaneEntries = participatingOfficerStats.filter((entry) => officerClassMap[entry.officer] === 'C');
+    const flexEntries = participatingOfficerStats.filter((entry) => officerClassMap[entry.officer] === 'F');
+    const mortgageLaneEntries = participatingOfficerStats.filter((entry) => officerClassMap[entry.officer] === 'M');
 
     const consumerEntries = normalizedEngine === FAIRNESS_ENGINES.OFFICER_LANE
-      ? (consumerLaneEntries.length ? consumerLaneEntries : safeOfficerStats)
-      : safeOfficerStats;
+      ? (consumerLaneEntries.length ? consumerLaneEntries : participatingOfficerStats)
+      : participatingOfficerStats;
     const mortgageEntries = normalizedEngine === FAIRNESS_ENGINES.OFFICER_LANE
-      ? (mortgageLaneEntries.length ? mortgageLaneEntries : safeOfficerStats)
-      : safeOfficerStats;
+      ? (mortgageLaneEntries.length ? mortgageLaneEntries : participatingOfficerStats)
+      : participatingOfficerStats;
 
     const flexVariance = buildFlexVariance(flexEntries);
     const flexLaneVariance = buildCategoryVariance(flexEntries, 'totalLoans', 'totalAmount');
@@ -737,9 +738,9 @@
       }
     };
 
-    const mortgageByOfficer = safeOfficerStats.map((entry) => ({ officer: entry.officer, amount: Number(entry.mortgageAmount) || 0 }));
+    const mortgageByOfficer = participatingOfficerStats.map((entry) => ({ officer: entry.officer, amount: Number(entry.mortgageAmount) || 0 }));
     const mortgageByTypeByOfficer = Object.fromEntries(
-      safeOfficerStats.map((entry) => {
+      participatingOfficerStats.map((entry) => {
         const typeBreakdown = entry.typeBreakdown || {};
         const mortgageTypes = Object.fromEntries(
 Object.entries(typeBreakdown).filter(([typeName]) => isMortgageTypeName(typeName))
@@ -749,8 +750,8 @@ Object.entries(typeBreakdown).filter(([typeName]) => isMortgageTypeName(typeName
     );
 
     const context = {
-      officers: safeOfficers,
-      officerStats: safeOfficerStats,
+      officers: normalizedOfficers,
+      officerStats: participatingOfficerStats,
       categoryMetrics,
       mortgageByOfficer,
       mortgageByTypeByOfficer,
@@ -779,8 +780,8 @@ Object.entries(typeBreakdown).filter(([typeName]) => isMortgageTypeName(typeName
         consumerVariance: categoryMetrics.consumerVariance,
         mortgageVariance: categoryMetrics.mortgageVariance,
         flexVariance: categoryMetrics.flexVariance,
-        maxCountVariancePercent: calculateMaxVariance(safeOfficerStats, 'totalLoans'),
-        maxAmountVariancePercent: calculateMaxVariance(safeOfficerStats, 'totalAmount')
+        maxCountVariancePercent: calculateMaxVariance(participatingOfficerStats, 'totalLoans'),
+        maxAmountVariancePercent: calculateMaxVariance(participatingOfficerStats, 'totalAmount')
       }
     };
   }

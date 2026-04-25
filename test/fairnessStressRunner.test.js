@@ -149,6 +149,7 @@ test('runOneScenario backfills fairness for missing fairnessEvaluation path', ()
 test('"Please add at least one loan." is treated as expected invalid scenario', () => {
   assert.equal(isExpectedInvalidScenarioError('Please add at least one loan.'), true);
   assert.equal(isExpectedInvalidScenarioError('No eligible officers are configured for consumer loans.'), true);
+  assert.equal(isExpectedInvalidScenarioError('Please add at least one active loan officer.'), true);
 });
 
 test('runOneScenario treats app validation error as skipped and not missing fairness failure', () => {

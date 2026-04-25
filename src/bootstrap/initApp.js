@@ -3765,8 +3765,8 @@ function buildUpdatedRunningTotals(cleanOfficers, result, priorRunningTotals) {
     const priorStats = normalizeOfficerStats(updatedOfficers[officer]);
     const assignedLoans = result.officerAssignments[officer] || [];
     const nextStats = {
-      isOnVacation: priorStats.isOnVacation,
-      activeSessionCount: priorStats.activeSessionCount + 1,
+      isOnVacation: officerConfig.isOnVacation,
+      activeSessionCount: priorStats.activeSessionCount + (officerConfig.isOnVacation ? 0 : 1),
       loanCount: priorStats.loanCount + assignedLoans.length,
       totalAmountRequested: priorStats.totalAmountRequested + assignedLoans.reduce((sum, loan) => sum + getGoalAmountForLoan(loan), 0),
       typeCounts: { ...priorStats.typeCounts }
@@ -3988,7 +3988,8 @@ function normalizeOfficerConfig(officer) {
       name: officer.trim(),
       eligibility: loanCategoryUtils.getDefaultOfficerEligibility(),
       weights: loanCategoryUtils.getDefaultOfficerWeights(),
-      mortgageOverride: false
+      mortgageOverride: false,
+      isOnVacation: false
     };
   }
 
@@ -3996,8 +3997,9 @@ function normalizeOfficerConfig(officer) {
   const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officer?.eligibility);
   const weights = loanCategoryUtils.normalizeOfficerWeights(officer?.weights, eligibility);
   const mortgageOverride = Boolean(officer?.mortgageOverride);
+  const isOnVacation = Boolean(officer?.isOnVacation);
 
-  return { name, eligibility, weights, mortgageOverride };
+  return { name, eligibility, weights, mortgageOverride, isOnVacation };
 }
 
 function getNormalizedFairnessValue(total, activeSessionCount) {
@@ -4367,7 +4369,9 @@ function selectOfficerWithGlobalDominationGuard(scoredOfficers, runAssignmentCou
 
 function chooseOfficerForLoan(officersByName, officerLoanTotals, officerTypeCounts, officerAmountTotals, officerActiveSessions, runAssignmentCounts, runTypeAssignmentCounts, routingContext, loan) {
   const loanCategory = getLoanCategoryForType(loan.type);
-  let eligibleOfficers = Object.values(officersByName).filter((officerConfig) => isOfficerEligibleForLoanType(officerConfig, loan));
+  let eligibleOfficers = Object.values(officersByName)
+    .filter((officerConfig) => !officerConfig?.isOnVacation)
+    .filter((officerConfig) => isOfficerEligibleForLoanType(officerConfig, loan));
   const mortgagePermissionLevel = getMortgageLoanPermissionLevel(loan.type);
   const isHelocLoan = mortgagePermissionLevel === 'heloc';
   if (loanCategory === loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE) {
@@ -5039,7 +5043,7 @@ function getHomogeneousHelocWeightedVariancePercent({ loanToOfficerMap, cleanLoa
   return getLaneOptimizationCompositePercent(countVariancePercent, amountVariancePercent);
 }
 
-function optimizeOfficerLaneAssignmentsResult({ activeLoanTypes, cleanLoans, cleanOfficerNames, officersByName, runningTotals, result }) {
+function optimizeOfficerLaneAssignmentsResult({ activeLoanTypes, cleanLoans, cleanOfficerNames, allOfficerNames, officersByName, runningTotals, result }) {
   if (getSelectedFairnessEngine() !== 'officer_lane' || !window.OfficerLaneOptimizationService?.optimizeConsumerLaneAssignments) {
     return result;
   }
@@ -5134,7 +5138,7 @@ function optimizeOfficerLaneAssignmentsResult({ activeLoanTypes, cleanLoans, cle
       const candidateResult = {
         ...result,
         loanAssignments: candidateLoanAssignments,
-        officerAssignments: buildOfficerAssignmentsFromLoanAssignments(cleanOfficerNames, candidateLoanAssignments)
+        officerAssignments: buildOfficerAssignmentsFromLoanAssignments(allOfficerNames, candidateLoanAssignments)
       };
 
       if (isHelocOnlySupportPool) {
@@ -5172,7 +5176,7 @@ function optimizeOfficerLaneAssignmentsResult({ activeLoanTypes, cleanLoans, cle
     shared: false
   }));
   result.loanAssignments = shuffle(optimizedLoanAssignments);
-  result.officerAssignments = buildOfficerAssignmentsFromLoanAssignments(cleanOfficerNames, optimizedLoanAssignments);
+  result.officerAssignments = buildOfficerAssignmentsFromLoanAssignments(allOfficerNames, optimizedLoanAssignments);
   result.fairnessAudit = rebuildFairnessAuditForAssignments({
     activeLoanTypes,
     cleanLoans,
@@ -5190,7 +5194,7 @@ function assignLoans(officers, loans, runningTotals = { officers: {} }) {
   const activeLoanTypes = getActiveLoanTypeNames();
 
   const normalizedOfficers = officers.map(normalizeOfficerConfig).filter((officer) => officer.name);
-  const cleanOfficers = Object.values(
+  const uniqueOfficers = Object.values(
     normalizedOfficers.reduce((map, officer) => {
       if (!map[officer.name]) {
         map[officer.name] = officer;
@@ -5198,8 +5202,10 @@ function assignLoans(officers, loans, runningTotals = { officers: {} }) {
       return map;
     }, {})
   );
-  const cleanOfficerNames = cleanOfficers.map((officer) => officer.name);
-  const officersByName = Object.fromEntries(cleanOfficers.map((officer) => [officer.name, officer]));
+  const activeOfficers = uniqueOfficers.filter((officer) => !officer.isOnVacation);
+  const allOfficerNames = uniqueOfficers.map((officer) => officer.name);
+  const cleanOfficerNames = activeOfficers.map((officer) => officer.name);
+  const officersByName = Object.fromEntries(activeOfficers.map((officer) => [officer.name, officer]));
   const cleanLoans = loans
     .map((loan) => ({
       name: loan.name.trim(),
@@ -5210,7 +5216,8 @@ function assignLoans(officers, loans, runningTotals = { officers: {} }) {
     .filter((loan) => activeLoanTypes.includes(loan.type));
 
   const loanCount = cleanLoans.length;
-  const officerCount = cleanOfficerNames.length;
+  const officerCount = uniqueOfficers.length;
+  const activeOfficerCount = cleanOfficerNames.length;
 
   if (officerCount < 1) {
     return { error: 'Please add at least one loan officer.' };
@@ -5218,6 +5225,10 @@ function assignLoans(officers, loans, runningTotals = { officers: {} }) {
 
   if (officerCount !== normalizedOfficers.length) {
     return { error: 'Loan officer names must be unique so assignments are tracked correctly.' };
+  }
+
+  if (activeOfficerCount < 1) {
+    return { error: 'Please add at least one active loan officer.' };
   }
 
   if (!loanCount) {
@@ -5237,9 +5248,12 @@ function assignLoans(officers, loans, runningTotals = { officers: {} }) {
   const runAssignmentCounts = {};
   const runTypeAssignmentCounts = {};
 
+  allOfficerNames.forEach((officerName) => {
+    officerAssignments[officerName] = [];
+  });
+
   cleanOfficerNames.forEach((officerName) => {
     const priorStats = normalizeOfficerStats(runningTotals.officers?.[officerName]);
-    officerAssignments[officerName] = [];
     officerTypeCounts[officerName] = { ...priorStats.typeCounts };
     officerAmountTotals[officerName] = priorStats.totalAmountRequested;
     officerLoanTotals[officerName] = priorStats.loanCount;
@@ -5301,14 +5315,15 @@ function assignLoans(officers, loans, runningTotals = { officers: {} }) {
     loanAssignments: shuffle(loanAssignments),
     officerAssignments,
     fairnessAudit,
-    officersUsed: cleanOfficers,
-    runningTotalsUsed: Object.fromEntries(cleanOfficerNames.map((officerName) => [officerName, normalizeOfficerStats(runningTotals.officers?.[officerName])]))
+    officersUsed: uniqueOfficers,
+    runningTotalsUsed: Object.fromEntries(allOfficerNames.map((officerName) => [officerName, normalizeOfficerStats(runningTotals.officers?.[officerName])]))
   };
 
   return optimizeOfficerLaneAssignmentsResult({
     activeLoanTypes,
     cleanLoans,
     cleanOfficerNames,
+    allOfficerNames,
     officersByName,
     runningTotals,
     result: baseResult
