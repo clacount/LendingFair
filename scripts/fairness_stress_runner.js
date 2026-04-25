@@ -501,7 +501,8 @@ function isExpectedInvalidScenarioError(message) {
   const knownInvalidScenarioPatterns = [
     /^no eligible officers are configured for (consumer|mortgage) loans\.?$/,
     /^no eligible officers are configured for [a-z\s-]+ loans\.?$/,
-    /^please add at least one loan\.?$/
+    /^please add at least one loan\.?$/,
+    /^please add at least one active loan officer\.?$/
   ];
 
   return knownInvalidScenarioPatterns.some((pattern) => pattern.test(normalized));
