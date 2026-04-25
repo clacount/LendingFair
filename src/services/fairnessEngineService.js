@@ -654,14 +654,10 @@
   function evaluateFairness({ engineType, officers = [], officerStats = [], optimizationMetrics = {} } = {}) {
     const normalizedEngine = normalizeEngineType(engineType);
     const normalizedOfficers = Array.isArray(officers) ? officers.map((officer) => normalizeOfficer(officer)) : [];
-    const safeOfficers = normalizedOfficers.filter((officer) => !officer.isOnVacation);
-    const activeOfficerNames = new Set(safeOfficers.map((officer) => officer.name).filter(Boolean));
     const safeOfficerStats = Array.isArray(officerStats)
       ? officerStats.map((entry) => normalizeOfficerStatsEntry(entry)).filter((entry) => entry.officer)
       : [];
-    const participatingOfficerStats = activeOfficerNames.size
-      ? safeOfficerStats.filter((entry) => activeOfficerNames.has(entry.officer))
-      : safeOfficerStats;
+    const participatingOfficerStats = safeOfficerStats;
 
     const overallAverageLoanCount = participatingOfficerStats.length
       ? participatingOfficerStats.reduce((sum, entry) => sum + (Number(entry.totalLoans) || 0), 0) / participatingOfficerStats.length
@@ -670,7 +666,7 @@
       ? participatingOfficerStats.reduce((sum, entry) => sum + (Number(entry.totalAmount) || 0), 0) / participatingOfficerStats.length
       : 0;
 
-    const officerClassMap = buildOfficerClassMap(safeOfficers);
+    const officerClassMap = buildOfficerClassMap(normalizedOfficers);
     const consumerLaneEntries = participatingOfficerStats.filter((entry) => officerClassMap[entry.officer] === 'C');
     const flexEntries = participatingOfficerStats.filter((entry) => officerClassMap[entry.officer] === 'F');
     const mortgageLaneEntries = participatingOfficerStats.filter((entry) => officerClassMap[entry.officer] === 'M');
@@ -709,7 +705,7 @@ Object.entries(typeBreakdown).filter(([typeName]) => isMortgageTypeName(typeName
     );
 
     const context = {
-      officers: safeOfficers,
+      officers: normalizedOfficers,
       officerStats: participatingOfficerStats,
       categoryMetrics,
       mortgageByOfficer,
