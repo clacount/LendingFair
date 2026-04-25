@@ -446,6 +446,65 @@ test('global descriptor validation accepts deterministic global_count_and_dollar
   assert.equal(flags.suspicious.includes('statusMetricDescriptor inconsistent with actual result basis'), false);
 });
 
+
+test('global variance descriptors compare descriptor values against mapped global metrics', () => {
+  const scenario = makeScenario([
+    { name: 'A', eligibility: { consumer: true, mortgage: true } },
+    { name: 'B', eligibility: { consumer: true, mortgage: true } }
+  ]);
+
+  const countMismatch = {
+    fairnessEvaluation: {
+      overallResult: 'REVIEW',
+      summaryItems: ['Overall loan variance: 20.0%', 'Overall dollar variance: 10.0%'],
+      statusMetricDescriptor: {
+        key: 'global_count_variance',
+        valuePercent: 12
+      },
+      metrics: {
+        maxCountVariancePercent: 20,
+        maxAmountVariancePercent: 10
+      }
+    }
+  };
+  const countFlags = collectValidationFlags({ scenario, engine: 'global', result: countMismatch, officerStats: [], context: {} });
+  assert.equal(countFlags.suspicious.includes('statusMetricDescriptor inconsistent with actual result basis'), true);
+
+  const dollarMismatch = {
+    fairnessEvaluation: {
+      overallResult: 'REVIEW',
+      summaryItems: ['Overall loan variance: 10.0%', 'Overall dollar variance: 24.0%'],
+      statusMetricDescriptor: {
+        key: 'global_dollar_variance',
+        valuePercent: 11
+      },
+      metrics: {
+        maxCountVariancePercent: 10,
+        maxAmountVariancePercent: 24
+      }
+    }
+  };
+  const dollarFlags = collectValidationFlags({ scenario, engine: 'global', result: dollarMismatch, officerStats: [], context: {} });
+  assert.equal(dollarFlags.suspicious.includes('statusMetricDescriptor inconsistent with actual result basis'), true);
+
+  const combinedMismatch = {
+    fairnessEvaluation: {
+      overallResult: 'REVIEW',
+      summaryItems: ['Overall loan variance: 20.0%', 'Overall dollar variance: 24.0%'],
+      statusMetricDescriptor: {
+        key: 'global_count_and_dollar_variance',
+        valuePercent: 9
+      },
+      metrics: {
+        maxCountVariancePercent: 20,
+        maxAmountVariancePercent: 24
+      }
+    }
+  };
+  const combinedFlags = collectValidationFlags({ scenario, engine: 'global', result: combinedMismatch, officerStats: [], context: {} });
+  assert.equal(combinedFlags.suspicious.includes('statusMetricDescriptor inconsistent with actual result basis'), true);
+});
+
 test('stress summary includes attempted/suspicious/skipped/failure counts by engine', () => {
   const outputDir = path.resolve(__dirname, '../stress_runs/test_engine_stats');
   fs.rmSync(outputDir, { recursive: true, force: true });
