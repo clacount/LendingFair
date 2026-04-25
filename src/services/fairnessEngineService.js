@@ -327,6 +327,50 @@
       thresholdBreaches.push('Overall dollar variance');
     }
 
+    const countFail = overallCountVariance > COUNT_VARIANCE_THRESHOLD_PERCENT;
+    const dollarFail = overallAmountVariance > AMOUNT_VARIANCE_THRESHOLD_PERCENT;
+    let statusMetricDescriptor;
+
+    if (countFail && dollarFail) {
+      const countNormalizedMargin = (overallCountVariance - COUNT_VARIANCE_THRESHOLD_PERCENT) / COUNT_VARIANCE_THRESHOLD_PERCENT;
+      const dollarNormalizedMargin = (overallAmountVariance - AMOUNT_VARIANCE_THRESHOLD_PERCENT) / AMOUNT_VARIANCE_THRESHOLD_PERCENT;
+      statusMetricDescriptor = {
+        key: 'global_count_and_dollar_variance',
+        label: 'Global count and dollar variance',
+        valuePercent: countNormalizedMargin >= dollarNormalizedMargin ? overallCountVariance : overallAmountVariance,
+        contextLabel: 'Global thresholds'
+      };
+    } else if (countFail) {
+      statusMetricDescriptor = {
+        key: 'global_count_variance',
+        label: 'Global count variance',
+        valuePercent: overallCountVariance,
+        contextLabel: 'Global thresholds'
+      };
+    } else if (dollarFail) {
+      statusMetricDescriptor = {
+        key: 'global_dollar_variance',
+        label: 'Global dollar variance',
+        valuePercent: overallAmountVariance,
+        contextLabel: 'Global thresholds'
+      };
+    } else {
+      const shouldUseDollarDescriptor = overallAmountVariance >= overallCountVariance;
+      statusMetricDescriptor = shouldUseDollarDescriptor
+        ? {
+            key: 'global_dollar_variance',
+            label: 'Global dollar variance',
+            valuePercent: overallAmountVariance,
+            contextLabel: 'Global thresholds'
+          }
+        : {
+            key: 'global_count_variance',
+            label: 'Global count variance',
+            valuePercent: overallCountVariance,
+            contextLabel: 'Global thresholds'
+          };
+    }
+
     return {
       overallResult: overallPass ? 'PASS' : 'REVIEW',
       summaryItems: [
@@ -348,6 +392,7 @@
         mortgageTitleSuffix: '',
         mortgageNote: 'Mortgage concentrations are evaluated with global cross-officer variance thresholds.'
       },
+      statusMetricDescriptor,
       roleAwareFlags: {
         hasSingleMortgageOnlyOfficer: hasSingleMortgageOnlyOfficer(context.officers),
         mortgageVarianceExpected: false,

@@ -379,6 +379,72 @@ test('officer-lane review classification buckets count descriptors as distinct r
   assert.equal(classifyReviewBasis(run, 'officer_lane'), 'mortgage_lane_count_variance');
 });
 
+test('global descriptor validation accepts global_count_variance and global_dollar_variance keys', () => {
+  const scenario = makeScenario([
+    { name: 'A', eligibility: { consumer: true, mortgage: true } },
+    { name: 'B', eligibility: { consumer: true, mortgage: true } }
+  ]);
+
+  const baseResult = {
+    fairnessEvaluation: {
+      overallResult: 'REVIEW',
+      summaryItems: ['Overall loan variance: 20.0%', 'Overall dollar variance: 10.0%'],
+      metrics: {
+        maxCountVariancePercent: 20,
+        maxAmountVariancePercent: 10
+      }
+    }
+  };
+
+  const countResult = JSON.parse(JSON.stringify(baseResult));
+  countResult.fairnessEvaluation.statusMetricDescriptor = {
+    key: 'global_count_variance',
+    valuePercent: 20
+  };
+  const countFlags = collectValidationFlags({ scenario, engine: 'global', result: countResult, officerStats: [], context: {} });
+  assert.equal(countFlags.suspicious.includes('statusMetricDescriptor key invalid for global'), false);
+  assert.equal(countFlags.suspicious.includes('statusMetricDescriptor inconsistent with actual result basis'), false);
+
+  const dollarResult = JSON.parse(JSON.stringify(baseResult));
+  dollarResult.fairnessEvaluation.summaryItems = ['Overall loan variance: 10.0%', 'Overall dollar variance: 24.0%'];
+  dollarResult.fairnessEvaluation.metrics = {
+    maxCountVariancePercent: 10,
+    maxAmountVariancePercent: 24
+  };
+  dollarResult.fairnessEvaluation.statusMetricDescriptor = {
+    key: 'global_dollar_variance',
+    valuePercent: 24
+  };
+  const dollarFlags = collectValidationFlags({ scenario, engine: 'global', result: dollarResult, officerStats: [], context: {} });
+  assert.equal(dollarFlags.suspicious.includes('statusMetricDescriptor key invalid for global'), false);
+  assert.equal(dollarFlags.suspicious.includes('statusMetricDescriptor inconsistent with actual result basis'), false);
+});
+
+test('global descriptor validation accepts deterministic global_count_and_dollar_variance key', () => {
+  const scenario = makeScenario([
+    { name: 'A', eligibility: { consumer: true, mortgage: true } },
+    { name: 'B', eligibility: { consumer: true, mortgage: true } }
+  ]);
+  const result = {
+    fairnessEvaluation: {
+      overallResult: 'REVIEW',
+      summaryItems: ['Overall loan variance: 20.0%', 'Overall dollar variance: 24.0%'],
+      statusMetricDescriptor: {
+        key: 'global_count_and_dollar_variance',
+        valuePercent: 20
+      },
+      metrics: {
+        maxCountVariancePercent: 20,
+        maxAmountVariancePercent: 24
+      }
+    }
+  };
+
+  const flags = collectValidationFlags({ scenario, engine: 'global', result, officerStats: [], context: {} });
+  assert.equal(flags.suspicious.includes('statusMetricDescriptor key invalid for global'), false);
+  assert.equal(flags.suspicious.includes('statusMetricDescriptor inconsistent with actual result basis'), false);
+});
+
 test('stress summary includes attempted/suspicious/skipped/failure counts by engine', () => {
   const outputDir = path.resolve(__dirname, '../stress_runs/test_engine_stats');
   fs.rmSync(outputDir, { recursive: true, force: true });

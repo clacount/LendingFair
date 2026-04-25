@@ -26,6 +26,10 @@ test('global fairness passes exactly at 15.0% count and 20.0% dollar thresholds'
   assert.equal(evaluation.metrics.maxAmountVariancePercent, 20);
   assert.match(evaluation.summaryItems.join(' | '), /Overall loan variance: 15\.0%/);
   assert.match(evaluation.summaryItems.join(' | '), /Overall dollar variance: 20\.0%/);
+  assert.equal(evaluation.statusMetricDescriptor?.key, 'global_dollar_variance');
+  assert.equal(evaluation.statusMetricDescriptor?.label, 'Global dollar variance');
+  assert.equal(evaluation.statusMetricDescriptor?.valuePercent, 20);
+  assert.equal(evaluation.statusMetricDescriptor?.contextLabel, 'Global thresholds');
 });
 
 test('global fairness flips to REVIEW just above thresholds and handles zero/empty amounts', () => {
@@ -54,4 +58,43 @@ test('global fairness remains stable for mixed pools and uneven prior totals', (
   assert.equal(evaluation.roleAwareFlags.flexParticipationExpected, false);
   assert.ok(Number.isFinite(evaluation.metrics.consumerVariance.maxAmountVariancePercent));
   assert.ok(Number.isFinite(evaluation.metrics.mortgageVariance.maxAmountVariancePercent));
+});
+
+test('global fairness uses count variance descriptor when only count threshold fails', () => {
+  const evaluation = evalGlobal([
+    { officer: 'A', totalLoans: 24, totalAmount: 60, consumerLoanCount: 12, consumerAmount: 30, mortgageLoanCount: 12, mortgageAmount: 30, typeBreakdown: { Personal: 12, HELOC: 12 } },
+    { officer: 'B', totalLoans: 16, totalAmount: 40, consumerLoanCount: 8, consumerAmount: 20, mortgageLoanCount: 8, mortgageAmount: 20, typeBreakdown: { Personal: 8, HELOC: 8 } }
+  ]);
+
+  assert.equal(evaluation.overallResult, 'REVIEW');
+  assert.ok(evaluation.metrics.maxCountVariancePercent > 15);
+  assert.ok(evaluation.metrics.maxAmountVariancePercent <= 20);
+  assert.equal(evaluation.statusMetricDescriptor?.key, 'global_count_variance');
+  assert.equal(evaluation.statusMetricDescriptor?.valuePercent, evaluation.metrics.maxCountVariancePercent);
+});
+
+test('global fairness uses dollar variance descriptor when only dollar threshold fails', () => {
+  const evaluation = evalGlobal([
+    { officer: 'A', totalLoans: 23, totalAmount: 62, consumerLoanCount: 12, consumerAmount: 31, mortgageLoanCount: 11, mortgageAmount: 31, typeBreakdown: { Personal: 12, HELOC: 11 } },
+    { officer: 'B', totalLoans: 17, totalAmount: 38, consumerLoanCount: 8, consumerAmount: 19, mortgageLoanCount: 9, mortgageAmount: 19, typeBreakdown: { Personal: 8, HELOC: 9 } }
+  ]);
+
+  assert.equal(evaluation.overallResult, 'REVIEW');
+  assert.ok(evaluation.metrics.maxCountVariancePercent <= 15);
+  assert.ok(evaluation.metrics.maxAmountVariancePercent > 20);
+  assert.equal(evaluation.statusMetricDescriptor?.key, 'global_dollar_variance');
+  assert.equal(evaluation.statusMetricDescriptor?.valuePercent, evaluation.metrics.maxAmountVariancePercent);
+});
+
+test('global fairness uses deterministic combined descriptor when both thresholds fail', () => {
+  const evaluation = evalGlobal([
+    { officer: 'A', totalLoans: 24, totalAmount: 62, consumerLoanCount: 13, consumerAmount: 31, mortgageLoanCount: 11, mortgageAmount: 31, typeBreakdown: { Personal: 13, HELOC: 11 } },
+    { officer: 'B', totalLoans: 16, totalAmount: 38, consumerLoanCount: 7, consumerAmount: 19, mortgageLoanCount: 9, mortgageAmount: 19, typeBreakdown: { Personal: 7, HELOC: 9 } }
+  ]);
+
+  assert.equal(evaluation.overallResult, 'REVIEW');
+  assert.ok(evaluation.metrics.maxCountVariancePercent > 15);
+  assert.ok(evaluation.metrics.maxAmountVariancePercent > 20);
+  assert.equal(evaluation.statusMetricDescriptor?.key, 'global_count_and_dollar_variance');
+  assert.equal(evaluation.statusMetricDescriptor?.valuePercent, evaluation.metrics.maxCountVariancePercent);
 });
