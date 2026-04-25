@@ -5043,7 +5043,7 @@ function getHomogeneousHelocWeightedVariancePercent({ loanToOfficerMap, cleanLoa
   return getLaneOptimizationCompositePercent(countVariancePercent, amountVariancePercent);
 }
 
-function optimizeOfficerLaneAssignmentsResult({ activeLoanTypes, cleanLoans, cleanOfficerNames, officersByName, runningTotals, result }) {
+function optimizeOfficerLaneAssignmentsResult({ activeLoanTypes, cleanLoans, cleanOfficerNames, allOfficerNames, officersByName, runningTotals, result }) {
   if (getSelectedFairnessEngine() !== 'officer_lane' || !window.OfficerLaneOptimizationService?.optimizeConsumerLaneAssignments) {
     return result;
   }
@@ -5138,7 +5138,7 @@ function optimizeOfficerLaneAssignmentsResult({ activeLoanTypes, cleanLoans, cle
       const candidateResult = {
         ...result,
         loanAssignments: candidateLoanAssignments,
-        officerAssignments: buildOfficerAssignmentsFromLoanAssignments(cleanOfficerNames, candidateLoanAssignments)
+        officerAssignments: buildOfficerAssignmentsFromLoanAssignments(allOfficerNames, candidateLoanAssignments)
       };
 
       if (isHelocOnlySupportPool) {
@@ -5176,7 +5176,7 @@ function optimizeOfficerLaneAssignmentsResult({ activeLoanTypes, cleanLoans, cle
     shared: false
   }));
   result.loanAssignments = shuffle(optimizedLoanAssignments);
-  result.officerAssignments = buildOfficerAssignmentsFromLoanAssignments(cleanOfficerNames, optimizedLoanAssignments);
+  result.officerAssignments = buildOfficerAssignmentsFromLoanAssignments(allOfficerNames, optimizedLoanAssignments);
   result.fairnessAudit = rebuildFairnessAuditForAssignments({
     activeLoanTypes,
     cleanLoans,
@@ -5203,6 +5203,7 @@ function assignLoans(officers, loans, runningTotals = { officers: {} }) {
     }, {})
   );
   const activeOfficers = uniqueOfficers.filter((officer) => !officer.isOnVacation);
+  const allOfficerNames = uniqueOfficers.map((officer) => officer.name);
   const cleanOfficerNames = activeOfficers.map((officer) => officer.name);
   const officersByName = Object.fromEntries(activeOfficers.map((officer) => [officer.name, officer]));
   const cleanLoans = loans
@@ -5247,9 +5248,12 @@ function assignLoans(officers, loans, runningTotals = { officers: {} }) {
   const runAssignmentCounts = {};
   const runTypeAssignmentCounts = {};
 
+  allOfficerNames.forEach((officerName) => {
+    officerAssignments[officerName] = [];
+  });
+
   cleanOfficerNames.forEach((officerName) => {
     const priorStats = normalizeOfficerStats(runningTotals.officers?.[officerName]);
-    officerAssignments[officerName] = [];
     officerTypeCounts[officerName] = { ...priorStats.typeCounts };
     officerAmountTotals[officerName] = priorStats.totalAmountRequested;
     officerLoanTotals[officerName] = priorStats.loanCount;
@@ -5311,14 +5315,15 @@ function assignLoans(officers, loans, runningTotals = { officers: {} }) {
     loanAssignments: shuffle(loanAssignments),
     officerAssignments,
     fairnessAudit,
-    officersUsed: activeOfficers,
-    runningTotalsUsed: Object.fromEntries(cleanOfficerNames.map((officerName) => [officerName, normalizeOfficerStats(runningTotals.officers?.[officerName])]))
+    officersUsed: uniqueOfficers,
+    runningTotalsUsed: Object.fromEntries(allOfficerNames.map((officerName) => [officerName, normalizeOfficerStats(runningTotals.officers?.[officerName])]))
   };
 
   return optimizeOfficerLaneAssignmentsResult({
     activeLoanTypes,
     cleanLoans,
     cleanOfficerNames,
+    allOfficerNames,
     officersByName,
     runningTotals,
     result: baseResult

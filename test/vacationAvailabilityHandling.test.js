@@ -141,12 +141,53 @@ test('vacationed officer receives no assignment while active officers continue t
   const result = context.assignLoans(officers, loans, runningTotals);
 
   assert.equal(result.error, undefined);
-  assert.equal(Object.prototype.hasOwnProperty.call(result.officerAssignments, 'V1'), false);
-  assert.equal(Object.prototype.hasOwnProperty.call(result.runningTotalsUsed, 'V1'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(result.officerAssignments, 'V1'), true);
+  assert.equal(result.officerAssignments.V1.length, 0);
+  assert.equal(Object.prototype.hasOwnProperty.call(result.runningTotalsUsed, 'V1'), true);
   assert.equal(
     Object.values(result.officerAssignments).reduce((sum, assigned) => sum + assigned.length, 0),
     result.loanAssignments.length
   );
+});
+
+test('officer-lane assignment keeps vacationed officer fairness context without assigning new loans', () => {
+  const context = loadAppContext(29);
+  context.FairnessEngineService.setSelectedFairnessEngine('officer_lane');
+  const officers = [
+    { name: 'M1', eligibility: { consumer: false, mortgage: true }, isOnVacation: true },
+    { name: 'F1', eligibility: { consumer: true, mortgage: true }, isOnVacation: false },
+    { name: 'F2', eligibility: { consumer: true, mortgage: true }, isOnVacation: false }
+  ];
+  const loans = [
+    { name: 'H1', type: 'HELOC', amountRequested: 150000 },
+    { name: 'H2', type: 'HELOC', amountRequested: 150000 },
+    { name: 'H3', type: 'HELOC', amountRequested: 150000 },
+    { name: 'H4', type: 'HELOC', amountRequested: 150000 }
+  ];
+  const runningTotals = {
+    officers: {
+      M1: { loanCount: 12, totalAmountRequested: 900000, activeSessionCount: 9, typeCounts: { HELOC: 12 } },
+      F1: { loanCount: 1, totalAmountRequested: 150000, activeSessionCount: 3, typeCounts: { HELOC: 1 } },
+      F2: { loanCount: 1, totalAmountRequested: 150000, activeSessionCount: 3, typeCounts: { HELOC: 1 } }
+    }
+  };
+
+  const result = context.assignLoans(officers, loans, runningTotals);
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.officerAssignments.M1.length, 0);
+  assert.ok(result.loanAssignments.every((entry) => entry.officers?.[0] !== 'M1'));
+  assert.deepEqual(result.officersUsed.map((officer) => officer.name).sort(), ['F1', 'F2', 'M1']);
+  assert.ok(result.runningTotalsUsed.M1);
+
+  const statsByOfficer = Object.fromEntries(context.getOfficerStatsFromResult(result).map((entry) => [entry.officer, entry]));
+  assert.equal(statsByOfficer.M1.totalLoans, 12);
+  assert.equal(statsByOfficer.M1.mortgageAmount, 900000);
+
+  assert.equal(result.fairnessEvaluation.roleAwareFlags.helocOnlySupportThresholdsApplied, true);
+  assert.equal(result.fairnessEvaluation.metrics.averageLoanCount, 6);
+  assert.equal(result.fairnessEvaluation.metrics.averageDollarAmount, 600000);
+  assert.equal(result.fairnessEvaluation.overallResult, 'REVIEW');
 });
 
 test('all-vacation scenario returns clear active-officer validation error', () => {
@@ -161,7 +202,7 @@ test('all-vacation scenario returns clear active-officer validation error', () =
   assert.equal(result.error, 'Please add at least one active loan officer.');
 });
 
-test('fairness denominator excludes vacationed officers', () => {
+test('fairness denominator includes vacationed officers for policy/stat context', () => {
   const context = loadAppContext(19);
   const evaluation = context.FairnessEngineService.evaluateFairness({
     engineType: 'global',
@@ -193,10 +234,10 @@ test('fairness denominator excludes vacationed officers', () => {
     ]
   });
 
-  assert.equal(evaluation.metrics.averageLoanCount, 10);
-  assert.equal(evaluation.metrics.averageDollarAmount, 100000);
-  assert.equal(evaluation.metrics.maxCountVariancePercent, 0);
-  assert.equal(evaluation.metrics.maxAmountVariancePercent, 0);
+  assert.equal(evaluation.metrics.averageLoanCount, 5);
+  assert.equal(evaluation.metrics.averageDollarAmount, 50000);
+  assert.equal(evaluation.metrics.maxCountVariancePercent, 100);
+  assert.equal(evaluation.metrics.maxAmountVariancePercent, 100);
 });
 
 test('non-vacation assignment behavior is unchanged versus default officer config', () => {
