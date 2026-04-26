@@ -1,0 +1,404 @@
+{
+  "seed": 46,
+  "officers": [
+    {
+      "name": "F1",
+      "eligibility": {
+        "consumer": true,
+        "mortgage": true
+      },
+      "weights": {
+        "consumer": 0.66,
+        "mortgage": 0.5
+      },
+      "mortgageOverride": false,
+      "isOnVacation": false
+    },
+    {
+      "name": "F2",
+      "eligibility": {
+        "consumer": true,
+        "mortgage": true
+      },
+      "weights": {
+        "consumer": 0.52,
+        "mortgage": 0.21
+      },
+      "mortgageOverride": false,
+      "isOnVacation": false
+    },
+    {
+      "name": "F3",
+      "eligibility": {
+        "consumer": true,
+        "mortgage": true
+      },
+      "weights": {
+        "consumer": 0.59,
+        "mortgage": 0.83
+      },
+      "mortgageOverride": false,
+      "isOnVacation": false
+    },
+    {
+      "name": "F4",
+      "eligibility": {
+        "consumer": true,
+        "mortgage": true
+      },
+      "weights": {
+        "consumer": 0.95,
+        "mortgage": 0.38
+      },
+      "mortgageOverride": false,
+      "isOnVacation": false
+    }
+  ],
+  "loans": [
+    {
+      "name": "L6",
+      "type": "HELOC",
+      "amountRequested": 1078258
+    },
+    {
+      "name": "L25",
+      "type": "HELOC",
+      "amountRequested": 669863
+    },
+    {
+      "name": "L11",
+      "type": "HELOC",
+      "amountRequested": 1181440
+    },
+    {
+      "name": "L15",
+      "type": "HELOC",
+      "amountRequested": 156888
+    },
+    {
+      "name": "L9",
+      "type": "HELOC",
+      "amountRequested": 332373
+    },
+    {
+      "name": "L24",
+      "type": "HELOC",
+      "amountRequested": 725589
+    },
+    {
+      "name": "L4",
+      "type": "HELOC",
+      "amountRequested": 659507
+    },
+    {
+      "name": "L21",
+      "type": "HELOC",
+      "amountRequested": 546500
+    },
+    {
+      "name": "L13",
+      "type": "HELOC",
+      "amountRequested": 19836
+    },
+    {
+      "name": "L18",
+      "type": "HELOC",
+      "amountRequested": 856523
+    },
+    {
+      "name": "L16",
+      "type": "HELOC",
+      "amountRequested": 678195
+    },
+    {
+      "name": "L12",
+      "type": "HELOC",
+      "amountRequested": 372578
+    },
+    {
+      "name": "L14",
+      "type": "HELOC",
+      "amountRequested": 507264
+    },
+    {
+      "name": "L28",
+      "type": "HELOC",
+      "amountRequested": 687717
+    },
+    {
+      "name": "L2",
+      "type": "HELOC",
+      "amountRequested": 529544
+    },
+    {
+      "name": "L29",
+      "type": "HELOC",
+      "amountRequested": 1086743
+    },
+    {
+      "name": "L23",
+      "type": "HELOC",
+      "amountRequested": 663433
+    },
+    {
+      "name": "L26",
+      "type": "HELOC",
+      "amountRequested": 426795
+    },
+    {
+      "name": "L19",
+      "type": "HELOC",
+      "amountRequested": 491380
+    },
+    {
+      "name": "L8",
+      "type": "HELOC",
+      "amountRequested": 197755
+    },
+    {
+      "name": "L5",
+      "type": "HELOC",
+      "amountRequested": 710607
+    },
+    {
+      "name": "L3",
+      "type": "HELOC",
+      "amountRequested": 523880
+    },
+    {
+      "name": "L22",
+      "type": "HELOC",
+      "amountRequested": 203882
+    },
+    {
+      "name": "L1",
+      "type": "HELOC",
+      "amountRequested": 22958
+    },
+    {
+      "name": "L7",
+      "type": "HELOC",
+      "amountRequested": 640645
+    },
+    {
+      "name": "L17",
+      "type": "HELOC",
+      "amountRequested": 968855
+    },
+    {
+      "name": "L10",
+      "type": "HELOC",
+      "amountRequested": 95387
+    },
+    {
+      "name": "L27",
+      "type": "HELOC",
+      "amountRequested": 1187946
+    },
+    {
+      "name": "L20",
+      "type": "HELOC",
+      "amountRequested": 637663
+    }
+  ],
+  "runningTotals": {
+    "officers": {
+      "F1": {
+        "officer": "F1",
+        "totalLoanCount": 40,
+        "totalAmountRequested": 5886997,
+        "sessions": 4,
+        "typeCounts": {
+          "Personal": 11,
+          "Auto": 5,
+          "Credit Card": 8,
+          "Collateralized": 5,
+          "HELOC": 2,
+          "First Mortgage": 3,
+          "Home Refi": 6
+        }
+      },
+      "F2": {
+        "officer": "F2",
+        "totalLoanCount": 26,
+        "totalAmountRequested": 4895338,
+        "sessions": 7,
+        "typeCounts": {
+          "Personal": 9,
+          "Auto": 4,
+          "Credit Card": 2,
+          "Collateralized": 0,
+          "HELOC": 5,
+          "First Mortgage": 0,
+          "Home Refi": 6
+        }
+      },
+      "F3": {
+        "officer": "F3",
+        "totalLoanCount": 26,
+        "totalAmountRequested": 3154296,
+        "sessions": 6,
+        "typeCounts": {
+          "Personal": 3,
+          "Auto": 0,
+          "Credit Card": 6,
+          "Collateralized": 6,
+          "HELOC": 9,
+          "First Mortgage": 2,
+          "Home Refi": 0
+        }
+      },
+      "F4": {
+        "officer": "F4",
+        "totalLoanCount": 47,
+        "totalAmountRequested": 12949931,
+        "sessions": 8,
+        "typeCounts": {
+          "Personal": 7,
+          "Auto": 8,
+          "Credit Card": 8,
+          "Collateralized": 0,
+          "HELOC": 9,
+          "First Mortgage": 8,
+          "Home Refi": 7
+        }
+      }
+    }
+  },
+  "observedFairness": {
+    "engineType": "officer_lane",
+    "overallResult": "REVIEW",
+    "summaryItems": [
+      "Flex loan variance (F lane): 17.2%",
+      "Flex dollar variance (F lane): 15.2%",
+      "Flex consumer-vs-mortgage share variance: 15.3%",
+      "Flex total dollars (consumer/mortgage): 15249293 / 28497273",
+      "Optimization reached the flex-lane variance advisory band (> 20.0% and <= 25.0%)."
+    ],
+    "notes": [
+      "Model note: Officer Lane variance is measured on Consumer-lane and Mortgage-lane officers; Flex lane variance is measured and tracked separately.",
+      "Flex officers are support roles and may cover HELOC or approved mortgage coverage scenarios."
+    ],
+    "chartAnnotations": {
+      "mortgageTitleSuffix": " (Role-Based)",
+      "mortgageNote": "Primary mortgage allocation to MLOs is expected. Flex participation may be limited to approved support scenarios."
+    },
+    "roleAwareFlags": {
+      "hasSingleMortgageOnlyOfficer": false,
+      "mortgageVarianceExpected": false,
+      "consumerDollarAdvisoryBandApplied": false,
+      "helocOnlySupportThresholdsApplied": false,
+      "flexParticipationExpected": true
+    },
+    "statusMetricDescriptor": {
+      "key": "flex_lane_count_variance",
+      "label": "Flex lane count variance",
+      "valuePercent": 17.24137931034483,
+      "contextLabel": "Flex lane thresholds"
+    },
+    "metrics": {
+      "averageLoanCount": 7.25,
+      "averageDollarAmount": 10936641.5,
+      "helocWeightedVariancePercent": 0,
+      "consumerVariance": {
+        "maxCountVariancePercent": 17.073170731707318,
+        "maxAmountVariancePercent": 29.6237616169527,
+        "countDistributionPass": false,
+        "amountDistributionPass": false
+      },
+      "mortgageVariance": {
+        "maxCountVariancePercent": 13.953488372093023,
+        "maxAmountVariancePercent": 10.341284780739722,
+        "countDistributionPass": true,
+        "amountDistributionPass": true
+      },
+      "flexVariance": {
+        "officerCount": 4,
+        "consumerShareVariancePercent": 15.256753351710955,
+        "mortgageShareVariancePercent": 7.64993824418284,
+        "totalConsumerAmount": 15249292.71698036,
+        "totalMortgageAmount": 28497273.283019636,
+        "maxCountVariancePercent": 17.24137931034483,
+        "maxAmountVariancePercent": 15.176903256817917,
+        "countDistributionPass": false,
+        "amountDistributionPass": true
+      },
+      "maxCountVariancePercent": 17.24137931034483,
+      "maxAmountVariancePercent": 15.176903256817917
+    }
+  },
+  "observedOptimizationMetrics": {
+    "optimizationApplied": true,
+    "optimizationTierReached": "under_25",
+    "optimizationSummaryMessage": "Optimization reached the flex-lane variance advisory band (> 20.0% and <= 25.0%).",
+    "optimizationFinalConsumerDollarVariance": 22.98850574712644,
+    "optimizationFinalHelocWeightedVariancePercent": null
+  },
+  "reviewFeasibilityBestAssignmentMap": {
+    "L7": "F4",
+    "L11": "F3",
+    "L6": "F3",
+    "L10": "F3",
+    "L3": "F4",
+    "L2": "F2",
+    "L20": "F1",
+    "L1": "F1",
+    "L8": "F2",
+    "L5": "F1",
+    "L26": "F2",
+    "L19": "F1",
+    "L4": "F1",
+    "L29": "F3",
+    "L22": "F1",
+    "L17": "F3",
+    "L24": "F4",
+    "L12": "F4",
+    "L15": "F4",
+    "L13": "F2",
+    "L9": "F1",
+    "L25": "F1",
+    "L14": "F1",
+    "L23": "F4",
+    "L27": "F3",
+    "L16": "F2",
+    "L21": "F1",
+    "L28": "F2",
+    "L18": "F2"
+  },
+  "reviewFeasibilityBestMetrics": {
+    "averageLoanCount": 7.25,
+    "averageDollarAmount": 10936641.5,
+    "helocWeightedVariancePercent": 0,
+    "consumerVariance": {
+      "maxCountVariancePercent": 17.073170731707318,
+      "maxAmountVariancePercent": 29.6237616169527,
+      "countDistributionPass": false,
+      "amountDistributionPass": false
+    },
+    "mortgageVariance": {
+      "maxCountVariancePercent": 15.11627906976744,
+      "maxAmountVariancePercent": 14.837469335924759,
+      "countDistributionPass": false,
+      "amountDistributionPass": true
+    },
+    "flexVariance": {
+      "officerCount": 4,
+      "consumerShareVariancePercent": 14.297918498187116,
+      "mortgageShareVariancePercent": 7.233643061996732,
+      "totalConsumerAmount": 15249292.71698036,
+      "totalMortgageAmount": 28497273.283019636,
+      "maxCountVariancePercent": 13.793103448275861,
+      "maxAmountVariancePercent": 17.695654100026957,
+      "countDistributionPass": true,
+      "amountDistributionPass": true
+    },
+    "maxCountVariancePercent": 13.793103448275861,
+    "maxAmountVariancePercent": 17.695654100026957
+  },
+  "reviewFeasibilityDescriptor": {
+    "key": "flex_lane_dollar_variance",
+    "label": "Flex lane dollar variance",
+    "valuePercent": 17.695654100026957,
+    "contextLabel": "Flex lane thresholds"
+  }
+}
