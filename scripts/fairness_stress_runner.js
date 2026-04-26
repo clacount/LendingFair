@@ -1335,10 +1335,14 @@ function analyzeReviewFeasibility({
   enqueue(alternateStart);
 
   let foundPass = false;
+  let exhausted = true;
+  let budgetExhausted = false;
   while (queue.length && evaluationsRun < evaluationBudget && !foundPass) {
     const current = queue.shift();
     const currentEval = evaluateMap(current);
     if (!currentEval) {
+      budgetExhausted = true;
+      exhausted = false;
       break;
     }
     if (currentEval.fairnessEvaluation?.overallResult === 'PASS') {
@@ -1355,9 +1359,17 @@ function analyzeReviewFeasibility({
       });
     });
   }
+  if (queue.length > 0 && !foundPass && evaluationsRun >= evaluationBudget) {
+    budgetExhausted = true;
+    exhausted = false;
+  }
 
   return {
-    classification: (foundPass && !helocRecalculationUnavailable) ? FEASIBILITY_CLASSIFICATIONS.AVOIDABLE : FEASIBILITY_CLASSIFICATIONS.UNKNOWN,
+    classification: foundPass
+      ? (helocRecalculationUnavailable ? FEASIBILITY_CLASSIFICATIONS.UNKNOWN : FEASIBILITY_CLASSIFICATIONS.AVOIDABLE)
+      : ((budgetExhausted || !exhausted || helocRecalculationUnavailable)
+        ? FEASIBILITY_CLASSIFICATIONS.UNKNOWN
+        : FEASIBILITY_CLASSIFICATIONS.UNAVOIDABLE),
     searchType,
     ...buildFeasibilityCandidateSummary({
       fairnessEvaluation: passFairness || bestFairness,

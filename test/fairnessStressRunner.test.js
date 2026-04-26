@@ -944,6 +944,55 @@ test('feasibility analyzer marks larger budget-exhausted search as feasibility_u
   assert.equal(feasibility.searchType, 'heuristic_bounded_search');
 });
 
+test('heuristic feasibility search marks fully exhausted finite search as unavoidable_review', () => {
+  const scenario = {
+    officers: Array.from({ length: 7 }, (_, i) => ({
+      name: `O${i + 1}`,
+      isOnVacation: false,
+      eligibility: { consumer: true, mortgage: false }
+    })),
+    loans: Array.from({ length: 11 }, (_, i) => ({ name: `L${i + 1}`, type: 'Personal', amountRequested: 10000 })),
+    runningTotals: { officers: {} }
+  };
+  const context = {
+    isOfficerEligibleForLoanType(officer, loan) {
+      const officerIndex = Number(String(officer.name).replace('O', ''));
+      const loanIndex = Number(String(loan.name).replace('L', ''));
+      return officerIndex === ((loanIndex - 1) % 7) + 1;
+    },
+    getOfficerStatsFromResult(result) {
+      return Object.entries(result.officerAssignments).map(([officer, assigned]) => ({
+        officer,
+        totalLoans: assigned.length,
+        totalAmount: assigned.length * 10000
+      }));
+    },
+    FairnessEngineService: {
+      evaluateFairness() {
+        return {
+          overallResult: 'REVIEW',
+          statusMetricDescriptor: { key: 'global_count_variance', valuePercent: 50 },
+          metrics: { maxCountVariancePercent: 50, maxAmountVariancePercent: 50 }
+        };
+      }
+    }
+  };
+  const run = { result: { fairnessEvaluation: { overallResult: 'REVIEW', metrics: { maxCountVariancePercent: 50, maxAmountVariancePercent: 50 } }, loanAssignments: [] } };
+
+  const feasibility = analyzeReviewFeasibility({
+    context,
+    scenario,
+    engine: 'global',
+    run,
+    reviewBasis: 'global_count_variance',
+    evaluationBudget: 100
+  });
+
+  assert.equal(feasibility.classification, 'unavoidable_review');
+  assert.equal(feasibility.searchType, 'heuristic_bounded_search');
+  assert.equal(feasibility.feasibilityEvaluationsRun, 1);
+});
+
 test('candidate HELOC weighted variance is recalculated per assignment instead of reusing stale optimization metric', () => {
   const scenario = {
     officers: [
