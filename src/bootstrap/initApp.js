@@ -4957,6 +4957,27 @@ function getLaneOptimizationCompositePercent(countVariancePercent, amountVarianc
   return Math.max(normalizedCountPercent, normalizedAmountPercent);
 }
 
+function getOfficerLaneTargetVarianceSelector(statusMetricDescriptorKey) {
+  switch (String(statusMetricDescriptorKey || '')) {
+    case 'consumer_lane_count_variance':
+      return (fairnessEvaluation) => Number(fairnessEvaluation?.metrics?.consumerVariance?.maxCountVariancePercent) || 0;
+    case 'consumer_lane_dollar_variance':
+      return (fairnessEvaluation) => Number(fairnessEvaluation?.metrics?.consumerVariance?.maxAmountVariancePercent) || 0;
+    case 'mortgage_lane_count_variance':
+      return (fairnessEvaluation) => Number(fairnessEvaluation?.metrics?.mortgageVariance?.maxCountVariancePercent) || 0;
+    case 'mortgage_lane_dollar_variance':
+      return (fairnessEvaluation) => Number(fairnessEvaluation?.metrics?.mortgageVariance?.maxAmountVariancePercent) || 0;
+    case 'flex_lane_count_variance':
+      return (fairnessEvaluation) => Number(fairnessEvaluation?.metrics?.flexVariance?.maxCountVariancePercent) || 0;
+    case 'flex_lane_dollar_variance':
+      return (fairnessEvaluation) => Number(fairnessEvaluation?.metrics?.flexVariance?.maxAmountVariancePercent) || 0;
+    case 'heloc_weighted_variance':
+      return (fairnessEvaluation) => Number(fairnessEvaluation?.metrics?.helocWeightedVariancePercent) || 0;
+    default:
+      return null;
+  }
+}
+
 
 
 function isHomogeneousHelocSupportPool(cleanLoans, officersByName) {
@@ -5141,7 +5162,10 @@ function optimizeOfficerLaneAssignmentsResult({ activeLoanTypes, cleanLoans, cle
   }
 
   const baselineFairnessEvaluation = evaluateResultFairness(result);
+  const baselineDescriptorKey = baselineFairnessEvaluation?.statusMetricDescriptor?.key;
   const isHelocOnlySupportPool = isHomogeneousHelocSupportPool(cleanLoans, officersByName);
+  const descriptorVarianceSelector = getOfficerLaneTargetVarianceSelector(baselineDescriptorKey);
+  const isCountVarianceDescriptor = typeof baselineDescriptorKey === 'string' && baselineDescriptorKey.endsWith('_count_variance');
 
   const officerConfigs = cleanOfficerNames
     .map((officerName) => normalizeOfficerConfig(officersByName[officerName]))
@@ -5155,7 +5179,7 @@ function optimizeOfficerLaneAssignmentsResult({ activeLoanTypes, cleanLoans, cle
     return eligibility.consumer && eligibility.mortgage;
   }).length;
 
-  const optimizationTarget = isHelocOnlySupportPool
+  const optimizationTarget = isHelocOnlySupportPool && baselineDescriptorKey === 'heloc_weighted_variance'
     ? {
       getVariancePercent: (fairnessEvaluation) => fairnessEvaluation?.metrics?.helocWeightedVariancePercent,
       targetLabel: 'weighted HELOC variance',
@@ -5184,6 +5208,9 @@ function optimizeOfficerLaneAssignmentsResult({ activeLoanTypes, cleanLoans, cle
           return flexLaneCount >= 2 && flexEligibleCount >= 2;
         }
       });
+  if (descriptorVarianceSelector) {
+    optimizationTarget.getVariancePercent = descriptorVarianceSelector;
+  }
 
   const baselineTargetVariance = isHelocOnlySupportPool
     ? getHomogeneousHelocWeightedVariancePercent({
@@ -5193,7 +5220,8 @@ function optimizeOfficerLaneAssignmentsResult({ activeLoanTypes, cleanLoans, cle
       officersByName
     })
     : optimizationTarget.getVariancePercent(baselineFairnessEvaluation);
-  if (!isHelocOnlySupportPool && baselineTargetVariance < window.OfficerLaneOptimizationService.PRIMARY_TARGET_PERCENT) {
+  const optimizationPrimaryThreshold = isCountVarianceDescriptor ? 15 : window.OfficerLaneOptimizationService.PRIMARY_TARGET_PERCENT;
+  if (!isHelocOnlySupportPool && baselineTargetVariance < optimizationPrimaryThreshold) {
     result.fairnessEvaluation = baselineFairnessEvaluation;
     result.optimizationApplied = false;
     result.optimizationIterations = 0;
@@ -5203,6 +5231,8 @@ function optimizeOfficerLaneAssignmentsResult({ activeLoanTypes, cleanLoans, cle
     result.optimizationFinalHelocWeightedVariancePercent = null;
     result.optimizationTierReached = 'under_20';
     result.optimizationSummaryMessage = '';
+    result.optimizationTargetLabel = optimizationTarget.targetLabel;
+    result.optimizationTargetDescriptorKey = baselineDescriptorKey || null;
     return result;
   }
 
@@ -5218,8 +5248,12 @@ function optimizeOfficerLaneAssignmentsResult({ activeLoanTypes, cleanLoans, cle
     shouldIncludeLoan: (loan) => getGoalAmountForLoan(loan) > 0,
     getVariancePercent: optimizationTarget.getVariancePercent,
     targetLabel: optimizationTarget.targetLabel,
+    primaryTargetPercent: optimizationPrimaryThreshold,
+    advisoryTargetPercent: window.OfficerLaneOptimizationService.ADVISORY_TARGET_PERCENT,
     // Bounded candidate evaluations keep this deterministic enough for audits and prevent unbounded retry loops.
-    maxEvaluations: Math.min(250, Math.max(100, cleanLoans.length * Math.max(cleanOfficerNames.length, 2))),
+    maxEvaluations: isCountVarianceDescriptor
+      ? Math.min(420, Math.max(160, cleanLoans.length * Math.max(cleanOfficerNames.length, 3)))
+      : Math.min(250, Math.max(100, cleanLoans.length * Math.max(cleanOfficerNames.length, 2))),
     forceOptimizationRun: isHelocOnlySupportPool,
     evaluateCandidate: (loanToOfficerMap) => {
       const candidateLoanAssignments = cleanLoans.map((loan) => ({
@@ -5254,6 +5288,8 @@ function optimizeOfficerLaneAssignmentsResult({ activeLoanTypes, cleanLoans, cle
   result.optimizationFinalHelocWeightedVariancePercent = isHelocOnlySupportPool ? optimization.finalVariancePercent : null;
   result.optimizationTierReached = optimization.tierReached;
   result.optimizationSummaryMessage = optimization.summaryMessage;
+  result.optimizationTargetLabel = optimizationTarget.targetLabel;
+  result.optimizationTargetDescriptorKey = baselineDescriptorKey || null;
 
   if (!optimization.improved) {
     // The loan mix may make <=25% unattainable; keep the best available result even if it remains above advisory.

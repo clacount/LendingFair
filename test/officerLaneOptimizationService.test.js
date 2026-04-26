@@ -221,3 +221,41 @@ test('optimizer performs additional passes when a later improvement unlocks a be
   assert.equal(result.bestLoanToOfficerMap.get(loans[2]), 'F1');
   assert.equal(result.tierReached, 'under_20');
 });
+
+test('optimizer reaches PASS-level <=15% for descriptor-targeted flex_lane_count_variance style targets', () => {
+  const officers = ['F1', 'F2'];
+  const loans = [
+    { name: 'L1', type: 'HELOC', amountRequested: 100 },
+    { name: 'L2', type: 'HELOC', amountRequested: 100 },
+    { name: 'L3', type: 'HELOC', amountRequested: 100 },
+    { name: 'L4', type: 'HELOC', amountRequested: 100 }
+  ];
+  const initialMap = new Map(loans.map((loan) => [loan, 'F1']));
+  const eligibleOfficersByLoan = new Map(loans.map((loan) => [loan, [...officers]]));
+
+  const result = optimizeConsumerLaneAssignments({
+    initialLoanToOfficerMap: initialMap,
+    eligibleOfficersByLoan,
+    isConsumerLoan: () => true,
+    shouldIncludeLoan: () => true,
+    primaryTargetPercent: 15,
+    advisoryTargetPercent: 25,
+    maxEvaluations: 60,
+    evaluateCandidate: (candidateMap) => {
+      const f1Count = [...candidateMap.values()].filter((officer) => officer === 'F1').length;
+      const f2Count = loans.length - f1Count;
+      const spread = (Math.abs(f1Count - f2Count) / loans.length) * 100;
+      return {
+        overallResult: spread <= 15 ? 'PASS' : 'REVIEW',
+        metrics: {
+          consumerVariance: { maxAmountVariancePercent: spread },
+          maxAmountVariancePercent: spread
+        }
+      };
+    }
+  });
+
+  assert.equal(result.optimizationRan, true);
+  assert.equal(result.finalVariancePercent <= 15, true);
+  assert.equal(result.summaryMessage.includes('<= 15.0%'), true);
+});

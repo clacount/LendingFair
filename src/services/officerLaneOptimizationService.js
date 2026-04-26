@@ -35,49 +35,60 @@
     return Number(fairnessEvaluation?.metrics?.maxAmountVariancePercent) || 0;
   }
 
-  function getTierRank(variancePercent) {
-    if (variancePercent <= PRIMARY_TARGET_PERCENT) {
+  function getTierRank(variancePercent, primaryTargetPercent = PRIMARY_TARGET_PERCENT, advisoryTargetPercent = ADVISORY_TARGET_PERCENT) {
+    if (variancePercent <= primaryTargetPercent) {
       return 0;
     }
-    if (variancePercent <= ADVISORY_TARGET_PERCENT) {
+    if (variancePercent <= advisoryTargetPercent) {
       return 1;
     }
     return 2;
   }
 
-  function getTierLabel(variancePercent) {
-    if (variancePercent <= PRIMARY_TARGET_PERCENT) {
+  function getTierLabel(variancePercent, primaryTargetPercent = PRIMARY_TARGET_PERCENT, advisoryTargetPercent = ADVISORY_TARGET_PERCENT) {
+    if (variancePercent <= primaryTargetPercent) {
       return 'under_20';
     }
-    if (variancePercent <= ADVISORY_TARGET_PERCENT) {
+    if (variancePercent <= advisoryTargetPercent) {
       return 'under_25';
     }
     return 'best_available_over_25';
   }
 
-  function buildSummaryMessage(variancePercent, optimized, targetLabel = 'consumer-dollar variance') {
+  function buildSummaryMessage(
+    variancePercent,
+    optimized,
+    targetLabel = 'consumer-dollar variance',
+    primaryTargetPercent = PRIMARY_TARGET_PERCENT,
+    advisoryTargetPercent = ADVISORY_TARGET_PERCENT
+  ) {
     if (!optimized) {
       return 'Initial assignment remained the selected result after bounded optimization review.';
     }
 
-    if (variancePercent <= PRIMARY_TARGET_PERCENT) {
-      return `Optimization reached the primary ${targetLabel} target band (<= 20.0%).`;
+    if (variancePercent <= primaryTargetPercent) {
+      return `Optimization reached the primary ${targetLabel} target band (<= ${primaryTargetPercent.toFixed(1)}%).`;
     }
 
-    if (variancePercent <= ADVISORY_TARGET_PERCENT) {
-      return `Optimization reached the ${targetLabel} advisory band (> 20.0% and <= 25.0%).`;
+    if (variancePercent <= advisoryTargetPercent) {
+      return `Optimization reached the ${targetLabel} advisory band (> ${primaryTargetPercent.toFixed(1)}% and <= ${advisoryTargetPercent.toFixed(1)}%).`;
     }
 
     return 'This is the most optimized result achievable from the available loan distribution.';
   }
 
-  function isBetterCandidate(candidate, currentBest) {
+  function isBetterCandidate(
+    candidate,
+    currentBest,
+    primaryTargetPercent = PRIMARY_TARGET_PERCENT,
+    advisoryTargetPercent = ADVISORY_TARGET_PERCENT
+  ) {
     if (!currentBest) {
       return true;
     }
 
-    const candidateTier = getTierRank(candidate.targetVariancePercent);
-    const currentTier = getTierRank(currentBest.targetVariancePercent);
+    const candidateTier = getTierRank(candidate.targetVariancePercent, primaryTargetPercent, advisoryTargetPercent);
+    const currentTier = getTierRank(currentBest.targetVariancePercent, primaryTargetPercent, advisoryTargetPercent);
     if (candidateTier !== currentTier) {
       return candidateTier < currentTier;
     }
@@ -97,6 +108,8 @@
     shouldIncludeLoan = () => true,
     getVariancePercent,
     targetLabel = 'consumer-dollar variance',
+    primaryTargetPercent = PRIMARY_TARGET_PERCENT,
+    advisoryTargetPercent = ADVISORY_TARGET_PERCENT,
     maxEvaluations = DEFAULT_MAX_EVALUATIONS,
     forceOptimizationRun = false
   } = {}) {
@@ -121,7 +134,7 @@
         .filter((loan) => shouldIncludeLoan(loan))
     );
 
-    if ((!forceOptimizationRun && baselineVariance < PRIMARY_TARGET_PERCENT) || !optimizedLoans.length) {
+    if ((!forceOptimizationRun && baselineVariance < primaryTargetPercent) || !optimizedLoans.length) {
       return {
         improved: false,
         optimizationRan: false,
@@ -129,7 +142,7 @@
         evaluations: 1,
         initialVariancePercent: baselineVariance,
         finalVariancePercent: baselineVariance,
-        tierReached: getTierLabel(baselineVariance),
+        tierReached: getTierLabel(baselineVariance, primaryTargetPercent, advisoryTargetPercent),
         summaryMessage: '',
         bestFairnessEvaluation: baselineFairness
       };
@@ -158,7 +171,7 @@
         overallVariancePercent: scoreFairness(fairnessEvaluation)
       };
 
-      if (isBetterCandidate(candidate, best)) {
+      if (isBetterCandidate(candidate, best, primaryTargetPercent, advisoryTargetPercent)) {
         best = candidate;
         return true;
       }
@@ -166,7 +179,7 @@
     };
 
     let improvedInPass = true;
-    while (improvedInPass && evaluations < boundedMaxEvaluations && best.targetVariancePercent > PRIMARY_TARGET_PERCENT) {
+    while (improvedInPass && evaluations < boundedMaxEvaluations && best.targetVariancePercent > primaryTargetPercent) {
       improvedInPass = false;
 
       for (let loanIndex = 0; loanIndex < optimizedLoans.length && evaluations < boundedMaxEvaluations; loanIndex += 1) {
@@ -188,6 +201,7 @@
         });
 
         for (let otherIndex = loanIndex + 1; otherIndex < optimizedLoans.length && evaluations < boundedMaxEvaluations; otherIndex += 1) {
+          // 2) Pairwise swaps for loans currently held by different officers.
           const otherLoan = optimizedLoans[otherIndex];
           const officerA = best.loanToOfficerMap.get(loan);
           const officerB = best.loanToOfficerMap.get(otherLoan);
@@ -207,7 +221,7 @@
           improvedInPass = tryCandidate(candidateMap) || improvedInPass;
         }
 
-        if (best.targetVariancePercent <= PRIMARY_TARGET_PERCENT) {
+        if (best.targetVariancePercent <= primaryTargetPercent) {
           break;
         }
       }
@@ -221,8 +235,14 @@
       evaluations,
       initialVariancePercent: baselineVariance,
       finalVariancePercent: best.targetVariancePercent,
-      tierReached: getTierLabel(best.targetVariancePercent),
-      summaryMessage: buildSummaryMessage(best.targetVariancePercent, improved, targetLabel),
+      tierReached: getTierLabel(best.targetVariancePercent, primaryTargetPercent, advisoryTargetPercent),
+      summaryMessage: buildSummaryMessage(
+        best.targetVariancePercent,
+        improved,
+        targetLabel,
+        primaryTargetPercent,
+        advisoryTargetPercent
+      ),
       bestFairnessEvaluation: best.fairnessEvaluation
     };
   }

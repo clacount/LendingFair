@@ -365,7 +365,80 @@ test('officer-lane runs do not receive global post-assignment repair metadata', 
 
   const result = context.assignLoans(officers, loans, runningTotals);
 
-  assert.equal(result.optimizationTargetLabel ?? null, null);
+  assert.notEqual(result.optimizationTargetLabel, 'global variance');
   assert.equal(result.optimizationInitialGlobalVariancePercent ?? null, null);
   assert.equal(result.optimizationFinalGlobalVariancePercent ?? null, null);
+});
+
+test('officer-lane post-assignment optimization improves confirmed seed-46 flex-count avoidable REVIEW', () => {
+  const fixturePath = path.resolve(__dirname, 'fixtures/officer_lane_seed46_flex_count_avoidable_case.json');
+  const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
+
+  const context = loadAppContext(fixture.seed);
+  context.FairnessEngineService.setSelectedFairnessEngine('officer_lane');
+  const result = context.assignLoans(fixture.officers, fixture.loans, fixture.runningTotals);
+
+  assert.equal(fixture.observedFairness.overallResult, 'REVIEW');
+  assert.equal(fixture.observedFairness.statusMetricDescriptor?.key, 'flex_lane_count_variance');
+  assert.equal(fixture.observedFairness.metrics.flexVariance.maxCountVariancePercent > 15, true);
+  // This captured scenario is stochastic at assignment time; the optimizer should still target and improve
+  // the failing flex count descriptor even when a full PASS is not guaranteed for every deterministic replay.
+  assert.equal(result.optimizationTargetDescriptorKey, 'flex_lane_count_variance');
+  assert.match(String(result.optimizationTargetLabel || ''), /flex-lane|flex/i);
+  assert.equal(result.optimizationApplied, true);
+  assert.equal(result.optimizationInitialConsumerDollarVariance > result.optimizationFinalConsumerDollarVariance, true);
+  const fixtureOfficersByName = Object.fromEntries(fixture.officers.map((officer) => [officer.name, officer]));
+  result.loanAssignments.forEach((entry) => {
+    const selectedOfficer = entry.officers?.[0];
+    const officerConfig = fixtureOfficersByName[selectedOfficer];
+    assert.equal(Boolean(officerConfig), true);
+    assert.equal(officerConfig.isOnVacation, false);
+    assert.equal(context.isOfficerEligibleForLoanType(officerConfig, entry.loan), true);
+  });
+  assert.equal(fixture.reviewFeasibilityBestMetrics.flexVariance.maxCountVariancePercent <= 15, true);
+  assert.equal(fixture.reviewFeasibilityBestMetrics.flexVariance.maxAmountVariancePercent <= 20, true);
+  assert.equal(Object.keys(fixture.reviewFeasibilityBestAssignmentMap || {}).length, fixture.loans.length);
+});
+
+test('officer-lane descriptor-targeted flex count optimization improves variance without policy/eligibility regressions on deterministic two-officer flex case', () => {
+  const context = loadAppContext(101);
+  context.FairnessEngineService.setSelectedFairnessEngine('officer_lane');
+  const officers = [
+    { name: 'F1', eligibility: { consumer: true, mortgage: true }, isOnVacation: false },
+    { name: 'F2', eligibility: { consumer: true, mortgage: true }, isOnVacation: false }
+  ];
+  const loans = [
+    { name: 'L1', type: 'HELOC', amountRequested: 300000 },
+    { name: 'L2', type: 'HELOC', amountRequested: 300000 },
+    { name: 'L3', type: 'HELOC', amountRequested: 300000 },
+    { name: 'L4', type: 'HELOC', amountRequested: 300000 }
+  ];
+  const runningTotals = {
+    officers: {
+      F1: { loanCount: 12, totalAmountRequested: 3600000, typeCounts: { HELOC: 12 }, activeSessionCount: 4 },
+      F2: { loanCount: 0, totalAmountRequested: 0, typeCounts: { HELOC: 0 }, activeSessionCount: 4 }
+    }
+  };
+
+  const result = context.assignLoans(officers, loans, runningTotals);
+  const forcedBaselineEvaluation = context.FairnessEngineService.evaluateFairness({
+    engineType: 'officer_lane',
+    officers,
+    officerStats: buildOfficerStats(
+      officers,
+      { F1: loans, F2: [] },
+      runningTotals
+    )
+  });
+
+  assert.equal(result.optimizationTargetDescriptorKey, 'flex_lane_count_variance');
+  assert.equal(result.optimizationApplied, true);
+  assert.equal(result.fairnessEvaluation.metrics.flexVariance.maxCountVariancePercent < forcedBaselineEvaluation.metrics.flexVariance.maxCountVariancePercent, true);
+  result.loanAssignments.forEach((entry) => {
+    const officerName = entry.officers?.[0];
+    const officer = officers.find((candidate) => candidate.name === officerName);
+    assert.equal(Boolean(officer), true);
+    assert.equal(officer.isOnVacation, false);
+    assert.equal(context.isOfficerEligibleForLoanType(officer, entry.loan), true);
+  });
 });
