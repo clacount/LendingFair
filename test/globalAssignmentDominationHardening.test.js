@@ -308,3 +308,64 @@ test('global domination guard avoids obvious dollar-variance regressions when lo
 
   assert.equal(evaluation.metrics.maxAmountVariancePercent <= forcedDominationEvaluation.metrics.maxAmountVariancePercent, true);
 });
+
+test('global post-assignment repair converts confirmed avoidable seed-45 count-variance REVIEW into PASS', () => {
+  const fixturePath = path.resolve(__dirname, 'fixtures/global_seed45_avoidable_case.json');
+  const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
+
+  const context = loadAppContext(fixture.seed);
+  const result = context.assignLoans(fixture.officers, fixture.loans, fixture.runningTotals);
+
+  assert.equal(fixture.observedFairness.overallResult, 'REVIEW');
+  assert.equal(fixture.observedFairness.metrics.maxCountVariancePercent > 15, true);
+  assert.equal(result.fairnessEvaluation.overallResult, 'PASS');
+  assert.equal(result.fairnessEvaluation.metrics.maxCountVariancePercent <= 15, true);
+  assert.equal(result.optimizationApplied, true);
+  assert.equal(result.optimizationTierReached, 'under_20');
+  assert.equal(Number.isFinite(result.optimizationInitialGlobalVariancePercent), true);
+  assert.equal(Number.isFinite(result.optimizationFinalGlobalVariancePercent), true);
+  assert.equal(result.optimizationTargetLabel, 'global variance');
+  assert.equal(result.optimizationFinalGlobalVariancePercent <= result.optimizationInitialGlobalVariancePercent, true);
+});
+
+test('global baseline PASS does not emit misleading global-repair metadata', () => {
+  const context = loadAppContext(11);
+  const officers = [
+    { name: 'F1', eligibility: { consumer: true, mortgage: true } },
+    { name: 'F2', eligibility: { consumer: true, mortgage: true } }
+  ];
+  const loans = [
+    { name: 'L1', type: 'HELOC', amountRequested: 500000 },
+    { name: 'L2', type: 'HELOC', amountRequested: 500000 }
+  ];
+  const runningTotals = { officers: { F1: { activeSessionCount: 2 }, F2: { activeSessionCount: 2 } } };
+
+  const result = context.assignLoans(officers, loans, runningTotals);
+
+  assert.equal(result.fairnessEvaluation.overallResult, 'PASS');
+  assert.equal(result.optimizationApplied, false);
+  assert.equal(result.optimizationTargetLabel ?? null, null);
+  assert.equal(result.optimizationInitialGlobalVariancePercent ?? null, null);
+  assert.equal(result.optimizationFinalGlobalVariancePercent ?? null, null);
+});
+
+test('officer-lane runs do not receive global post-assignment repair metadata', () => {
+  const context = loadAppContext(12);
+  context.FairnessEngineService.setSelectedFairnessEngine('officer_lane');
+  const officers = [
+    { name: 'F1', eligibility: { consumer: true, mortgage: true } },
+    { name: 'F2', eligibility: { consumer: true, mortgage: true } }
+  ];
+  const loans = [
+    { name: 'L1', type: 'HELOC', amountRequested: 400000 },
+    { name: 'L2', type: 'HELOC', amountRequested: 420000 },
+    { name: 'L3', type: 'HELOC', amountRequested: 410000 }
+  ];
+  const runningTotals = { officers: { F1: { activeSessionCount: 1 }, F2: { activeSessionCount: 1 } } };
+
+  const result = context.assignLoans(officers, loans, runningTotals);
+
+  assert.equal(result.optimizationTargetLabel ?? null, null);
+  assert.equal(result.optimizationInitialGlobalVariancePercent ?? null, null);
+  assert.equal(result.optimizationFinalGlobalVariancePercent ?? null, null);
+});

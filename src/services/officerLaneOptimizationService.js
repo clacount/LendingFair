@@ -147,7 +147,7 @@
 
     const tryCandidate = (candidateMap) => {
       if (evaluations >= boundedMaxEvaluations) {
-        return;
+        return false;
       }
       const fairnessEvaluation = evaluateCandidate(candidateMap);
       evaluations += 1;
@@ -160,49 +160,56 @@
 
       if (isBetterCandidate(candidate, best)) {
         best = candidate;
+        return true;
       }
+      return false;
     };
 
-    for (let loanIndex = 0; loanIndex < optimizedLoans.length && evaluations < boundedMaxEvaluations; loanIndex += 1) {
-      const loan = optimizedLoans[loanIndex];
-      const currentOfficer = best.loanToOfficerMap.get(loan);
-      const eligibleOfficers = [...(eligibleOfficersByLoan.get(loan) || [])]
-        .map((officer) => String(officer || '').trim())
-        .filter(Boolean)
-        .sort((officerA, officerB) => officerA.localeCompare(officerB));
+    let improvedInPass = true;
+    while (improvedInPass && evaluations < boundedMaxEvaluations && best.targetVariancePercent > PRIMARY_TARGET_PERCENT) {
+      improvedInPass = false;
 
-      eligibleOfficers.forEach((candidateOfficer) => {
-        if (evaluations >= boundedMaxEvaluations || candidateOfficer === currentOfficer) {
-          return;
+      for (let loanIndex = 0; loanIndex < optimizedLoans.length && evaluations < boundedMaxEvaluations; loanIndex += 1) {
+        const loan = optimizedLoans[loanIndex];
+        const currentOfficer = best.loanToOfficerMap.get(loan);
+        const eligibleOfficers = [...(eligibleOfficersByLoan.get(loan) || [])]
+          .map((officer) => String(officer || '').trim())
+          .filter(Boolean)
+          .sort((officerA, officerB) => officerA.localeCompare(officerB));
+
+        eligibleOfficers.forEach((candidateOfficer) => {
+          if (evaluations >= boundedMaxEvaluations || candidateOfficer === currentOfficer) {
+            return;
+          }
+
+          const candidateMap = cloneAssignmentMap(best.loanToOfficerMap);
+          candidateMap.set(loan, candidateOfficer);
+          improvedInPass = tryCandidate(candidateMap) || improvedInPass;
+        });
+
+        for (let otherIndex = loanIndex + 1; otherIndex < optimizedLoans.length && evaluations < boundedMaxEvaluations; otherIndex += 1) {
+          const otherLoan = optimizedLoans[otherIndex];
+          const officerA = best.loanToOfficerMap.get(loan);
+          const officerB = best.loanToOfficerMap.get(otherLoan);
+          if (!officerA || !officerB || officerA === officerB) {
+            continue;
+          }
+
+          const loanEligible = eligibleOfficersByLoan.get(loan) || [];
+          const otherEligible = eligibleOfficersByLoan.get(otherLoan) || [];
+          if (!loanEligible.includes(officerB) || !otherEligible.includes(officerA)) {
+            continue;
+          }
+
+          const candidateMap = cloneAssignmentMap(best.loanToOfficerMap);
+          candidateMap.set(loan, officerB);
+          candidateMap.set(otherLoan, officerA);
+          improvedInPass = tryCandidate(candidateMap) || improvedInPass;
         }
 
-        const candidateMap = cloneAssignmentMap(best.loanToOfficerMap);
-        candidateMap.set(loan, candidateOfficer);
-        tryCandidate(candidateMap);
-      });
-
-      for (let otherIndex = loanIndex + 1; otherIndex < optimizedLoans.length && evaluations < boundedMaxEvaluations; otherIndex += 1) {
-        const otherLoan = optimizedLoans[otherIndex];
-        const officerA = best.loanToOfficerMap.get(loan);
-        const officerB = best.loanToOfficerMap.get(otherLoan);
-        if (!officerA || !officerB || officerA === officerB) {
-          continue;
+        if (best.targetVariancePercent <= PRIMARY_TARGET_PERCENT) {
+          break;
         }
-
-        const loanEligible = eligibleOfficersByLoan.get(loan) || [];
-        const otherEligible = eligibleOfficersByLoan.get(otherLoan) || [];
-        if (!loanEligible.includes(officerB) || !otherEligible.includes(officerA)) {
-          continue;
-        }
-
-        const candidateMap = cloneAssignmentMap(best.loanToOfficerMap);
-        candidateMap.set(loan, officerB);
-        candidateMap.set(otherLoan, officerA);
-        tryCandidate(candidateMap);
-      }
-
-      if (best.targetVariancePercent <= PRIMARY_TARGET_PERCENT) {
-        break;
       }
     }
 

@@ -15,6 +15,9 @@ const {
   classifyReviewBasis,
   updateReviewAggregation,
   flushReviewAggregation,
+  analyzeReviewFeasibility,
+  evaluateAssignmentCandidate,
+  getCandidateOfficerNamesForLoan,
   hashContextSeed
 } = require('../scripts/fairness_stress_runner.js');
 
@@ -530,7 +533,9 @@ test('stress summary includes attempted/suspicious/skipped/failure counts by eng
     '--duration-minutes', '0.003',
     '--max-iterations', '1',
     '--engine', 'both',
-    '--output', outputDir
+    '--output', outputDir,
+    '--analyze-review-feasibility',
+    '--feasibility-budget', '20'
   ], { stdio: 'pipe' });
 
   const summaryLog = fs.readFileSync(path.join(outputDir, 'summary.log'), 'utf8');
@@ -548,7 +553,18 @@ test('stress summary includes attempted/suspicious/skipped/failure counts by eng
   assert.equal(typeof summary.completedRuns, 'number');
   assert.equal(typeof summary.passCount, 'number');
   assert.equal(typeof summary.reviewCount, 'number');
+  assert.equal(typeof summary.avoidableReviewCount, 'number');
+  assert.equal(typeof summary.unavoidableReviewCount, 'number');
+  assert.equal(typeof summary.feasibilityUnknownCount, 'number');
+  assert.equal(Array.isArray(summary.topAvoidableReasons), true);
+  assert.equal(Array.isArray(summary.topUnavoidableReasons), true);
+  assert.equal(Array.isArray(summary.topUnknownReasons), true);
+  assert.deepEqual(summary.engineChangesMade, []);
   assert.equal(typeof summary.unknownResultCount, 'number');
+  assert.equal(fs.existsSync(path.join(outputDir, 'review_feasibility_summary.json')), true);
+  assert.equal(fs.existsSync(path.join(outputDir, 'avoidable_review_counts.json')), true);
+  assert.equal(fs.existsSync(path.join(outputDir, 'unavoidable_review_counts.json')), true);
+  assert.equal(fs.existsSync(path.join(outputDir, 'feasibility_unknown_counts.json')), true);
   fs.rmSync(outputDir, { recursive: true, force: true });
 });
 
@@ -647,6 +663,494 @@ test('PASS runs are not added to review_counts aggregation', () => {
   const payload = JSON.parse(fs.readFileSync(outputPath, 'utf8'));
   assert.deepEqual(payload, {});
   fs.rmSync(outputPath, { force: true });
+});
+
+test('feasibility analyzer marks exact small PASS-possible scenarios as avoidable_review', () => {
+  const scenario = {
+    officers: [
+      { name: 'A', isOnVacation: false, eligibility: { consumer: true, mortgage: false } },
+      { name: 'B', isOnVacation: false, eligibility: { consumer: true, mortgage: false } }
+    ],
+    loans: [
+      { name: 'L1', type: 'Personal', amountRequested: 10000 },
+      { name: 'L2', type: 'Personal', amountRequested: 10000 }
+    ],
+    runningTotals: { officers: {} }
+  };
+  const context = {
+    isOfficerEligibleForLoanType: () => true,
+    getOfficerStatsFromResult(result) {
+      return Object.entries(result.officerAssignments).map(([officer, assigned]) => ({
+        officer,
+        totalLoans: assigned.length,
+        totalAmount: assigned.length * 10000,
+        consumerLoanCount: assigned.length,
+        consumerAmount: assigned.length * 10000,
+        mortgageLoanCount: 0,
+        mortgageAmount: 0,
+        typeBreakdown: { Personal: assigned.length }
+      }));
+    },
+    FairnessEngineService: {
+      evaluateFairness(input) {
+        const counts = Object.fromEntries(input.officerStats.map((s) => [s.officer, s.totalLoans]));
+        const isPass = counts.A === 1 && counts.B === 1;
+        return {
+          overallResult: isPass ? 'PASS' : 'REVIEW',
+          statusMetricDescriptor: { key: 'global_count_variance', valuePercent: isPass ? 0 : 50 },
+          metrics: { maxCountVariancePercent: isPass ? 0 : 50, maxAmountVariancePercent: isPass ? 0 : 50 }
+        };
+      }
+    }
+  };
+  const run = {
+    result: {
+      fairnessEvaluation: { overallResult: 'REVIEW', metrics: { maxCountVariancePercent: 50, maxAmountVariancePercent: 50 } },
+      loanAssignments: [
+        { loan: scenario.loans[0], officers: ['A'] },
+        { loan: scenario.loans[1], officers: ['A'] }
+      ]
+    }
+  };
+
+  const feasibility = analyzeReviewFeasibility({ context, scenario, engine: 'global', run, reviewBasis: 'global_count_variance', evaluationBudget: 2000 });
+  assert.equal(feasibility.classification, 'avoidable_review');
+  assert.equal(feasibility.searchType, 'exact_search');
+  assert.equal(feasibility.foundPassAssignment, true);
+});
+
+test('avoidable classification preserves a PASS assignment summary when distance ranking favors a REVIEW candidate', () => {
+  const scenario = {
+    officers: [
+      { name: 'F1', isOnVacation: false, eligibility: { consumer: true, mortgage: true } },
+      { name: 'F2', isOnVacation: false, eligibility: { consumer: true, mortgage: true } }
+    ],
+    loans: [
+      { name: 'L1', type: 'HELOC', amountRequested: 10000 },
+      { name: 'L2', type: 'HELOC', amountRequested: 10000 }
+    ],
+    runningTotals: { officers: {} }
+  };
+  const context = {
+    isOfficerEligibleForLoanType: () => true,
+    getMortgageLoanPermissionLevel: () => 'heloc',
+    getOfficerStatsFromResult(result) {
+      return Object.entries(result.officerAssignments).map(([officer, assigned]) => ({
+        officer,
+        totalLoans: assigned.length,
+        totalAmount: assigned.length * 10000,
+        consumerLoanCount: assigned.length,
+        consumerAmount: assigned.length * 10000,
+        mortgageLoanCount: 0,
+        mortgageAmount: 0,
+        typeBreakdown: { HELOC: assigned.length }
+      }));
+    },
+    FairnessEngineService: {
+      evaluateFairness(input) {
+        const counts = Object.fromEntries(input.officerStats.map((entry) => [entry.officer, entry.totalLoans]));
+        const splitPass = counts.F1 === 1 && counts.F2 === 1;
+        return {
+          overallResult: splitPass ? 'PASS' : 'REVIEW',
+          statusMetricDescriptor: { key: 'flex_lane_count_variance', valuePercent: splitPass ? 10 : 20 },
+          metrics: {
+            consumerVariance: { maxCountVariancePercent: splitPass ? 25 : 16, maxAmountVariancePercent: 0 },
+            mortgageVariance: { maxCountVariancePercent: 0, maxAmountVariancePercent: 0 },
+            flexVariance: { maxCountVariancePercent: splitPass ? 25 : 16, maxAmountVariancePercent: 0 }
+          },
+          roleAwareFlags: { helocOnlySupportThresholdsApplied: false }
+        };
+      }
+    }
+  };
+  const run = {
+    result: {
+      fairnessEvaluation: {
+        overallResult: 'REVIEW',
+        metrics: {
+          consumerVariance: { maxCountVariancePercent: 16, maxAmountVariancePercent: 0 },
+          mortgageVariance: { maxCountVariancePercent: 0, maxAmountVariancePercent: 0 },
+          flexVariance: { maxCountVariancePercent: 16, maxAmountVariancePercent: 0 }
+        },
+        roleAwareFlags: { helocOnlySupportThresholdsApplied: false }
+      },
+      loanAssignments: [
+        { loan: scenario.loans[0], officers: ['F1'] },
+        { loan: scenario.loans[1], officers: ['F1'] }
+      ]
+    }
+  };
+
+  const feasibility = analyzeReviewFeasibility({ context, scenario, engine: 'officer_lane', run, reviewBasis: 'flex_lane_count_variance', evaluationBudget: 2000 });
+  assert.equal(feasibility.classification, 'avoidable_review');
+  assert.equal(feasibility.foundPassAssignment, true);
+  assert.deepEqual(feasibility.bestAssignmentMap, { L1: 'F1', L2: 'F2' });
+});
+
+test('feasibility analyzer marks exact small impossible scenarios as unavoidable_review', () => {
+  const scenario = {
+    officers: [
+      { name: 'A', isOnVacation: false, eligibility: { consumer: true, mortgage: false } },
+      { name: 'B', isOnVacation: false, eligibility: { consumer: true, mortgage: false } }
+    ],
+    loans: [{ name: 'L1', type: 'Personal', amountRequested: 10000 }],
+    runningTotals: { officers: {} }
+  };
+  const context = {
+    isOfficerEligibleForLoanType: () => true,
+    getOfficerStatsFromResult(result) {
+      return Object.entries(result.officerAssignments).map(([officer, assigned]) => ({
+        officer,
+        totalLoans: assigned.length,
+        totalAmount: assigned.length * 10000
+      }));
+    },
+    FairnessEngineService: {
+      evaluateFairness() {
+        return {
+          overallResult: 'REVIEW',
+          statusMetricDescriptor: { key: 'global_count_variance', valuePercent: 50 },
+          metrics: { maxCountVariancePercent: 50, maxAmountVariancePercent: 50 }
+        };
+      }
+    }
+  };
+  const run = { result: { fairnessEvaluation: { overallResult: 'REVIEW', metrics: { maxCountVariancePercent: 50, maxAmountVariancePercent: 50 } }, loanAssignments: [] } };
+  const feasibility = analyzeReviewFeasibility({ context, scenario, engine: 'global', run, reviewBasis: 'global_count_variance', evaluationBudget: 2000 });
+  assert.equal(feasibility.classification, 'unavoidable_review');
+  assert.equal(feasibility.searchType, 'exact_search');
+});
+
+test('feasibility analyzer restricts search to loans present in the observed assignment result', () => {
+  const scenario = {
+    officers: [
+      { name: 'A', isOnVacation: false, eligibility: { consumer: true, mortgage: false } },
+      { name: 'B', isOnVacation: false, eligibility: { consumer: true, mortgage: false } }
+    ],
+    loans: [
+      { name: 'L1', type: 'Personal', amountRequested: 10000 },
+      { name: 'L2', type: 'Auto', amountRequested: 10000 }
+    ],
+    runningTotals: { officers: {} }
+  };
+  const context = {
+    isOfficerEligibleForLoanType: () => true,
+    getOfficerStatsFromResult(result) {
+      return Object.entries(result.officerAssignments).map(([officer, assigned]) => ({
+        officer,
+        totalLoans: assigned.length,
+        totalAmount: assigned.length * 10000
+      }));
+    },
+    FairnessEngineService: {
+      evaluateFairness(input) {
+        const loanCount = input.officerStats.reduce((sum, entry) => sum + entry.totalLoans, 0);
+        const isPass = loanCount >= 2;
+        return {
+          overallResult: isPass ? 'PASS' : 'REVIEW',
+          statusMetricDescriptor: { key: 'global_count_variance', valuePercent: isPass ? 0 : 50 },
+          metrics: { maxCountVariancePercent: isPass ? 0 : 50, maxAmountVariancePercent: isPass ? 0 : 50 }
+        };
+      }
+    }
+  };
+
+  const run = {
+    result: {
+      fairnessEvaluation: { overallResult: 'REVIEW', metrics: { maxCountVariancePercent: 50, maxAmountVariancePercent: 50 } },
+      loanAssignments: [
+        { loan: scenario.loans[0], officers: ['A'] }
+      ]
+    }
+  };
+
+  const feasibility = analyzeReviewFeasibility({ context, scenario, engine: 'global', run, reviewBasis: 'global_count_variance', evaluationBudget: 2000 });
+  assert.equal(feasibility.classification, 'unavoidable_review');
+  assert.equal(Object.keys(feasibility.bestAssignmentMap || {}).length, 1);
+});
+
+test('exact feasibility search returns unknown when budget is exhausted before exhaustive enumeration', () => {
+  const scenario = {
+    officers: [
+      { name: 'A', isOnVacation: false, eligibility: { consumer: true, mortgage: false } },
+      { name: 'B', isOnVacation: false, eligibility: { consumer: true, mortgage: false } }
+    ],
+    loans: [
+      { name: 'L1', type: 'Personal', amountRequested: 10000 },
+      { name: 'L2', type: 'Personal', amountRequested: 10000 }
+    ],
+    runningTotals: { officers: {} }
+  };
+  const context = {
+    isOfficerEligibleForLoanType: () => true,
+    getOfficerStatsFromResult(result) {
+      return Object.entries(result.officerAssignments).map(([officer, assigned]) => ({
+        officer,
+        totalLoans: assigned.length,
+        totalAmount: assigned.length * 10000
+      }));
+    },
+    FairnessEngineService: {
+      evaluateFairness() {
+        return {
+          overallResult: 'REVIEW',
+          statusMetricDescriptor: { key: 'global_count_variance', valuePercent: 40 },
+          metrics: { maxCountVariancePercent: 40, maxAmountVariancePercent: 0 }
+        };
+      }
+    }
+  };
+  const run = { result: { fairnessEvaluation: { overallResult: 'REVIEW', metrics: { maxCountVariancePercent: 40, maxAmountVariancePercent: 0 } }, loanAssignments: [] } };
+  const feasibility = analyzeReviewFeasibility({ context, scenario, engine: 'global', run, reviewBasis: 'global_count_variance', evaluationBudget: 1 });
+  assert.equal(feasibility.classification, 'feasibility_unknown_budget_exhausted');
+});
+
+test('feasibility analyzer marks larger budget-exhausted search as feasibility_unknown_budget_exhausted', () => {
+  const scenario = {
+    officers: [
+      { name: 'A', isOnVacation: false, eligibility: { consumer: true, mortgage: false } },
+      { name: 'B', isOnVacation: false, eligibility: { consumer: true, mortgage: false } },
+      { name: 'C', isOnVacation: false, eligibility: { consumer: true, mortgage: false } },
+      { name: 'D', isOnVacation: false, eligibility: { consumer: true, mortgage: false } },
+      { name: 'E', isOnVacation: false, eligibility: { consumer: true, mortgage: false } },
+      { name: 'F', isOnVacation: false, eligibility: { consumer: true, mortgage: false } },
+      { name: 'G', isOnVacation: false, eligibility: { consumer: true, mortgage: false } }
+    ],
+    loans: Array.from({ length: 11 }, (_, i) => ({ name: `L${i + 1}`, type: 'Personal', amountRequested: 10000 })),
+    runningTotals: { officers: {} }
+  };
+  const context = {
+    isOfficerEligibleForLoanType: () => true,
+    getOfficerStatsFromResult(result) {
+      return Object.entries(result.officerAssignments).map(([officer, assigned]) => ({
+        officer,
+        totalLoans: assigned.length,
+        totalAmount: assigned.length * 10000
+      }));
+    },
+    FairnessEngineService: {
+      evaluateFairness() {
+        return {
+          overallResult: 'REVIEW',
+          statusMetricDescriptor: { key: 'global_count_variance', valuePercent: 50 },
+          metrics: { maxCountVariancePercent: 50, maxAmountVariancePercent: 50 }
+        };
+      }
+    }
+  };
+  const run = { result: { fairnessEvaluation: { overallResult: 'REVIEW', metrics: { maxCountVariancePercent: 50, maxAmountVariancePercent: 50 } }, loanAssignments: [] } };
+  const feasibility = analyzeReviewFeasibility({ context, scenario, engine: 'global', run, reviewBasis: 'global_count_variance', evaluationBudget: 5 });
+  assert.equal(feasibility.classification, 'feasibility_unknown_budget_exhausted');
+  assert.equal(feasibility.searchType, 'heuristic_bounded_search');
+});
+
+test('heuristic feasibility search marks fully exhausted finite search as unavoidable_review', () => {
+  const scenario = {
+    officers: Array.from({ length: 7 }, (_, i) => ({
+      name: `O${i + 1}`,
+      isOnVacation: false,
+      eligibility: { consumer: true, mortgage: false }
+    })),
+    loans: Array.from({ length: 11 }, (_, i) => ({ name: `L${i + 1}`, type: 'Personal', amountRequested: 10000 })),
+    runningTotals: { officers: {} }
+  };
+  const context = {
+    isOfficerEligibleForLoanType(officer, loan) {
+      const officerIndex = Number(String(officer.name).replace('O', ''));
+      const loanIndex = Number(String(loan.name).replace('L', ''));
+      return officerIndex === ((loanIndex - 1) % 7) + 1;
+    },
+    getOfficerStatsFromResult(result) {
+      return Object.entries(result.officerAssignments).map(([officer, assigned]) => ({
+        officer,
+        totalLoans: assigned.length,
+        totalAmount: assigned.length * 10000
+      }));
+    },
+    FairnessEngineService: {
+      evaluateFairness() {
+        return {
+          overallResult: 'REVIEW',
+          statusMetricDescriptor: { key: 'global_count_variance', valuePercent: 50 },
+          metrics: { maxCountVariancePercent: 50, maxAmountVariancePercent: 50 }
+        };
+      }
+    }
+  };
+  const run = { result: { fairnessEvaluation: { overallResult: 'REVIEW', metrics: { maxCountVariancePercent: 50, maxAmountVariancePercent: 50 } }, loanAssignments: [] } };
+
+  const feasibility = analyzeReviewFeasibility({
+    context,
+    scenario,
+    engine: 'global',
+    run,
+    reviewBasis: 'global_count_variance',
+    evaluationBudget: 100
+  });
+
+  assert.equal(feasibility.classification, 'unavoidable_review');
+  assert.equal(feasibility.searchType, 'heuristic_bounded_search');
+  assert.equal(feasibility.feasibilityEvaluationsRun, 1);
+});
+
+test('candidate HELOC weighted variance is recalculated per assignment instead of reusing stale optimization metric', () => {
+  const scenario = {
+    officers: [
+      { name: 'F1', isOnVacation: false, eligibility: { consumer: true, mortgage: true }, mortgageOverride: false },
+      { name: 'M1', isOnVacation: false, eligibility: { consumer: false, mortgage: true } }
+    ],
+    loans: [{ name: 'H1', type: 'HELOC', amountRequested: 100000 }],
+    runningTotals: { officers: {} }
+  };
+  const context = {
+    getMortgageLoanPermissionLevel: () => 'heloc',
+    getOfficerStatsFromResult(result) {
+      return Object.entries(result.officerAssignments).map(([officer, assigned]) => ({
+        officer,
+        totalLoans: assigned.length,
+        totalAmount: assigned.reduce((sum, loan) => sum + loan.amountRequested, 0),
+        consumerLoanCount: 0,
+        consumerAmount: 0,
+        mortgageLoanCount: assigned.length,
+        mortgageAmount: assigned.reduce((sum, loan) => sum + loan.amountRequested, 0),
+        typeBreakdown: { HELOC: assigned.length }
+      }));
+    },
+    getHomogeneousHelocWeightedVariancePercent({ loanToOfficerMap }) {
+      return loanToOfficerMap.get(scenario.loans[0]) === 'F1' ? 7 : 13;
+    },
+    FairnessEngineService: {
+      isHomogeneousHelocSupportPool: () => true,
+      evaluateFairness(input) {
+        return {
+          overallResult: 'REVIEW',
+          roleAwareFlags: { helocOnlySupportThresholdsApplied: true },
+          metrics: { helocWeightedVariancePercent: input.optimizationMetrics.helocWeightedVariancePercent }
+        };
+      }
+    }
+  };
+
+  const candidate = evaluateAssignmentCandidate({
+    context,
+    scenario,
+    engine: 'officer_lane',
+    assignmentMap: { H1: 'F1' },
+    optimizationMetrics: { helocWeightedVariancePercent: 99 }
+  });
+  assert.equal(candidate.fairnessEvaluation.metrics.helocWeightedVariancePercent, 7);
+});
+
+test('candidate officer eligibility enforces vacation, mortgage override, and HELOC/fixed-mortgage constraints', () => {
+  const scenario = {
+    officers: [
+      { name: 'C1', isOnVacation: false, eligibility: { consumer: true, mortgage: false } },
+      { name: 'F1', isOnVacation: false, eligibility: { consumer: true, mortgage: true }, mortgageOverride: false },
+      { name: 'F2', isOnVacation: false, eligibility: { consumer: true, mortgage: true }, mortgageOverride: true },
+      { name: 'M1', isOnVacation: false, eligibility: { consumer: false, mortgage: true } },
+      { name: 'VAC', isOnVacation: true, eligibility: { consumer: false, mortgage: true } }
+    ],
+    loans: [],
+    runningTotals: { officers: {} }
+  };
+  const context = {
+    getLoanCategoryForType(type) {
+      if (type === 'Personal') return 'consumer';
+      return 'mortgage';
+    },
+    getMortgageLoanPermissionLevel(type) {
+      return type === 'HELOC' ? 'heloc' : 'full-mortgage';
+    }
+  };
+
+  const personalEligible = getCandidateOfficerNamesForLoan({ context, scenario, loan: { type: 'Personal' }, engine: 'officer_lane' });
+  const helocEligible = getCandidateOfficerNamesForLoan({ context, scenario, loan: { type: 'HELOC' }, engine: 'officer_lane' });
+  const firstMortgageEligible = getCandidateOfficerNamesForLoan({ context, scenario, loan: { type: 'First Mortgage' }, engine: 'officer_lane' });
+  const homeRefiEligible = getCandidateOfficerNamesForLoan({ context, scenario, loan: { type: 'Home Refi' }, engine: 'officer_lane' });
+
+  assert.deepEqual(new Set(personalEligible), new Set(['C1', 'F1', 'F2']));
+  assert.deepEqual(new Set(helocEligible), new Set(['F1', 'F2', 'M1']));
+  assert.deepEqual(new Set(firstMortgageEligible), new Set(['F2', 'M1']));
+  assert.deepEqual(new Set(homeRefiEligible), new Set(['F2', 'M1']));
+});
+
+test('HELOC support detection uses full officer context (including vacationed officers) while feasibility remains unknown when weighted recomputation is unavailable', () => {
+  const scenario = {
+    officers: [
+      { name: 'M1', isOnVacation: true, eligibility: { consumer: false, mortgage: true } },
+      { name: 'F1', isOnVacation: false, eligibility: { consumer: true, mortgage: true }, mortgageOverride: false },
+      { name: 'F2', isOnVacation: false, eligibility: { consumer: true, mortgage: true }, mortgageOverride: false }
+    ],
+    loans: [
+      { name: 'H1', type: 'HELOC', amountRequested: 100000 },
+      { name: 'H2', type: 'HELOC', amountRequested: 120000 }
+    ],
+    runningTotals: { officers: {} }
+  };
+  let supportPoolInputOfficerNames = null;
+  const context = {
+    getMortgageLoanPermissionLevel: () => 'heloc',
+    isOfficerEligibleForLoanType(officer) {
+      return !officer.isOnVacation;
+    },
+    getOfficerStatsFromResult(result) {
+      return Object.entries(result.officerAssignments).map(([officer, assigned]) => ({
+        officer,
+        totalLoans: assigned.length,
+        totalAmount: assigned.reduce((sum, loan) => sum + loan.amountRequested, 0),
+        consumerLoanCount: 0,
+        consumerAmount: 0,
+        mortgageLoanCount: assigned.length,
+        mortgageAmount: assigned.reduce((sum, loan) => sum + loan.amountRequested, 0),
+        typeBreakdown: { HELOC: assigned.length }
+      }));
+    },
+    FairnessEngineService: {
+      isHomogeneousHelocSupportPool(input) {
+        supportPoolInputOfficerNames = (input.officers || []).map((officer) => officer.name).sort();
+        return true;
+      },
+      evaluateFairness(input) {
+        return {
+          overallResult: 'REVIEW',
+          roleAwareFlags: { helocOnlySupportThresholdsApplied: true },
+          metrics: {
+            helocWeightedVariancePercent: input.optimizationMetrics.helocWeightedVariancePercent,
+            maxCountVariancePercent: 30,
+            maxAmountVariancePercent: 10
+          }
+        };
+      }
+    }
+  };
+  const run = {
+    result: {
+      fairnessEvaluation: {
+        overallResult: 'REVIEW',
+        metrics: {
+          helocWeightedVariancePercent: 35,
+          maxCountVariancePercent: 30,
+          maxAmountVariancePercent: 10
+        }
+      },
+      loanAssignments: [
+        { loan: scenario.loans[0], officers: ['F1'] },
+        { loan: scenario.loans[1], officers: ['F2'] }
+      ]
+    }
+  };
+
+  const feasibility = analyzeReviewFeasibility({
+    context,
+    scenario,
+    engine: 'officer_lane',
+    run,
+    reviewBasis: 'heloc_weighted_variance',
+    evaluationBudget: 100
+  });
+
+  assert.deepEqual(supportPoolInputOfficerNames, ['F1', 'F2', 'M1']);
+  assert.equal(feasibility.classification, 'feasibility_unknown_budget_exhausted');
 });
 
 test('hashContextSeed is deterministic and varies by seed/engine', () => {

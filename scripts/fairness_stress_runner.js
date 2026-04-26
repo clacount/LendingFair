@@ -8,6 +8,9 @@ const ROOT_DIR = path.resolve(__dirname, '..');
 const DEFAULT_ENGINE = 'both';
 const ENGINE_VALUES = new Set(['global', 'officer_lane', 'both']);
 const REVIEW_SAMPLE_LIMIT = 10;
+const FEASIBILITY_SAMPLE_LIMIT = 10;
+const EXACT_FEASIBILITY_MAX_LOANS = 10;
+const EXACT_FEASIBILITY_MAX_OFFICERS = 6;
 const CONSUMER_LOAN_TYPES = ['Personal', 'Auto', 'Credit Card', 'Collateralized'];
 const MORTGAGE_LOAN_TYPES = ['HELOC', 'First Mortgage', 'Home Refi'];
 let caseFileSequence = 0;
@@ -15,6 +18,12 @@ const OFFICER_ROLE_CODES = Object.freeze({
   CONSUMER: 'C',
   FLEX: 'F',
   MORTGAGE: 'M'
+});
+
+const FEASIBILITY_CLASSIFICATIONS = Object.freeze({
+  AVOIDABLE: 'avoidable_review',
+  UNAVOIDABLE: 'unavoidable_review',
+  UNKNOWN: 'feasibility_unknown_budget_exhausted'
 });
 
 function parseArgs(argv) {
@@ -25,7 +34,9 @@ function parseArgs(argv) {
     outputDir: null,
     engine: DEFAULT_ENGINE,
     maxCases: null,
-    replay: null
+    replay: null,
+    analyzeReviewFeasibility: false,
+    feasibilityBudget: 2000
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -52,6 +63,12 @@ function parseArgs(argv) {
       case '--replay':
         args.replay = argv[++i];
         break;
+      case '--analyze-review-feasibility':
+        args.analyzeReviewFeasibility = true;
+        break;
+      case '--feasibility-budget':
+        args.feasibilityBudget = Number(argv[++i]);
+        break;
       default:
         throw new Error(`Unknown argument: ${token}`);
     }
@@ -68,6 +85,9 @@ function parseArgs(argv) {
   }
   if (!Number.isFinite(args.seedStart)) {
     throw new Error('--seed-start must be numeric');
+  }
+  if (!(args.feasibilityBudget > 0)) {
+    throw new Error('--feasibility-budget must be > 0');
   }
 
   return args;
@@ -791,6 +811,7 @@ function writeCaseFile({ outputDir, seed, engine, scenario, result, reason, clas
     fairnessBackfilledByHarness: Boolean(runMetadata.fairnessBackfilledByHarness),
     fairnessBackfillError: runMetadata.fairnessBackfillError ?? null,
     engineSelection: runMetadata.engineSelection || null,
+    reviewFeasibility: runMetadata.reviewFeasibility || null,
     observedResult: result,
     reasonFlagged: reason
   };
@@ -925,6 +946,440 @@ function classifyReviewExpectation(run = {}, reviewBasis = '') {
   return needsTriage ? 'needs_triage' : 'expected_review';
 }
 
+function createEmptyAssignments(officers = []) {
+  return Object.fromEntries(officers.map((officer) => [officer.name, []]));
+}
+
+function createLoanAssignmentsFromMap(assignmentMap = {}, loansByName = {}) {
+  return Object.entries(assignmentMap).map(([loanName, officerName]) => ({
+    loan: loansByName[loanName],
+    officers: [officerName],
+    shared: false
+  })).filter((entry) => entry.loan && entry.officers[0]);
+}
+
+function normalizeEligibilityForCandidate(officer = {}, context = {}) {
+  if (context?.LoanCategoryUtils?.normalizeOfficerEligibility) {
+    return context.LoanCategoryUtils.normalizeOfficerEligibility(officer.eligibility);
+  }
+  const eligibility = officer?.eligibility || {};
+  return {
+    consumer: Boolean(eligibility.consumer),
+    mortgage: Boolean(eligibility.mortgage)
+  };
+}
+
+function getLoanCategoryForCandidate(context = {}, loan = {}) {
+  if (typeof context.getLoanCategoryForType === 'function') {
+    return context.getLoanCategoryForType(loan.type);
+  }
+  const normalizedType = String(loan?.type || '').toLowerCase();
+  if (normalizedType.includes('mortgage') || normalizedType.includes('refi') || normalizedType.includes('heloc')) {
+    return 'mortgage';
+  }
+  return 'consumer';
+}
+
+function getMortgagePermissionLevelForCandidate(context = {}, loan = {}) {
+  if (typeof context.getMortgageLoanPermissionLevel === 'function') {
+    return context.getMortgageLoanPermissionLevel(loan.type);
+  }
+  return String(loan?.type || '').toLowerCase().includes('heloc') ? 'heloc' : 'full-mortgage';
+}
+
+function getCandidateOfficerNamesForLoan({ context = {}, scenario = {}, loan = {}, engine = 'global' }) {
+  const officers = Array.isArray(scenario.officers) ? scenario.officers : [];
+  const activeOfficers = officers.filter((officer) => !officer.isOnVacation);
+  const loanCategory = getLoanCategoryForCandidate(context, loan);
+  const mortgagePermissionLevel = getMortgagePermissionLevelForCandidate(context, loan);
+
+  return activeOfficers
+    .filter((officer) => {
+      const eligibility = normalizeEligibilityForCandidate(officer, context);
+      if (loanCategory === 'mortgage') {
+        if (!eligibility.mortgage || (!eligibility.consumer && !eligibility.mortgage)) {
+          return false;
+        }
+        const isFlex = eligibility.consumer && eligibility.mortgage;
+        if (mortgagePermissionLevel !== 'heloc' && isFlex && !officer.mortgageOverride) {
+          return false;
+        }
+      } else if (!eligibility.consumer) {
+        return false;
+      }
+
+      if (engine === 'officer_lane' && typeof context.isOfficerEligibleForLoanType === 'function') {
+        return context.isOfficerEligibleForLoanType(officer, loan);
+      }
+      if (typeof context.isOfficerEligibleForLoanType === 'function') {
+        return context.isOfficerEligibleForLoanType(officer, loan);
+      }
+      return true;
+    })
+    .map((officer) => officer.name);
+}
+
+function detectHelocOnlySupportPool({ context = {}, scenario = {} }) {
+  const loans = Array.isArray(scenario.loans) ? scenario.loans : [];
+  const allScenarioOfficers = Array.isArray(scenario.officers) ? scenario.officers : [];
+  const loanTypeNames = loans.map((loan) => (
+    typeof context.getMortgageLoanPermissionLevel === 'function'
+      ? context.getMortgageLoanPermissionLevel(loan.type)
+      : getMortgagePermissionLevelForCandidate(context, loan)
+  ));
+
+  if (typeof context?.FairnessEngineService?.isHomogeneousHelocSupportPool === 'function') {
+    return context.FairnessEngineService.isHomogeneousHelocSupportPool({
+      officers: allScenarioOfficers,
+      hasConsumerLoans: false,
+      loanTypeNames
+    });
+  }
+
+  return loans.length > 0 && loans.every((loan) => getMortgagePermissionLevelForCandidate(context, loan) === 'heloc');
+}
+
+function buildCandidateOptimizationMetrics({ context = {}, scenario = {}, assignmentMap = {}, fallbackOptimizationMetrics = {} }) {
+  const helocOnlySupportPool = detectHelocOnlySupportPool({ context, scenario });
+  if (!helocOnlySupportPool) {
+    return { optimizationMetrics: fallbackOptimizationMetrics, helocRecalculationUnavailable: false };
+  }
+
+  if (typeof context.getHomogeneousHelocWeightedVariancePercent !== 'function') {
+    return { optimizationMetrics: { helocWeightedVariancePercent: null }, helocRecalculationUnavailable: true };
+  }
+
+  const officers = (scenario.officers || []).filter((officer) => !officer.isOnVacation);
+  const cleanOfficerNames = officers.map((officer) => officer.name);
+  const officersByName = Object.fromEntries(officers.map((officer) => [officer.name, officer]));
+  const loansByName = Object.fromEntries((scenario.loans || []).map((loan) => [loan.name, loan]));
+  const loanToOfficerMap = new Map(Object.entries(assignmentMap).map(([loanName, officerName]) => [loansByName[loanName], officerName]).filter(([loan]) => Boolean(loan)));
+  const weighted = context.getHomogeneousHelocWeightedVariancePercent({
+    loanToOfficerMap,
+    cleanLoans: scenario.loans || [],
+    cleanOfficerNames,
+    officersByName
+  });
+
+  return {
+    optimizationMetrics: { helocWeightedVariancePercent: Number.isFinite(weighted) ? weighted : null },
+    helocRecalculationUnavailable: false
+  };
+}
+
+function evaluateAssignmentCandidate({
+  context,
+  scenario,
+  engine,
+  assignmentMap,
+  optimizationMetrics = {}
+}) {
+  const officers = Array.isArray(scenario.officers) ? scenario.officers : [];
+  const allOfficerNames = officers.map((officer) => officer.name);
+  const officerAssignments = Object.fromEntries(allOfficerNames.map((officerName) => [officerName, []]));
+  const loansByName = Object.fromEntries((scenario.loans || []).map((loan) => [loan.name, loan]));
+
+  Object.entries(assignmentMap || {}).forEach(([loanName, officerName]) => {
+    const loan = loansByName[loanName];
+    if (loan && officerAssignments[officerName]) {
+      officerAssignments[officerName].push(loan);
+    }
+  });
+
+  const result = {
+    officerAssignments,
+    runningTotalsUsed: scenario.runningTotals?.officers || {},
+    loanAssignments: createLoanAssignmentsFromMap(assignmentMap, loansByName),
+    optimizationFinalHelocWeightedVariancePercent: optimizationMetrics.helocWeightedVariancePercent
+  };
+
+  const officerStats = typeof context.getOfficerStatsFromResult === 'function'
+    ? context.getOfficerStatsFromResult(result)
+    : buildOfficerStats(result, context);
+
+  const candidateOptimization = buildCandidateOptimizationMetrics({
+    context,
+    scenario,
+    assignmentMap,
+    fallbackOptimizationMetrics: optimizationMetrics
+  });
+
+  const fairnessEvaluation = context.FairnessEngineService.evaluateFairness({
+    engineType: engine,
+    officers,
+    officerStats,
+    optimizationMetrics: candidateOptimization.optimizationMetrics
+  });
+
+  return {
+    fairnessEvaluation,
+    officerStats,
+    result,
+    helocRecalculationUnavailable: candidateOptimization.helocRecalculationUnavailable
+  };
+}
+
+function getMetricDistanceToPass(fairnessEvaluation = {}, engine = 'global') {
+  const metrics = fairnessEvaluation?.metrics || {};
+  const over = (value, threshold) => {
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? Math.max(0, numericValue - threshold) : 0;
+  };
+
+  if (engine === 'global') {
+    return over(metrics.maxCountVariancePercent, 15) + over(metrics.maxAmountVariancePercent, 20);
+  }
+
+  const roleAwareFlags = fairnessEvaluation?.roleAwareFlags || {};
+  const supportMode = Boolean(roleAwareFlags.helocOnlySupportThresholdsApplied);
+  if (supportMode) {
+    const weighted = Number(metrics.helocWeightedVariancePercent);
+    if (!Number.isFinite(weighted)) {
+      return Number.POSITIVE_INFINITY;
+    }
+    return over(weighted, 20) + over(weighted, 25);
+  }
+
+  const lanePenalty = (
+    over(metrics.consumerVariance?.maxCountVariancePercent, 15)
+    + over(metrics.consumerVariance?.maxAmountVariancePercent, 20)
+    + over(metrics.flexVariance?.maxCountVariancePercent, 15)
+    + over(metrics.flexVariance?.maxAmountVariancePercent, 20)
+    + over(metrics.mortgageVariance?.maxCountVariancePercent, 15)
+    + over(metrics.mortgageVariance?.maxAmountVariancePercent, 20)
+  );
+
+  if (lanePenalty > 0) {
+    return lanePenalty;
+  }
+
+  return fairnessEvaluation?.overallResult === 'PASS' ? 0 : 1000;
+}
+
+function buildFeasibilityCandidateSummary({
+  fairnessEvaluation = null,
+  assignmentMap = null,
+  reviewBasis = '',
+  evaluationsRun = 0
+}) {
+  return {
+    foundPassAssignment: fairnessEvaluation?.overallResult === 'PASS',
+    bestAchievableMetrics: fairnessEvaluation?.metrics || null,
+    bestDescriptor: fairnessEvaluation?.statusMetricDescriptor || null,
+    bestAssignmentMap: assignmentMap,
+    reviewBasis,
+    feasibilityEvaluationsRun: evaluationsRun
+  };
+}
+
+function analyzeReviewFeasibility({
+  context,
+  scenario,
+  engine,
+  run,
+  reviewBasis,
+  evaluationBudget = 2000
+}) {
+  const activeOfficers = (scenario.officers || []).filter((officer) => !officer.isOnVacation);
+  const scenarioLoans = Array.isArray(scenario.loans) ? scenario.loans : [];
+  const scenarioLoanByName = Object.fromEntries(scenarioLoans.map((loan) => [loan.name, loan]));
+  const runLoanAssignments = Array.isArray(run?.result?.loanAssignments) ? run.result.loanAssignments : [];
+  const runLoanNames = new Set(
+    runLoanAssignments
+      .map((entry) => entry?.loan?.name)
+      .map((loanName) => String(loanName || '').trim())
+      .filter(Boolean)
+  );
+  const loans = runLoanNames.size > 0
+    ? [...runLoanNames].map((loanName) => scenarioLoanByName[loanName]).filter(Boolean)
+    : scenarioLoans;
+  const optimizationMetrics = deriveOptimizationMetricsForFairness(run?.result || {});
+  const eligibleByLoan = {};
+  loans.forEach((loan) => {
+    const eligible = getCandidateOfficerNamesForLoan({
+      context,
+      scenario,
+      loan,
+      engine
+    });
+    eligibleByLoan[loan.name] = eligible;
+  });
+
+  if (loans.some((loan) => !eligibleByLoan[loan.name]?.length)) {
+    return {
+      classification: FEASIBILITY_CLASSIFICATIONS.UNAVOIDABLE,
+      searchType: 'exact_search',
+      ...buildFeasibilityCandidateSummary({
+        fairnessEvaluation: run?.result?.fairnessEvaluation || null,
+        assignmentMap: null,
+        reviewBasis,
+        evaluationsRun: 0
+      })
+    };
+  }
+
+  const searchType = (loans.length <= EXACT_FEASIBILITY_MAX_LOANS && activeOfficers.length <= EXACT_FEASIBILITY_MAX_OFFICERS)
+    ? 'exact_search'
+    : 'heuristic_bounded_search';
+
+  let evaluationsRun = 0;
+  let bestFairness = run?.result?.fairnessEvaluation || null;
+  let bestAssignmentMap = null;
+  let bestDistance = getMetricDistanceToPass(bestFairness, engine);
+  let helocRecalculationUnavailable = false;
+  let passFairness = null;
+  let passAssignmentMap = null;
+
+  const evaluateMap = (assignmentMap) => {
+    if (evaluationsRun >= evaluationBudget) {
+      return null;
+    }
+    evaluationsRun += 1;
+    const candidate = evaluateAssignmentCandidate({
+      context,
+      scenario,
+      engine,
+      assignmentMap,
+      optimizationMetrics
+    });
+    helocRecalculationUnavailable = helocRecalculationUnavailable || Boolean(candidate.helocRecalculationUnavailable);
+    if (candidate.fairnessEvaluation?.overallResult === 'PASS') {
+      passFairness = candidate.fairnessEvaluation;
+      passAssignmentMap = { ...assignmentMap };
+    }
+    const candidateDistance = getMetricDistanceToPass(candidate.fairnessEvaluation, engine);
+    if (candidateDistance < bestDistance || bestAssignmentMap === null) {
+      bestDistance = candidateDistance;
+      bestFairness = candidate.fairnessEvaluation;
+      bestAssignmentMap = { ...assignmentMap };
+    }
+    return candidate;
+  };
+
+  if (searchType === 'exact_search') {
+    const orderedLoans = [...loans].sort((a, b) => (eligibleByLoan[a.name].length - eligibleByLoan[b.name].length));
+    const assignmentMap = {};
+    let foundPass = false;
+    let exhausted = true;
+    let budgetExhausted = false;
+
+    const walk = (loanIndex) => {
+      if (foundPass) return;
+      if (evaluationsRun >= evaluationBudget) {
+        budgetExhausted = true;
+        exhausted = false;
+        return;
+      }
+      if (loanIndex >= orderedLoans.length) {
+        const candidate = evaluateMap(assignmentMap);
+        if (!candidate) {
+          budgetExhausted = true;
+          exhausted = false;
+          return;
+        }
+        if (candidate.fairnessEvaluation?.overallResult === 'PASS') {
+          foundPass = true;
+        }
+        return;
+      }
+      const loan = orderedLoans[loanIndex];
+      const eligible = eligibleByLoan[loan.name] || [];
+      for (let i = 0; i < eligible.length; i += 1) {
+        assignmentMap[loan.name] = eligible[i];
+        walk(loanIndex + 1);
+        if (foundPass) return;
+        delete assignmentMap[loan.name];
+      }
+    };
+    walk(0);
+
+    const classification = foundPass
+      ? FEASIBILITY_CLASSIFICATIONS.AVOIDABLE
+      : (budgetExhausted || !exhausted || helocRecalculationUnavailable
+        ? FEASIBILITY_CLASSIFICATIONS.UNKNOWN
+        : FEASIBILITY_CLASSIFICATIONS.UNAVOIDABLE);
+
+    return {
+      classification,
+      searchType,
+      ...buildFeasibilityCandidateSummary({
+        fairnessEvaluation: passFairness || bestFairness,
+        assignmentMap: passAssignmentMap || bestAssignmentMap,
+        reviewBasis,
+        evaluationsRun
+      })
+    };
+  }
+
+  const baseAssignmentMap = Object.fromEntries((run?.result?.loanAssignments || []).map((entry) => [entry?.loan?.name, entry?.officers?.[0]]).filter((entry) => entry[0] && entry[1]));
+  const queue = [];
+  const seen = new Set();
+  const enqueue = (map) => {
+    const key = loans.map((loan) => `${loan.name}:${map[loan.name] || ''}`).join('|');
+    if (seen.has(key)) return;
+    seen.add(key);
+    queue.push({ ...map });
+  };
+
+  if (Object.keys(baseAssignmentMap).length === loans.length) {
+    enqueue(baseAssignmentMap);
+  }
+  const deterministicStart = {};
+  loans.forEach((loan) => { deterministicStart[loan.name] = eligibleByLoan[loan.name][0]; });
+  enqueue(deterministicStart);
+  const alternateStart = {};
+  loans.forEach((loan) => {
+    const eligible = eligibleByLoan[loan.name];
+    alternateStart[loan.name] = eligible[(eligible.length > 1 ? 1 : 0)];
+  });
+  enqueue(alternateStart);
+
+  let foundPass = false;
+  let exhausted = true;
+  let budgetExhausted = false;
+  while (queue.length && evaluationsRun < evaluationBudget && !foundPass) {
+    const current = queue.shift();
+    const currentEval = evaluateMap(current);
+    if (!currentEval) {
+      budgetExhausted = true;
+      exhausted = false;
+      break;
+    }
+    if (currentEval.fairnessEvaluation?.overallResult === 'PASS') {
+      foundPass = true;
+      break;
+    }
+
+    loans.forEach((loan) => {
+      const eligible = eligibleByLoan[loan.name];
+      eligible.forEach((officerName) => {
+        if (officerName === current[loan.name]) return;
+        const next = { ...current, [loan.name]: officerName };
+        enqueue(next);
+      });
+    });
+  }
+  if (queue.length > 0 && !foundPass && evaluationsRun >= evaluationBudget) {
+    budgetExhausted = true;
+    exhausted = false;
+  }
+
+  return {
+    classification: foundPass
+      ? (helocRecalculationUnavailable ? FEASIBILITY_CLASSIFICATIONS.UNKNOWN : FEASIBILITY_CLASSIFICATIONS.AVOIDABLE)
+      : ((budgetExhausted || !exhausted || helocRecalculationUnavailable)
+        ? FEASIBILITY_CLASSIFICATIONS.UNKNOWN
+        : FEASIBILITY_CLASSIFICATIONS.UNAVOIDABLE),
+    searchType,
+    ...buildFeasibilityCandidateSummary({
+      fairnessEvaluation: passFairness || bestFairness,
+      assignmentMap: passAssignmentMap || bestAssignmentMap,
+      reviewBasis,
+      evaluationsRun
+    })
+  };
+}
+
 function updateReviewAggregation(reviewAggregationMap, {
   reviewBasis,
   engine,
@@ -976,6 +1431,74 @@ function flushReviewAggregation(reviewCountsFile, reviewAggregationMap) {
   writeJsonFile(reviewCountsFile, output);
 }
 
+function createFeasibilityAggregationEntry() {
+  return {
+    count: 0,
+    engines: new Set(),
+    reviewBasis: new Set(),
+    sampleCaseFiles: [],
+    seeds: [],
+    currentMetrics: [],
+    bestAchievableMetrics: [],
+    foundPassAssignment: false,
+    bestAssignmentMap: null,
+    feasibilitySearchType: new Set(),
+    feasibilityEvaluationsRun: 0
+  };
+}
+
+function updateFeasibilityAggregation(map, {
+  reasonKey,
+  engine,
+  seed,
+  caseFile,
+  reviewBasis,
+  currentMetrics,
+  bestAchievableMetrics,
+  foundPassAssignment,
+  bestAssignmentMap,
+  feasibilitySearchType,
+  feasibilityEvaluationsRun
+}) {
+  if (!map.has(reasonKey)) {
+    map.set(reasonKey, createFeasibilityAggregationEntry());
+  }
+  const entry = map.get(reasonKey);
+  entry.count += 1;
+  entry.engines.add(engine);
+  if (reviewBasis) entry.reviewBasis.add(reviewBasis);
+  if (caseFile && entry.sampleCaseFiles.length < FEASIBILITY_SAMPLE_LIMIT) entry.sampleCaseFiles.push(caseFile);
+  if (entry.seeds.length < FEASIBILITY_SAMPLE_LIMIT) entry.seeds.push(seed);
+  if (entry.currentMetrics.length < FEASIBILITY_SAMPLE_LIMIT) entry.currentMetrics.push(currentMetrics || null);
+  if (entry.bestAchievableMetrics.length < FEASIBILITY_SAMPLE_LIMIT) entry.bestAchievableMetrics.push(bestAchievableMetrics || null);
+  entry.foundPassAssignment = entry.foundPassAssignment || Boolean(foundPassAssignment);
+  if (bestAssignmentMap && !entry.bestAssignmentMap) {
+    entry.bestAssignmentMap = bestAssignmentMap;
+  }
+  if (feasibilitySearchType) entry.feasibilitySearchType.add(feasibilitySearchType);
+  entry.feasibilityEvaluationsRun += Number(feasibilityEvaluationsRun) || 0;
+}
+
+function flushFeasibilityAggregation(filePath, map) {
+  const output = {};
+  [...map.entries()].forEach(([key, entry]) => {
+    output[key] = {
+      count: entry.count,
+      engines: [...entry.engines],
+      reviewBasis: [...entry.reviewBasis],
+      sampleCaseFiles: entry.sampleCaseFiles,
+      seeds: entry.seeds,
+      currentMetrics: entry.currentMetrics,
+      bestAchievableMetrics: entry.bestAchievableMetrics,
+      foundPassAssignment: entry.foundPassAssignment,
+      bestAssignmentMap: entry.bestAssignmentMap,
+      feasibilitySearchType: [...entry.feasibilitySearchType],
+      feasibilityEvaluationsRun: entry.feasibilityEvaluationsRun
+    };
+  });
+  writeJsonFile(filePath, output);
+}
+
 function buildScenario(seed) {
   const random = makeSeededRandom(seed);
   const { kind: officerMix, officers } = generateOfficerMix(random);
@@ -1002,6 +1525,13 @@ function topPatterns(counterMap, limit = 5) {
     .slice(0, limit);
 }
 
+function topAggregationPatterns(aggregationMap, limit = 5) {
+  return [...aggregationMap.entries()]
+    .sort((a, b) => b[1].count - a[1].count)
+    .slice(0, limit)
+    .map(([reason, entry]) => ({ reason, count: entry.count }));
+}
+
 function initLogs(outputDir) {
   ensureDir(outputDir);
   const summaryLog = path.join(outputDir, 'summary.log');
@@ -1010,9 +1540,17 @@ function initLogs(outputDir) {
   const skippedLog = path.join(outputDir, 'skipped.log');
   const reasonCountsFile = path.join(outputDir, 'reason_counts.json');
   const reviewCountsFile = path.join(outputDir, 'review_counts.json');
+  const reviewFeasibilitySummaryFile = path.join(outputDir, 'review_feasibility_summary.json');
+  const avoidableReviewCountsFile = path.join(outputDir, 'avoidable_review_counts.json');
+  const unavoidableReviewCountsFile = path.join(outputDir, 'unavoidable_review_counts.json');
+  const feasibilityUnknownCountsFile = path.join(outputDir, 'feasibility_unknown_counts.json');
   [summaryLog, failuresLog, suspiciousLog, skippedLog].forEach((p) => fs.writeFileSync(p, '', 'utf8'));
   writeJsonFile(reasonCountsFile, {});
   writeJsonFile(reviewCountsFile, {});
+  writeJsonFile(reviewFeasibilitySummaryFile, {});
+  writeJsonFile(avoidableReviewCountsFile, {});
+  writeJsonFile(unavoidableReviewCountsFile, {});
+  writeJsonFile(feasibilityUnknownCountsFile, {});
   return {
     summaryLog,
     failuresLog,
@@ -1021,7 +1559,14 @@ function initLogs(outputDir) {
     reasonCountsFile,
     reasonAggregationMap: new Map(),
     reviewCountsFile,
-    reviewAggregationMap: new Map()
+    reviewAggregationMap: new Map(),
+    reviewFeasibilitySummaryFile,
+    avoidableReviewCountsFile,
+    unavoidableReviewCountsFile,
+    feasibilityUnknownCountsFile,
+    avoidableReviewAggregationMap: new Map(),
+    unavoidableReviewAggregationMap: new Map(),
+    feasibilityUnknownAggregationMap: new Map()
   };
 }
 
@@ -1141,6 +1686,9 @@ function runStress(args) {
       completedRuns: 0,
       passCount: 0,
       reviewCount: 0,
+      avoidableReviewCount: 0,
+      unavoidableReviewCount: 0,
+      feasibilityUnknownCount: 0,
       unknownResultCount: 0
     },
     officer_lane: {
@@ -1151,9 +1699,15 @@ function runStress(args) {
       completedRuns: 0,
       passCount: 0,
       reviewCount: 0,
+      avoidableReviewCount: 0,
+      unavoidableReviewCount: 0,
+      feasibilityUnknownCount: 0,
       unknownResultCount: 0
     }
   };
+  let avoidableReviewCount = 0;
+  let unavoidableReviewCount = 0;
+  let feasibilityUnknownCount = 0;
 
   appendLine(logs.summaryLog, `[${startedAt}] start durationMinutes=${args.durationMinutes} engineFilter=${args.engine} seedStart=${seed}`);
 
@@ -1224,6 +1778,81 @@ function runStress(args) {
               sampleCaseFile: reviewCaseFile,
               classification: reviewClassification
             });
+
+            if (args.analyzeReviewFeasibility) {
+              const feasibility = analyzeReviewFeasibility({
+                context,
+                scenario,
+                engine,
+                run,
+                reviewBasis,
+                evaluationBudget: args.feasibilityBudget
+              });
+
+              const feasibilityCaseFile = writeCaseFile({
+                outputDir: args.outputDir,
+                seed,
+                engine,
+                scenario,
+                result: run.result,
+                reason: `review_feasibility:${reviewBasis}:${feasibility.classification}`,
+                classification: feasibility.classification,
+                runMetadata: {
+                  ...run,
+                  reviewFeasibility: feasibility
+                }
+              });
+
+              if (feasibility.classification === FEASIBILITY_CLASSIFICATIONS.AVOIDABLE) {
+                avoidableReviewCount += 1;
+                if (engineRunStats[engine]) engineRunStats[engine].avoidableReviewCount += 1;
+                updateFeasibilityAggregation(logs.avoidableReviewAggregationMap, {
+                  reasonKey: reviewBasis,
+                  engine,
+                  seed,
+                  caseFile: feasibilityCaseFile,
+                  reviewBasis,
+                  currentMetrics: run.result?.fairnessEvaluation?.metrics || null,
+                  bestAchievableMetrics: feasibility.bestAchievableMetrics,
+                  foundPassAssignment: feasibility.foundPassAssignment,
+                  bestAssignmentMap: feasibility.bestAssignmentMap,
+                  feasibilitySearchType: feasibility.searchType,
+                  feasibilityEvaluationsRun: feasibility.feasibilityEvaluationsRun
+                });
+              } else if (feasibility.classification === FEASIBILITY_CLASSIFICATIONS.UNAVOIDABLE) {
+                unavoidableReviewCount += 1;
+                if (engineRunStats[engine]) engineRunStats[engine].unavoidableReviewCount += 1;
+                updateFeasibilityAggregation(logs.unavoidableReviewAggregationMap, {
+                  reasonKey: reviewBasis,
+                  engine,
+                  seed,
+                  caseFile: feasibilityCaseFile,
+                  reviewBasis,
+                  currentMetrics: run.result?.fairnessEvaluation?.metrics || null,
+                  bestAchievableMetrics: feasibility.bestAchievableMetrics,
+                  foundPassAssignment: feasibility.foundPassAssignment,
+                  bestAssignmentMap: feasibility.bestAssignmentMap,
+                  feasibilitySearchType: feasibility.searchType,
+                  feasibilityEvaluationsRun: feasibility.feasibilityEvaluationsRun
+                });
+              } else {
+                feasibilityUnknownCount += 1;
+                if (engineRunStats[engine]) engineRunStats[engine].feasibilityUnknownCount += 1;
+                updateFeasibilityAggregation(logs.feasibilityUnknownAggregationMap, {
+                  reasonKey: reviewBasis,
+                  engine,
+                  seed,
+                  caseFile: feasibilityCaseFile,
+                  reviewBasis,
+                  currentMetrics: run.result?.fairnessEvaluation?.metrics || null,
+                  bestAchievableMetrics: feasibility.bestAchievableMetrics,
+                  foundPassAssignment: feasibility.foundPassAssignment,
+                  bestAssignmentMap: feasibility.bestAssignmentMap,
+                  feasibilitySearchType: feasibility.searchType,
+                  feasibilityEvaluationsRun: feasibility.feasibilityEvaluationsRun
+                });
+              }
+            }
           }
         }
 
@@ -1366,10 +1995,21 @@ function runStress(args) {
     completedRuns,
     passCount,
     reviewCount,
+    avoidableReviewCount,
+    unavoidableReviewCount,
+    feasibilityUnknownCount,
     unknownResultCount,
     engineRunStats,
     outputDirectory: args.outputDir,
     reviewReasonCountsPath: logs.reviewCountsFile,
+    reviewFeasibilitySummaryPath: logs.reviewFeasibilitySummaryFile,
+    avoidableReviewCountsPath: logs.avoidableReviewCountsFile,
+    unavoidableReviewCountsPath: logs.unavoidableReviewCountsFile,
+    feasibilityUnknownCountsPath: logs.feasibilityUnknownCountsFile,
+    topAvoidableReasons: topAggregationPatterns(logs.avoidableReviewAggregationMap),
+    topUnavoidableReasons: topAggregationPatterns(logs.unavoidableReviewAggregationMap),
+    topUnknownReasons: topAggregationPatterns(logs.feasibilityUnknownAggregationMap),
+    engineChangesMade: [],
     topRepeatedReviewReasons: reviewReasonPatterns.map(([reason, count]) => ({ reason, count })),
     topRepeatedSuspiciousPatterns: patterns.map(([reason, count]) => ({ reason, count }))
   };
@@ -1377,6 +2017,23 @@ function runStress(args) {
   appendLine(logs.summaryLog, JSON.stringify(summary, null, 2));
   flushReasonAggregation(logs.reasonCountsFile, logs.reasonAggregationMap);
   flushReviewAggregation(logs.reviewCountsFile, logs.reviewAggregationMap);
+  const feasibilitySummary = {
+    completedRuns,
+    passCount,
+    reviewCount,
+    avoidableReviewCount,
+    unavoidableReviewCount,
+    feasibilityUnknownCount,
+    topAvoidableReasons: summary.topAvoidableReasons,
+    topUnavoidableReasons: summary.topUnavoidableReasons,
+    topUnknownReasons: summary.topUnknownReasons,
+    engineRunStats,
+    engineChangesMade: []
+  };
+  writeJsonFile(logs.reviewFeasibilitySummaryFile, feasibilitySummary);
+  flushFeasibilityAggregation(logs.avoidableReviewCountsFile, logs.avoidableReviewAggregationMap);
+  flushFeasibilityAggregation(logs.unavoidableReviewCountsFile, logs.unavoidableReviewAggregationMap);
+  flushFeasibilityAggregation(logs.feasibilityUnknownCountsFile, logs.feasibilityUnknownAggregationMap);
   console.log(JSON.stringify(summary, null, 2));
 }
 
@@ -1405,6 +2062,10 @@ module.exports = {
   classifyReviewBasis,
   updateReviewAggregation,
   flushReviewAggregation,
+  analyzeReviewFeasibility,
+  evaluateAssignmentCandidate,
+  getCandidateOfficerNamesForLoan,
+  flushFeasibilityAggregation,
   hashContextSeed,
   loadScenarioAppContext
 };

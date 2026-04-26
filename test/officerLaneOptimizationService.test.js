@@ -169,3 +169,55 @@ test('optimizer does not coerce missing target variance metric to 0', () => {
   assert.equal(Number.isFinite(result.initialVariancePercent), false);
   assert.equal(result.tierReached, 'best_available_over_25');
 });
+
+test('optimizer performs additional passes when a later improvement unlocks a better earlier reassignment (seed-119 style pattern)', () => {
+  const officers = ['F1', 'F2'];
+  const loans = [
+    { name: 'L1', type: 'Credit Card', amountRequested: 50 },
+    { name: 'L2', type: 'Credit Card', amountRequested: 40 },
+    { name: 'L3', type: 'Personal', amountRequested: 60 }
+  ];
+
+  const initialMap = new Map([
+    [loans[0], 'F1'],
+    [loans[1], 'F1'],
+    [loans[2], 'F2']
+  ]);
+  const eligibleOfficersByLoan = new Map(loans.map((loan) => [loan, [...officers]]));
+
+  const result = optimizeConsumerLaneAssignments({
+    initialLoanToOfficerMap: initialMap,
+    eligibleOfficersByLoan,
+    isConsumerLoan: () => true,
+    shouldIncludeLoan: () => true,
+    maxEvaluations: 150,
+    evaluateCandidate: (candidateMap) => {
+      const l1 = candidateMap.get(loans[0]);
+      const l2 = candidateMap.get(loans[1]);
+      const l3 = candidateMap.get(loans[2]);
+
+      // A later-loan reassignment (L3->F1) improves from 26 to 22,
+      // but only a second pass can revisit L1 and reach <=20.
+      let target = 26;
+      if (l1 === 'F1' && l2 === 'F1' && l3 === 'F1') {
+        target = 22;
+      } else if (l1 === 'F2' && l2 === 'F1' && l3 === 'F1') {
+        target = 19;
+      }
+
+      return {
+        overallResult: target <= 20 ? 'PASS' : 'REVIEW',
+        metrics: {
+          consumerVariance: { maxAmountVariancePercent: target },
+          maxAmountVariancePercent: target
+        }
+      };
+    }
+  });
+
+  assert.equal(result.optimizationRan, true);
+  assert.equal(result.finalVariancePercent, 19);
+  assert.equal(result.bestLoanToOfficerMap.get(loans[0]), 'F2');
+  assert.equal(result.bestLoanToOfficerMap.get(loans[2]), 'F1');
+  assert.equal(result.tierReached, 'under_20');
+});

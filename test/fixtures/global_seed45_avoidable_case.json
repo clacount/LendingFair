@@ -1,0 +1,274 @@
+{
+  "seed": 45,
+  "officers": [
+    {
+      "name": "F1",
+      "eligibility": {
+        "consumer": true,
+        "mortgage": true
+      },
+      "weights": {
+        "consumer": 0.82,
+        "mortgage": 0.47
+      },
+      "mortgageOverride": false,
+      "isOnVacation": false
+    },
+    {
+      "name": "F2",
+      "eligibility": {
+        "consumer": true,
+        "mortgage": true
+      },
+      "weights": {
+        "consumer": 0.69,
+        "mortgage": 0.42
+      },
+      "mortgageOverride": false,
+      "isOnVacation": false
+    },
+    {
+      "name": "F3",
+      "eligibility": {
+        "consumer": true,
+        "mortgage": true
+      },
+      "weights": {
+        "consumer": 0.87,
+        "mortgage": 0.89
+      },
+      "mortgageOverride": false,
+      "isOnVacation": false
+    }
+  ],
+  "loans": [
+    {
+      "name": "L8",
+      "type": "HELOC",
+      "amountRequested": 1076813
+    },
+    {
+      "name": "L13",
+      "type": "HELOC",
+      "amountRequested": 493980
+    },
+    {
+      "name": "L19",
+      "type": "HELOC",
+      "amountRequested": 953349
+    },
+    {
+      "name": "L7",
+      "type": "HELOC",
+      "amountRequested": 1144398
+    },
+    {
+      "name": "L5",
+      "type": "HELOC",
+      "amountRequested": 677332
+    },
+    {
+      "name": "L1",
+      "type": "HELOC",
+      "amountRequested": 344925
+    },
+    {
+      "name": "L18",
+      "type": "HELOC",
+      "amountRequested": 840910
+    },
+    {
+      "name": "L15",
+      "type": "HELOC",
+      "amountRequested": 934250
+    },
+    {
+      "name": "L9",
+      "type": "HELOC",
+      "amountRequested": 944467
+    },
+    {
+      "name": "L3",
+      "type": "HELOC",
+      "amountRequested": 986167
+    },
+    {
+      "name": "L6",
+      "type": "HELOC",
+      "amountRequested": 361424
+    },
+    {
+      "name": "L10",
+      "type": "HELOC",
+      "amountRequested": 866678
+    },
+    {
+      "name": "L14",
+      "type": "HELOC",
+      "amountRequested": 233472
+    },
+    {
+      "name": "L16",
+      "type": "HELOC",
+      "amountRequested": 318418
+    },
+    {
+      "name": "L2",
+      "type": "HELOC",
+      "amountRequested": 723610
+    },
+    {
+      "name": "L12",
+      "type": "HELOC",
+      "amountRequested": 194900
+    },
+    {
+      "name": "L11",
+      "type": "HELOC",
+      "amountRequested": 1048918
+    },
+    {
+      "name": "L4",
+      "type": "HELOC",
+      "amountRequested": 752286
+    },
+    {
+      "name": "L17",
+      "type": "HELOC",
+      "amountRequested": 1152083
+    }
+  ],
+  "runningTotals": {
+    "officers": {
+      "F1": {
+        "officer": "F1",
+        "totalLoanCount": 20,
+        "totalAmountRequested": 5146396,
+        "sessions": 3,
+        "typeCounts": {
+          "Personal": 1,
+          "Auto": 0,
+          "Credit Card": 1,
+          "Collateralized": 1,
+          "HELOC": 4,
+          "First Mortgage": 4,
+          "Home Refi": 9
+        }
+      },
+      "F2": {
+        "officer": "F2",
+        "totalLoanCount": 36,
+        "totalAmountRequested": 5276218,
+        "sessions": 5,
+        "typeCounts": {
+          "Personal": 12,
+          "Auto": 3,
+          "Credit Card": 8,
+          "Collateralized": 3,
+          "HELOC": 0,
+          "First Mortgage": 1,
+          "Home Refi": 9
+        }
+      },
+      "F3": {
+        "officer": "F3",
+        "totalLoanCount": 23,
+        "totalAmountRequested": 4462080,
+        "sessions": 3,
+        "typeCounts": {
+          "Personal": 5,
+          "Auto": 0,
+          "Credit Card": 0,
+          "Collateralized": 4,
+          "HELOC": 8,
+          "First Mortgage": 1,
+          "Home Refi": 5
+        }
+      }
+    }
+  },
+  "reviewFeasibilityBestAssignmentMap": {
+    "L2": "F1",
+    "L3": "F1",
+    "L7": "F1",
+    "L1": "F2",
+    "L17": "F2",
+    "L18": "F2",
+    "L8": "F3",
+    "L6": "F1",
+    "L9": "F2",
+    "L13": "F3",
+    "L10": "F1",
+    "L19": "F1",
+    "L15": "F3",
+    "L4": "F3",
+    "L11": "F2",
+    "L16": "F3",
+    "L5": "F2",
+    "L14": "F1",
+    "L12": "F2"
+  },
+  "observedResultClassification": "avoidable_review",
+  "observedFairness": {
+    "engineType": "global",
+    "overallResult": "REVIEW",
+    "summaryItems": [
+      "Overall loan variance: 15.8%",
+      "Overall dollar variance: 11.8%",
+      "Consumer loan variance: 60.5%",
+      "Consumer dollar variance: 48.0%",
+      "Mortgage loan variance: 8.3%",
+      "Mortgage dollar variance: 10.5%"
+    ],
+    "notes": [
+      "Threshold status: REVIEW (Overall loan variance exceeded threshold).",
+      "Global Fairness compares distribution across all officers and categories.",
+      "Large cross-officer variance should be reviewed when thresholds are exceeded."
+    ],
+    "chartAnnotations": {
+      "mortgageTitleSuffix": "",
+      "mortgageNote": "Mortgage concentrations are evaluated with global cross-officer variance thresholds."
+    },
+    "roleAwareFlags": {
+      "hasSingleMortgageOnlyOfficer": false,
+      "mortgageVarianceExpected": false,
+      "flexParticipationExpected": false
+    },
+    "statusMetricDescriptor": {
+      "key": "global_count_variance",
+      "label": "Global count variance",
+      "valuePercent": 15.789473684210526,
+      "contextLabel": "Global thresholds"
+    },
+    "metrics": {
+      "averageLoanCount": 6.333333333333333,
+      "averageDollarAmount": 9644358,
+      "helocWeightedVariancePercent": 0,
+      "consumerVariance": {
+        "maxCountVariancePercent": 60.526315789473685,
+        "maxAmountVariancePercent": 48.01450629222438,
+        "countDistributionPass": false,
+        "amountDistributionPass": false
+      },
+      "mortgageVariance": {
+        "maxCountVariancePercent": 8.333333333333332,
+        "maxAmountVariancePercent": 10.465057179502663,
+        "countDistributionPass": true,
+        "amountDistributionPass": true
+      },
+      "flexVariance": {
+        "officerCount": 3,
+        "consumerShareVariancePercent": 39.667288796365725,
+        "mortgageShareVariancePercent": 10.57491717138947,
+        "totalConsumerAmount": 6328592.593236715,
+        "totalMortgageAmount": 22604481.406763285,
+        "maxCountVariancePercent": 15.789473684210526,
+        "maxAmountVariancePercent": 11.84835389423191,
+        "countDistributionPass": false,
+        "amountDistributionPass": true
+      },
+      "maxCountVariancePercent": 15.789473684210526,
+      "maxAmountVariancePercent": 11.84835389423191
+    }
+  }
+}
