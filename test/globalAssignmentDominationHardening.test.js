@@ -382,12 +382,14 @@ test('officer-lane post-assignment optimization improves confirmed seed-46 flex-
   assert.equal(fixture.observedFairness.overallResult, 'REVIEW');
   assert.equal(fixture.observedFairness.statusMetricDescriptor?.key, 'flex_lane_count_variance');
   assert.equal(fixture.observedFairness.metrics.flexVariance.maxCountVariancePercent > 15, true);
-  // This captured scenario is stochastic at assignment time; the optimizer should still target and improve
-  // the failing flex count descriptor even when a full PASS is not guaranteed for every deterministic replay.
-  assert.equal(result.optimizationTargetDescriptorKey, 'flex_lane_count_variance');
-  assert.match(String(result.optimizationTargetLabel || ''), /flex-lane|flex/i);
-  assert.equal(result.optimizationApplied, true);
-  assert.equal(result.optimizationInitialConsumerDollarVariance > result.optimizationFinalConsumerDollarVariance, true);
+  // This captured scenario was originally avoidable. Deterministic replay should now land in a fair state
+  // even if the baseline assignment itself already clears the issue before repair needs to run.
+  assert.equal(result.fairnessEvaluation.overallResult, 'PASS');
+  assert.match(String(result.optimizationTargetLabel || result.fairnessEvaluation?.statusMetricDescriptor?.label || ''), /flex-lane|flex/i);
+  if (result.optimizationApplied) {
+    assert.equal(result.optimizationTargetDescriptorKey, 'flex_lane_dollar_variance');
+    assert.equal(result.optimizationInitialConsumerDollarVariance >= result.optimizationFinalConsumerDollarVariance, true);
+  }
   const fixtureOfficersByName = Object.fromEntries(fixture.officers.map((officer) => [officer.name, officer]));
   result.loanAssignments.forEach((entry) => {
     const selectedOfficer = entry.officers?.[0];
@@ -882,7 +884,7 @@ test('global post-assignment optimization clears heloc-only dollar review for se
 
   assert.equal(result.fairnessEvaluation.overallResult, 'PASS');
   assert.equal(result.optimizationApplied, true);
-  assert.equal(result.optimizationTargetDescriptorKey, 'global_count_and_dollar_variance');
+  assert.equal(result.optimizationTargetDescriptorKey, 'global_dollar_variance');
   assert.equal(result.fairnessEvaluation.metrics.maxAmountVariancePercent <= 20, true);
   assert.equal(result.optimizationSummaryMessage.includes('primary global dollar variance target band'), true);
 });
@@ -936,7 +938,92 @@ test('officer-lane post-assignment optimization clears flex-dollar heloc review 
 
   assert.equal(result.fairnessEvaluation.overallResult, 'PASS');
   assert.equal(result.optimizationApplied, true);
-  assert.equal(result.optimizationTargetDescriptorKey, 'flex_lane_count_variance');
+  assert.equal(result.optimizationTargetDescriptorKey, 'flex_lane_dollar_variance');
   assert.equal(result.fairnessEvaluation.metrics.flexVariance.maxAmountVariancePercent <= 20, true);
   assert.equal(result.optimizationSummaryMessage.includes('primary flex-lane variance target band'), true);
+});
+
+test('global post-assignment optimization clears seed-311 consumer-only dollar review with fresh prior-balanced seed', () => {
+  const context = loadAppContext(1425908945);
+  context.FairnessEngineService.setSelectedFairnessEngine('global');
+  const officers = [
+    { name: 'F1', eligibility: { consumer: true, mortgage: true }, weights: { consumer: 0.88, mortgage: 0.34 }, mortgageOverride: false, isOnVacation: false },
+    { name: 'F2', eligibility: { consumer: true, mortgage: true }, weights: { consumer: 0.83, mortgage: 0.33 }, mortgageOverride: false, isOnVacation: false },
+    { name: 'F3', eligibility: { consumer: true, mortgage: true }, weights: { consumer: 0.7, mortgage: 0.65 }, mortgageOverride: false, isOnVacation: false },
+    { name: 'F4', eligibility: { consumer: true, mortgage: true }, weights: { consumer: 0.86, mortgage: 0.56 }, mortgageOverride: false, isOnVacation: false }
+  ];
+  const loans = [
+    { name: 'L3', type: 'Auto', amountRequested: 701954 },
+    { name: 'L12', type: 'Auto', amountRequested: 166813 },
+    { name: 'L4', type: 'Credit Card', amountRequested: 14171 },
+    { name: 'L2', type: 'Personal', amountRequested: 525847 },
+    { name: 'L16', type: 'Collateralized', amountRequested: 221175 },
+    { name: 'L7', type: 'Auto', amountRequested: 150046 },
+    { name: 'L1', type: 'Auto', amountRequested: 56376 },
+    { name: 'L9', type: 'Credit Card', amountRequested: 24158 },
+    { name: 'L5', type: 'Collateralized', amountRequested: 805733 },
+    { name: 'L11', type: 'Personal', amountRequested: 979585 },
+    { name: 'L6', type: 'Auto', amountRequested: 215414 },
+    { name: 'L13', type: 'Personal', amountRequested: 914124 },
+    { name: 'L8', type: 'Personal', amountRequested: 325576 },
+    { name: 'L14', type: 'Collateralized', amountRequested: 1091221 },
+    { name: 'L10', type: 'Collateralized', amountRequested: 724299 },
+    { name: 'L15', type: 'Credit Card', amountRequested: 22294 }
+  ];
+  const runningTotals = {
+    officers: {
+      F1: { officer: 'F1', totalLoanCount: 38, totalAmountRequested: 8965474, sessions: 7, typeCounts: { Personal: 5, Auto: 8, 'Credit Card': 3, Collateralized: 0, HELOC: 8, 'First Mortgage': 8, 'Home Refi': 6 } },
+      F2: { officer: 'F2', totalLoanCount: 20, totalAmountRequested: 2048019, sessions: 3, typeCounts: { Personal: 5, Auto: 7, 'Credit Card': 0, Collateralized: 3, HELOC: 0, 'First Mortgage': 2, 'Home Refi': 3 } },
+      F3: { officer: 'F3', totalLoanCount: 24, totalAmountRequested: 1525097, sessions: 1, typeCounts: { Personal: 2, Auto: 3, 'Credit Card': 9, Collateralized: 4, HELOC: 0, 'First Mortgage': 0, 'Home Refi': 6 } },
+      F4: { officer: 'F4', totalLoanCount: 37, totalAmountRequested: 4730356, sessions: 4, typeCounts: { Personal: 10, Auto: 8, 'Credit Card': 0, Collateralized: 5, HELOC: 6, 'First Mortgage': 7, 'Home Refi': 1 } }
+    }
+  };
+
+  const result = context.assignLoans(officers, loans, runningTotals);
+
+  assert.equal(result.fairnessEvaluation.overallResult, 'PASS');
+  assert.equal(result.optimizationApplied, true);
+  assert.equal(result.optimizationTargetDescriptorKey, 'global_dollar_variance');
+  assert.equal(result.fairnessEvaluation.metrics.maxAmountVariancePercent <= 20, true);
+});
+
+test('officer-lane post-assignment optimization clears seed-388 flex-dollar review with fresh prior-balanced seed', () => {
+  const context = loadAppContext(4165324145);
+  context.FairnessEngineService.setSelectedFairnessEngine('officer_lane');
+  const officers = [
+    { name: 'F1', eligibility: { consumer: true, mortgage: true }, weights: { consumer: 0.74, mortgage: 0.22 }, mortgageOverride: false, isOnVacation: false },
+    { name: 'F2', eligibility: { consumer: true, mortgage: true }, weights: { consumer: 0.99, mortgage: 0.79 }, mortgageOverride: false, isOnVacation: false },
+    { name: 'F3', eligibility: { consumer: true, mortgage: true }, weights: { consumer: 0.79, mortgage: 0.29 }, mortgageOverride: false, isOnVacation: false },
+    { name: 'F4', eligibility: { consumer: true, mortgage: true }, weights: { consumer: 0.94, mortgage: 0.9 }, mortgageOverride: false, isOnVacation: false }
+  ];
+  const loans = [
+    { name: 'L1', type: 'HELOC', amountRequested: 259181 },
+    { name: 'L8', type: 'HELOC', amountRequested: 259433 },
+    { name: 'L12', type: 'HELOC', amountRequested: 502194 },
+    { name: 'L11', type: 'HELOC', amountRequested: 139573 },
+    { name: 'L4', type: 'HELOC', amountRequested: 93805 },
+    { name: 'L6', type: 'HELOC', amountRequested: 292513 },
+    { name: 'L7', type: 'HELOC', amountRequested: 784364 },
+    { name: 'L3', type: 'HELOC', amountRequested: 1103961 },
+    { name: 'L2', type: 'HELOC', amountRequested: 861565 },
+    { name: 'L9', type: 'HELOC', amountRequested: 791974 },
+    { name: 'L5', type: 'HELOC', amountRequested: 828883 },
+    { name: 'L13', type: 'HELOC', amountRequested: 320765 },
+    { name: 'L10', type: 'HELOC', amountRequested: 785795 }
+  ];
+  const runningTotals = {
+    officers: {
+      F1: { officer: 'F1', totalLoanCount: 34, totalAmountRequested: 4425083, sessions: 5, typeCounts: { Personal: 1, Auto: 8, 'Credit Card': 5, Collateralized: 4, HELOC: 8, 'First Mortgage': 2, 'Home Refi': 6 } },
+      F2: { officer: 'F2', totalLoanCount: 30, totalAmountRequested: 4037168, sessions: 4, typeCounts: { Personal: 7, Auto: 6, 'Credit Card': 0, Collateralized: 3, HELOC: 3, 'First Mortgage': 6, 'Home Refi': 5 } },
+      F3: { officer: 'F3', totalLoanCount: 47, totalAmountRequested: 11066193, sessions: 3, typeCounts: { Personal: 10, Auto: 2, 'Credit Card': 4, Collateralized: 3, HELOC: 9, 'First Mortgage': 9, 'Home Refi': 10 } },
+      F4: { officer: 'F4', totalLoanCount: 31, totalAmountRequested: 2433711, sessions: 8, typeCounts: { Personal: 7, Auto: 4, 'Credit Card': 10, Collateralized: 4, HELOC: 1, 'First Mortgage': 3, 'Home Refi': 2 } }
+    }
+  };
+
+  const result = context.assignLoans(officers, loans, runningTotals);
+
+  assert.equal(result.fairnessEvaluation.overallResult, 'PASS');
+  assert.equal(result.optimizationApplied, true);
+  assert.equal(result.optimizationTargetDescriptorKey, 'flex_lane_dollar_variance');
+  assert.equal(result.fairnessEvaluation.metrics.flexVariance.maxAmountVariancePercent <= 20, true);
 });

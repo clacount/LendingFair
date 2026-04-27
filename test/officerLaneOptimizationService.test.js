@@ -763,3 +763,45 @@ test('bounded breadth fallback does not bypass eligibility or policy gates', () 
   assert.equal(result.bestLoanToOfficerMap.get(loans[1]), 'F1');
   assert.equal(result.finalVariancePercent, 19);
 });
+
+test('heuristic search does not cycle forever on already-seen frontier states', () => {
+  const loans = [
+    { name: 'L1', type: 'Personal', amountRequested: 10000 },
+    { name: 'L2', type: 'Personal', amountRequested: 9000 },
+    { name: 'L3', type: 'Personal', amountRequested: 8000 }
+  ];
+  const initialLoanToOfficerMap = new Map(loans.map((loan) => [loan, 'A']));
+  const eligibleOfficersByLoan = new Map(loans.map((loan) => [loan, ['A', 'B']]));
+
+  const result = optimizeConsumerLaneAssignments({
+    initialLoanToOfficerMap,
+    eligibleOfficersByLoan,
+    isConsumerLoan: () => true,
+    shouldIncludeLoan: () => true,
+    frontierWidth: 8,
+    exactEnumerationCap: 0,
+    maxEvaluations: 20,
+    primaryTargetPercent: 15,
+    advisoryTargetPercent: 25,
+    getVariancePercent: (fairnessEvaluation) => fairnessEvaluation.metrics.consumerVariance.maxCountVariancePercent,
+    evaluateCandidate(assignmentMap) {
+      const counts = ['A', 'B'].map((officer) => loans.filter((loan) => assignmentMap.get(loan) === officer).length);
+      const highest = Math.max(...counts);
+      const lowest = Math.min(...counts);
+      const total = counts.reduce((sum, value) => sum + value, 0);
+      const variance = total ? ((highest - lowest) / total) * 100 : 0;
+      return {
+        metrics: {
+          maxAmountVariancePercent: variance,
+          consumerVariance: {
+            maxCountVariancePercent: variance,
+            maxAmountVariancePercent: variance
+          }
+        }
+      };
+    }
+  });
+
+  assert.equal(result.optimizationRan, true);
+  assert.equal(result.evaluations <= 20, true);
+});

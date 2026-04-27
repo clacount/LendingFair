@@ -212,8 +212,9 @@
       return 0;
     };
 
+    const baselineKey = serializeAssignmentMap(initialLoanToOfficerMap, optimizedLoans);
     const rankedFrontier = [baselineCandidate];
-    const seen = new Set([serializeAssignmentMap(initialLoanToOfficerMap, optimizedLoans)]);
+    const seen = new Set([baselineKey]);
 
     const insertIntoFrontier = (frontier, candidate) => {
       const candidateKey = serializeAssignmentMap(candidate.loanToOfficerMap, optimizedLoans);
@@ -225,11 +226,11 @@
     };
 
     const tryCandidate = (candidateMap) => {
-      if (evaluations >= boundedMaxEvaluations) {
-        return null;
-      }
       const candidateKey = serializeAssignmentMap(candidateMap, optimizedLoans);
       if (seen.has(candidateKey)) {
+        return null;
+      }
+      if (evaluations >= boundedMaxEvaluations) {
         return null;
       }
       seen.add(candidateKey);
@@ -333,7 +334,6 @@
 
     rankedFrontier.sort(compareCandidates);
     let frontier = rankedFrontier.slice(0, boundedFrontierWidth);
-    const baselineKey = serializeAssignmentMap(baselineCandidate.loanToOfficerMap, optimizedLoans);
     if (!frontier.some((entry) => serializeAssignmentMap(entry.loanToOfficerMap, optimizedLoans) === baselineKey)) {
       frontier = [baselineCandidate, ...frontier];
     }
