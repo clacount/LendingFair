@@ -5200,17 +5200,18 @@ function buildAmountRebalancedSeedAssignmentMap({
 }
 
 function buildFreshAmountBalancedSeedAssignmentMap({
+  initialLoanToOfficerMap,
   optimizedLoans,
   eligibleOfficersByLoan,
   activeOfficerNames,
   runningTotals,
   prioritizeLargestLoan = true
 }) {
-  if (!Array.isArray(optimizedLoans) || !optimizedLoans.length || !Array.isArray(activeOfficerNames) || !activeOfficerNames.length) {
+  if (!(initialLoanToOfficerMap instanceof Map) || !Array.isArray(optimizedLoans) || !optimizedLoans.length || !Array.isArray(activeOfficerNames) || !activeOfficerNames.length) {
     return null;
   }
 
-  const seedMap = new Map();
+  const seedMap = new Map(initialLoanToOfficerMap);
   const amountByOfficer = Object.fromEntries(activeOfficerNames.map((officerName) => {
     const priorStats = normalizeOfficerStats(runningTotals?.officers?.[officerName]);
     return [officerName, priorStats.totalAmountRequested];
@@ -5219,6 +5220,15 @@ function buildFreshAmountBalancedSeedAssignmentMap({
     const priorStats = normalizeOfficerStats(runningTotals?.officers?.[officerName]);
     return [officerName, priorStats.loanCount];
   }));
+
+  optimizedLoans.forEach((loan) => {
+    const assignedOfficer = seedMap.get(loan);
+    if (!assignedOfficer || !activeOfficerNames.includes(assignedOfficer)) {
+      return;
+    }
+    amountByOfficer[assignedOfficer] += getGoalAmountForLoan(loan);
+    countByOfficer[assignedOfficer] += 1;
+  });
 
   const orderedLoans = [...optimizedLoans].sort((loanA, loanB) => {
     const amountCompare = prioritizeLargestLoan
@@ -5508,6 +5518,7 @@ function optimizeGlobalAssignmentsResult({
       prioritizeLargestLoan: false
     }),
     buildFreshAmountBalancedSeedAssignmentMap({
+      initialLoanToOfficerMap,
       optimizedLoans: optimizationLoans,
       eligibleOfficersByLoan,
       activeOfficerNames: cleanOfficerNames,
@@ -5515,6 +5526,7 @@ function optimizeGlobalAssignmentsResult({
       prioritizeLargestLoan: true
     }),
     buildFreshAmountBalancedSeedAssignmentMap({
+      initialLoanToOfficerMap,
       optimizedLoans: optimizationLoans,
       eligibleOfficersByLoan,
       activeOfficerNames: cleanOfficerNames,
@@ -5801,6 +5813,7 @@ function optimizeOfficerLaneAssignmentsResult({
       prioritizeLargestLoan: false
     }),
     buildFreshAmountBalancedSeedAssignmentMap({
+      initialLoanToOfficerMap,
       optimizedLoans: optimizationLoans,
       eligibleOfficersByLoan,
       activeOfficerNames: cleanOfficerNames,
@@ -5808,6 +5821,7 @@ function optimizeOfficerLaneAssignmentsResult({
       prioritizeLargestLoan: true
     }),
     buildFreshAmountBalancedSeedAssignmentMap({
+      initialLoanToOfficerMap,
       optimizedLoans: optimizationLoans,
       eligibleOfficersByLoan,
       activeOfficerNames: cleanOfficerNames,

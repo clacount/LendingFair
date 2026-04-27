@@ -1027,3 +1027,25 @@ test('officer-lane post-assignment optimization clears seed-388 flex-dollar revi
   assert.equal(result.optimizationTargetDescriptorKey, 'flex_lane_dollar_variance');
   assert.equal(result.fairnessEvaluation.metrics.flexVariance.maxAmountVariancePercent <= 20, true);
 });
+
+test('fresh prior-balanced seed preserves assignments for non-optimized loans', () => {
+  const context = loadAppContext(8);
+  const preservedLoan = { name: 'L0', type: 'Personal', amountRequested: 0 };
+  const optimizedLoan = { name: 'L1', type: 'Personal', amountRequested: 100000 };
+  const initialLoanToOfficerMap = new Map([
+    [preservedLoan, 'F1'],
+    [optimizedLoan, 'F2']
+  ]);
+  const seedMap = context.buildFreshAmountBalancedSeedAssignmentMap({
+    initialLoanToOfficerMap,
+    optimizedLoans: [optimizedLoan],
+    eligibleOfficersByLoan: new Map([[optimizedLoan, ['F1', 'F2']]]),
+    activeOfficerNames: ['F1', 'F2'],
+    runningTotals: { officers: { F1: { totalLoanCount: 10, totalAmountRequested: 1000 }, F2: { totalLoanCount: 10, totalAmountRequested: 5000 } } },
+    prioritizeLargestLoan: true
+  });
+
+  assert.equal(seedMap instanceof Map, true);
+  assert.equal(seedMap.get(preservedLoan), 'F1');
+  assert.notEqual(seedMap.get(optimizedLoan), undefined);
+});

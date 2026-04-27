@@ -1352,6 +1352,13 @@ function getDollarVarianceUnavoidabilityLowerBoundPercent(scenario = {}, loans =
   return ((highestFixedAmount - optimisticMinimum) / totalAmount) * 100;
 }
 
+function getDollarVarianceUnavoidabilityThreshold(reviewBasis = '') {
+  if (reviewBasis === 'consumer_lane_dollar_variance') {
+    return 25;
+  }
+  return 20;
+}
+
 function estimateExactFeasibilitySearchSpace(loans = [], eligibleByLoan = {}, cap = EXACT_FEASIBILITY_AUTO_BUDGET_CAP) {
   let total = 1;
   for (let i = 0; i < loans.length; i += 1) {
@@ -1440,7 +1447,8 @@ function analyzeReviewFeasibility({
   let passFairness = null;
   let passAssignmentMap = null;
   const lowerBoundDollarVariancePercent = getDollarVarianceUnavoidabilityLowerBoundPercent(scenario, loans, reviewBasis);
-  if (Number.isFinite(lowerBoundDollarVariancePercent) && lowerBoundDollarVariancePercent > 20) {
+  const lowerBoundUnavoidabilityThreshold = getDollarVarianceUnavoidabilityThreshold(reviewBasis);
+  if (Number.isFinite(lowerBoundDollarVariancePercent) && lowerBoundDollarVariancePercent > lowerBoundUnavoidabilityThreshold) {
     return {
       classification: FEASIBILITY_CLASSIFICATIONS.UNAVOIDABLE,
       searchType,
