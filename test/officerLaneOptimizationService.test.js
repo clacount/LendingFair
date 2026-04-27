@@ -426,6 +426,50 @@ test('dollar-targeted optimization respects count-pass guardrails when choosing 
   assert.equal(result.bestLoanToOfficerMap.get(loans[1]), 'F2');
 });
 
+test('disallowed baseline cannot outrank a compliant candidate on guardrailed dollar optimization', () => {
+  const officers = ['F1', 'F2'];
+  const loans = [
+    { name: 'L1', type: 'Personal', amountRequested: 100 }
+  ];
+  const initialMap = new Map([[loans[0], 'F1']]);
+  const eligibleOfficersByLoan = new Map([[loans[0], [...officers]]]);
+
+  const result = optimizeConsumerLaneAssignments({
+    initialLoanToOfficerMap: initialMap,
+    eligibleOfficersByLoan,
+    isConsumerLoan: () => true,
+    shouldIncludeLoan: () => true,
+    targetLabel: 'global dollar variance',
+    primaryTargetPercent: 20,
+    advisoryTargetPercent: 25,
+    maxEvaluations: 10,
+    isCandidateAllowed: (fairnessEvaluation) => Number(fairnessEvaluation?.metrics?.maxCountVariancePercent) <= 15,
+    getVariancePercent: (fairnessEvaluation) => Number(fairnessEvaluation?.metrics?.maxAmountVariancePercent) || 0,
+    evaluateCandidate: (candidateMap) => {
+      const assignedOfficer = candidateMap.get(loans[0]);
+      if (assignedOfficer === 'F1') {
+        return {
+          overallResult: 'REVIEW',
+          metrics: {
+            maxAmountVariancePercent: 18,
+            maxCountVariancePercent: 16
+          }
+        };
+      }
+      return {
+        overallResult: 'PASS',
+        metrics: {
+          maxAmountVariancePercent: 19,
+          maxCountVariancePercent: 10
+        }
+      };
+    }
+  });
+
+  assert.equal(result.bestLoanToOfficerMap.get(loans[0]), 'F2');
+  assert.equal(result.finalVariancePercent, 19);
+});
+
 test('dollar-targeted optimization may traverse a count-failing intermediate to reach an allowed PASS', () => {
   const officers = ['F1', 'F2', 'F3'];
   const loans = [

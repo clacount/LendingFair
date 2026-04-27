@@ -154,13 +154,15 @@
 
     const baselineFairness = evaluateCandidate(initialLoanToOfficerMap);
     const baselineVariance = getTargetVariancePercent(baselineFairness, getVariancePercent);
+    const baselineCandidateAllowed = typeof isCandidateAllowed !== 'function'
+      || isCandidateAllowed(baselineFairness);
     const optimizedLoans = sortLoansDeterministically(
       [...initialLoanToOfficerMap.keys()]
         .filter((loan) => isConsumerLoan?.(loan))
         .filter((loan) => shouldIncludeLoan(loan))
     );
 
-    if ((!forceOptimizationRun && baselineVariance < primaryTargetPercent) || !optimizedLoans.length) {
+    if ((!forceOptimizationRun && baselineVariance < primaryTargetPercent && baselineCandidateAllowed) || !optimizedLoans.length) {
       return {
         improved: false,
         optimizationRan: false,
@@ -175,13 +177,14 @@
     }
 
     let evaluations = 1;
-    let best = {
+    const baselineCandidate = {
       loanToOfficerMap: initialLoanToOfficerMap,
       fairnessEvaluation: baselineFairness,
       targetVariancePercent: baselineVariance,
-      overallVariancePercent: scoreFairness(baselineFairness)
+      overallVariancePercent: scoreFairness(baselineFairness),
+      candidateAllowed: baselineCandidateAllowed
     };
-    const baselineCandidate = best;
+    let best = baselineCandidate.candidateAllowed ? baselineCandidate : null;
 
     const requestedMaxEvaluations = Math.max(1, Number(maxEvaluations) || DEFAULT_MAX_EVALUATIONS);
     let boundedMaxEvaluations = requestedMaxEvaluations;
@@ -197,6 +200,9 @@
       if (candidateA === candidateB) {
         return 0;
       }
+      if (candidateA?.candidateAllowed !== candidateB?.candidateAllowed) {
+        return candidateA?.candidateAllowed ? -1 : 1;
+      }
       if (isBetterCandidate(candidateA, candidateB, primaryTargetPercent, advisoryTargetPercent)) {
         return -1;
       }
@@ -206,7 +212,7 @@
       return 0;
     };
 
-    const rankedFrontier = [best];
+    const rankedFrontier = [baselineCandidate];
     const seen = new Set([serializeAssignmentMap(initialLoanToOfficerMap, optimizedLoans)]);
 
     const insertIntoFrontier = (frontier, candidate) => {
@@ -239,7 +245,7 @@
         candidateAllowed
       };
 
-      if (candidateAllowed && isBetterCandidate(candidate, best, primaryTargetPercent, advisoryTargetPercent)) {
+      if (candidateAllowed && (!best || isBetterCandidate(candidate, best, primaryTargetPercent, advisoryTargetPercent))) {
         best = candidate;
       }
       return candidate;
@@ -250,7 +256,7 @@
       boundedMaxEvaluations = Math.max(requestedMaxEvaluations, exactSearchSpaceSize);
       const assignmentMap = cloneAssignmentMap(initialLoanToOfficerMap);
       const walkExact = (loanIndex) => {
-        if (evaluations >= boundedMaxEvaluations || best.targetVariancePercent <= primaryTargetPercent) {
+        if (evaluations >= boundedMaxEvaluations || (best && best.targetVariancePercent <= primaryTargetPercent)) {
           return;
         }
         if (loanIndex >= optimizedLoans.length) {
@@ -267,7 +273,7 @@
         for (let eligibleIndex = 0; eligibleIndex < eligible.length; eligibleIndex += 1) {
           assignmentMap.set(loan, eligible[eligibleIndex]);
           walkExact(loanIndex + 1);
-          if (evaluations >= boundedMaxEvaluations || best.targetVariancePercent <= primaryTargetPercent) {
+          if (evaluations >= boundedMaxEvaluations || (best && best.targetVariancePercent <= primaryTargetPercent)) {
             return;
           }
         }
@@ -275,23 +281,24 @@
 
       walkExact(0);
 
-      const improved = best.loanToOfficerMap !== initialLoanToOfficerMap;
+      const selectedCandidate = best || baselineCandidate;
+      const improved = selectedCandidate.loanToOfficerMap !== initialLoanToOfficerMap;
       return {
         improved,
         optimizationRan: true,
-        bestLoanToOfficerMap: best.loanToOfficerMap,
+        bestLoanToOfficerMap: selectedCandidate.loanToOfficerMap,
         evaluations,
         initialVariancePercent: baselineVariance,
-        finalVariancePercent: best.targetVariancePercent,
-        tierReached: getTierLabel(best.targetVariancePercent, primaryTargetPercent, advisoryTargetPercent),
+        finalVariancePercent: selectedCandidate.targetVariancePercent,
+        tierReached: getTierLabel(selectedCandidate.targetVariancePercent, primaryTargetPercent, advisoryTargetPercent),
         summaryMessage: buildSummaryMessage(
-          best.targetVariancePercent,
+          selectedCandidate.targetVariancePercent,
           improved,
           targetLabel,
           primaryTargetPercent,
           advisoryTargetPercent
         ),
-        bestFairnessEvaluation: best.fairnessEvaluation
+        bestFairnessEvaluation: selectedCandidate.fairnessEvaluation
       };
     }
 
@@ -330,7 +337,7 @@
     if (!frontier.some((entry) => serializeAssignmentMap(entry.loanToOfficerMap, optimizedLoans) === baselineKey)) {
       frontier = [baselineCandidate, ...frontier];
     }
-    while (frontier.length && evaluations < searchPhaseEvaluationCap && best.targetVariancePercent > primaryTargetPercent) {
+    while (frontier.length && evaluations < searchPhaseEvaluationCap && (!best || best.targetVariancePercent > primaryTargetPercent)) {
       let nextFrontier = [];
 
       for (let frontierIndex = 0; frontierIndex < frontier.length && evaluations < searchPhaseEvaluationCap; frontierIndex += 1) {
@@ -381,7 +388,7 @@
             }
           }
 
-          if (best.targetVariancePercent <= primaryTargetPercent) {
+          if (best && best.targetVariancePercent <= primaryTargetPercent) {
             break;
           }
         }
@@ -393,9 +400,9 @@
     // Final local refinement: fully scan one-hop neighbors from the selected best candidate
     // so obvious last-step improvements are not lost to frontier pruning.
     let refined = true;
-    while (refined && evaluations < boundedMaxEvaluations && best.targetVariancePercent > primaryTargetPercent) {
+    while (refined && evaluations < boundedMaxEvaluations && (!best || best.targetVariancePercent > primaryTargetPercent)) {
       refined = false;
-      const currentBest = best;
+      const currentBest = best || baselineCandidate;
       const helperLoansByAscendingAmount = [...optimizedLoans].sort((loanA, loanB) => {
         const amountCompare = (Number(loanA?.amountRequested) || 0) - (Number(loanB?.amountRequested) || 0);
         if (amountCompare !== 0) {
@@ -472,13 +479,13 @@
           }
         }
 
-        if (refined || best.targetVariancePercent <= primaryTargetPercent) {
+        if (refined || (best && best.targetVariancePercent <= primaryTargetPercent)) {
           break;
         }
       }
     }
 
-    if (enableBreadthSearchFallback && evaluations < boundedMaxEvaluations && best.targetVariancePercent > primaryTargetPercent) {
+    if (enableBreadthSearchFallback && evaluations < boundedMaxEvaluations && (!best || best.targetVariancePercent > primaryTargetPercent)) {
       const fallbackQueue = [];
       const fallbackQueued = new Set();
       const enqueueFallback = (candidateMap) => {
@@ -491,14 +498,14 @@
       };
 
       enqueueFallback(baselineCandidate.loanToOfficerMap);
-      enqueueFallback(best.loanToOfficerMap);
+      enqueueFallback((best || baselineCandidate).loanToOfficerMap);
       initialSeedMaps.forEach((seedMap) => {
         if (seedMap instanceof Map) {
           enqueueFallback(seedMap);
         }
       });
 
-      while (fallbackQueue.length && evaluations < boundedMaxEvaluations && best.targetVariancePercent > primaryTargetPercent) {
+      while (fallbackQueue.length && evaluations < boundedMaxEvaluations && (!best || best.targetVariancePercent > primaryTargetPercent)) {
         const currentMap = fallbackQueue.shift();
 
         for (let loanIndex = 0; loanIndex < optimizedLoans.length && evaluations < boundedMaxEvaluations; loanIndex += 1) {
@@ -522,35 +529,36 @@
               enqueueFallback(candidateMap);
             }
 
-            if (best.targetVariancePercent <= primaryTargetPercent) {
+            if (best && best.targetVariancePercent <= primaryTargetPercent) {
               break;
             }
           }
 
-          if (best.targetVariancePercent <= primaryTargetPercent) {
+          if (best && best.targetVariancePercent <= primaryTargetPercent) {
             break;
           }
         }
       }
     }
 
-    const improved = best.loanToOfficerMap !== initialLoanToOfficerMap;
+    const selectedCandidate = best || baselineCandidate;
+    const improved = selectedCandidate.loanToOfficerMap !== initialLoanToOfficerMap;
     return {
       improved,
       optimizationRan: true,
-      bestLoanToOfficerMap: best.loanToOfficerMap,
+      bestLoanToOfficerMap: selectedCandidate.loanToOfficerMap,
       evaluations,
       initialVariancePercent: baselineVariance,
-      finalVariancePercent: best.targetVariancePercent,
-      tierReached: getTierLabel(best.targetVariancePercent, primaryTargetPercent, advisoryTargetPercent),
+      finalVariancePercent: selectedCandidate.targetVariancePercent,
+      tierReached: getTierLabel(selectedCandidate.targetVariancePercent, primaryTargetPercent, advisoryTargetPercent),
       summaryMessage: buildSummaryMessage(
-        best.targetVariancePercent,
+        selectedCandidate.targetVariancePercent,
         improved,
         targetLabel,
         primaryTargetPercent,
         advisoryTargetPercent
       ),
-      bestFairnessEvaluation: best.fairnessEvaluation
+      bestFairnessEvaluation: selectedCandidate.fairnessEvaluation
     };
   }
 
