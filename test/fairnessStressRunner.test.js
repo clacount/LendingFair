@@ -21,6 +21,14 @@ const {
   hashContextSeed
 } = require('../scripts/fairness_stress_runner.js');
 
+function parseTrailingSummaryJson(summaryLogText) {
+  const startIndex = summaryLogText.lastIndexOf('\n{');
+  const jsonText = startIndex >= 0
+    ? summaryLogText.slice(startIndex + 1).trim()
+    : summaryLogText.trim();
+  return JSON.parse(jsonText);
+}
+
 function makeScenario(officers) {
   return {
     officers,
@@ -539,8 +547,7 @@ test('stress summary includes attempted/suspicious/skipped/failure counts by eng
   ], { stdio: 'pipe' });
 
   const summaryLog = fs.readFileSync(path.join(outputDir, 'summary.log'), 'utf8');
-  const summaryJsonText = summaryLog.trim().split('\n').slice(1).join('\n');
-  const summary = JSON.parse(summaryJsonText);
+  const summary = parseTrailingSummaryJson(summaryLog);
   assert.equal(typeof summary.engineRunStats.global.attemptedRuns, 'number');
   assert.equal(typeof summary.engineRunStats.officer_lane.attemptedRuns, 'number');
   assert.equal(typeof summary.engineRunStats.global.skippedInvalidScenarioCount, 'number');
@@ -583,8 +590,7 @@ test('when feasibility analysis is enabled, review classifications sum to review
   ], { stdio: 'pipe' });
 
   const summaryLog = fs.readFileSync(path.join(outputDir, 'summary.log'), 'utf8');
-  const summaryJsonText = summaryLog.trim().split('\n').slice(1).join('\n');
-  const summary = JSON.parse(summaryJsonText);
+  const summary = parseTrailingSummaryJson(summaryLog);
   const reviewFeasibilityTotal = summary.avoidableReviewCount + summary.unavoidableReviewCount + summary.feasibilityUnknownCount;
 
   assert.ok(summary.reviewCount > 0);
@@ -843,6 +849,168 @@ test('feasibility analyzer marks exact small impossible scenarios as unavoidable
   const feasibility = analyzeReviewFeasibility({ context, scenario, engine: 'global', run, reviewBasis: 'global_count_variance', evaluationBudget: 2000 });
   assert.equal(feasibility.classification, 'unavoidable_review');
   assert.equal(feasibility.searchType, 'exact_search');
+});
+
+test('feasibility analyzer proves dollar-review impossibility from prior totals lower bound without exhausting budget', () => {
+  const scenario = {
+    officers: [
+      { name: 'A', isOnVacation: false, eligibility: { consumer: true, mortgage: false } },
+      { name: 'B', isOnVacation: false, eligibility: { consumer: true, mortgage: false } }
+    ],
+    loans: [{ name: 'L1', type: 'Personal', amountRequested: 10000 }],
+    runningTotals: {
+      officers: {
+        A: {
+          officer: 'A',
+          totalLoanCount: 10,
+          totalAmountRequested: 100000,
+          typeCounts: { Personal: 10 }
+        },
+        B: {
+          officer: 'B',
+          totalLoanCount: 10,
+          totalAmountRequested: 0,
+          typeCounts: { Personal: 10 }
+        }
+      }
+    }
+  };
+  const context = {
+    isOfficerEligibleForLoanType: () => true,
+    getOfficerStatsFromResult(result) {
+      return Object.entries(result.officerAssignments).map(([officer, assigned]) => ({
+        officer,
+        totalLoans: assigned.length,
+        totalAmount: assigned.reduce((sum, loan) => sum + (loan.amountRequested || 0), 0),
+        consumerLoanCount: assigned.length,
+        consumerAmount: assigned.reduce((sum, loan) => sum + (loan.amountRequested || 0), 0),
+        mortgageLoanCount: 0,
+        mortgageAmount: 0,
+        typeBreakdown: { Personal: assigned.length }
+      }));
+    },
+    FairnessEngineService: {
+      evaluateFairness() {
+        return {
+          overallResult: 'REVIEW',
+          statusMetricDescriptor: { key: 'global_dollar_variance', valuePercent: 81.81 },
+          metrics: { maxCountVariancePercent: 0, maxAmountVariancePercent: 81.81 }
+        };
+      }
+    }
+  };
+  const run = {
+    result: {
+      fairnessEvaluation: {
+        overallResult: 'REVIEW',
+        statusMetricDescriptor: { key: 'global_dollar_variance', valuePercent: 81.81 },
+        metrics: { maxCountVariancePercent: 0, maxAmountVariancePercent: 81.81 }
+      },
+      loanAssignments: [{ loan: scenario.loans[0], officers: ['B'] }]
+    }
+  };
+
+  const feasibility = analyzeReviewFeasibility({
+    context,
+    scenario,
+    engine: 'global',
+    run,
+    reviewBasis: 'global_dollar_variance',
+    evaluationBudget: 1
+  });
+
+  assert.equal(feasibility.classification, 'unavoidable_review');
+  assert.equal(feasibility.searchType, 'exact_search');
+  assert.equal(feasibility.feasibilityEvaluationsRun, 0);
+});
+
+test('consumer-lane dollar reviews still search through the 20-25 advisory band before classifying unavoidable', () => {
+  const scenario = {
+    officers: [
+      { name: 'A', isOnVacation: false, eligibility: { consumer: true, mortgage: false } },
+      { name: 'B', isOnVacation: false, eligibility: { consumer: true, mortgage: false } }
+    ],
+    loans: [{ name: 'L1', type: 'Personal', amountRequested: 10000 }],
+    runningTotals: {
+      officers: {
+        A: { officer: 'A', totalLoanCount: 10, totalAmountRequested: 130000, typeCounts: { Personal: 10 } },
+        B: { officer: 'B', totalLoanCount: 10, totalAmountRequested: 70000, typeCounts: { Personal: 10 } }
+      }
+    }
+  };
+  const context = {
+    isOfficerEligibleForLoanType: () => true,
+    getOfficerStatsFromResult(result) {
+      return Object.entries(result.officerAssignments).map(([officer, assigned]) => {
+        const priorAmount = officer === 'A' ? 130000 : 70000;
+        const assignedAmount = assigned.reduce((sum, loan) => sum + (loan.amountRequested || 0), 0);
+        const totalAmount = priorAmount + assignedAmount;
+        return {
+          officer,
+          totalLoans: 10 + assigned.length,
+          totalAmount,
+          consumerLoanCount: 10 + assigned.length,
+          consumerAmount: totalAmount,
+          mortgageLoanCount: 0,
+          mortgageAmount: 0,
+          typeBreakdown: { Personal: 10 + assigned.length }
+        };
+      });
+    },
+    FairnessEngineService: {
+      evaluateFairness(input) {
+        const amounts = Object.fromEntries(input.officerStats.map((entry) => [entry.officer, entry.consumerAmount]));
+        const total = Object.values(amounts).reduce((sum, value) => sum + value, 0);
+        const amountVariance = total ? ((Math.max(...Object.values(amounts)) - Math.min(...Object.values(amounts))) / total) * 100 : 0;
+        const counts = Object.fromEntries(input.officerStats.map((entry) => [entry.officer, entry.consumerLoanCount]));
+        const countTotal = Object.values(counts).reduce((sum, value) => sum + value, 0);
+        const countVariance = countTotal ? ((Math.max(...Object.values(counts)) - Math.min(...Object.values(counts))) / countTotal) * 100 : 0;
+        const pass = countVariance <= 15 && amountVariance <= 25;
+        return {
+          overallResult: pass ? 'PASS' : 'REVIEW',
+          statusMetricDescriptor: { key: 'consumer_lane_dollar_variance', valuePercent: amountVariance },
+          metrics: {
+            consumerVariance: {
+              maxCountVariancePercent: countVariance,
+              maxAmountVariancePercent: amountVariance
+            },
+            maxCountVariancePercent: countVariance,
+            maxAmountVariancePercent: amountVariance
+          }
+        };
+      }
+    }
+  };
+  const run = {
+    result: {
+      fairnessEvaluation: {
+        overallResult: 'REVIEW',
+        statusMetricDescriptor: { key: 'consumer_lane_dollar_variance', valuePercent: 33.3333 },
+        metrics: {
+          consumerVariance: {
+            maxCountVariancePercent: 4.7619,
+            maxAmountVariancePercent: 33.3333
+          },
+          maxCountVariancePercent: 4.7619,
+          maxAmountVariancePercent: 33.3333
+        }
+      },
+      loanAssignments: [{ loan: scenario.loans[0], officers: ['A'] }]
+    }
+  };
+
+  const feasibility = analyzeReviewFeasibility({
+    context,
+    scenario,
+    engine: 'officer_lane',
+    run,
+    reviewBasis: 'consumer_lane_dollar_variance',
+    evaluationBudget: 2000
+  });
+
+  assert.equal(feasibility.classification, 'avoidable_review');
+  assert.equal(feasibility.foundPassAssignment, true);
+  assert.deepEqual(feasibility.bestAssignmentMap, { L1: 'B' });
 });
 
 test('feasibility analyzer restricts search to loans present in the observed assignment result', () => {

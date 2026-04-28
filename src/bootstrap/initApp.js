@@ -368,6 +368,99 @@ function evaluateResultFairness(result) {
   });
 }
 
+function createOptimizationFairnessEvaluator({
+  officers = [],
+  officerNames = [],
+  cleanLoans = [],
+  runningTotals = {},
+  engineType = getSelectedFairnessEngine(),
+  getOptimizationMetrics = null
+} = {}) {
+  const normalizedOfficerNames = [...new Set((Array.isArray(officerNames) ? officerNames : []).map((name) => String(name || '').trim()).filter(Boolean))];
+  const officerConfigs = Array.isArray(officers) ? officers : [];
+  const normalizedRunningTotals = runningTotals?.officers || {};
+  const loanEntries = cleanLoans.map((loan) => ({
+    loan,
+    amount: getGoalAmountForLoan(loan),
+    category: getLoanCategoryForType(loan.type)
+  }));
+
+  const baseOfficerStats = normalizedOfficerNames.map((officerName) => {
+    const priorStats = normalizeOfficerStats(normalizedRunningTotals[officerName]);
+    const typeBreakdown = { ...(priorStats.typeCounts || {}) };
+    let consumerLoanCount = 0;
+    let mortgageLoanCount = 0;
+
+    Object.entries(typeBreakdown).forEach(([typeName, count]) => {
+      const normalizedCount = Number(count) || 0;
+      if (getLoanCategoryForType(typeName) === loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE) {
+        mortgageLoanCount += normalizedCount;
+      } else {
+        consumerLoanCount += normalizedCount;
+      }
+    });
+
+    const priorTotalAmount = Number(priorStats.totalAmountRequested) || 0;
+    const priorMortgageAmount = getEstimatedCategoryAmountTotal(
+      typeBreakdown,
+      priorTotalAmount,
+      loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE
+    );
+    const priorConsumerAmount = Math.max(0, priorTotalAmount - priorMortgageAmount);
+
+    return {
+      officer: officerName,
+      totalLoans: priorStats.loanCount,
+      totalAmount: priorTotalAmount,
+      consumerLoanCount,
+      consumerAmount: priorConsumerAmount,
+      mortgageLoanCount,
+      mortgageAmount: priorMortgageAmount,
+      typeBreakdown
+    };
+  });
+  const officerIndexByName = new Map(baseOfficerStats.map((entry, index) => [entry.officer, index]));
+
+  return (loanToOfficerMap) => {
+    const officerStats = baseOfficerStats.map((entry) => ({
+      ...entry,
+      typeBreakdown: { ...entry.typeBreakdown }
+    }));
+
+    loanEntries.forEach(({ loan, amount, category }) => {
+      const officerName = String(loanToOfficerMap.get(loan) || '').trim();
+      const officerIndex = officerIndexByName.get(officerName);
+      if (officerIndex === undefined) {
+        return;
+      }
+
+      const officerEntry = officerStats[officerIndex];
+      officerEntry.totalLoans += 1;
+      officerEntry.totalAmount += amount;
+      officerEntry.typeBreakdown[loan.type] = (officerEntry.typeBreakdown[loan.type] || 0) + 1;
+
+      if (category === loanCategoryUtils.LOAN_CATEGORIES.MORTGAGE) {
+        officerEntry.mortgageLoanCount += 1;
+        officerEntry.mortgageAmount += amount;
+      } else {
+        officerEntry.consumerLoanCount += 1;
+        officerEntry.consumerAmount += amount;
+      }
+    });
+
+    const optimizationMetrics = typeof getOptimizationMetrics === 'function'
+      ? (getOptimizationMetrics(loanToOfficerMap) || {})
+      : {};
+
+    return fairnessEngineService.evaluateFairness({
+      engineType,
+      officers: officerConfigs,
+      officerStats,
+      optimizationMetrics
+    });
+  };
+}
+
 function applyOptimizationSummaryToFairnessEvaluation(result, fairnessEvaluation) {
   if (!result?.optimizationApplied || !result?.optimizationSummaryMessage) {
     return fairnessEvaluation;
@@ -3668,7 +3761,13 @@ function normalizeOfficerStats(stats) {
   return {
     isOnVacation: Boolean(stats.isOnVacation),
     activeSessionCount: Number.isFinite(stats.activeSessionCount) && stats.activeSessionCount >= 0 ? stats.activeSessionCount : 0,
-    loanCount: Number.isFinite(stats.loanCount) && stats.loanCount >= 0 ? stats.loanCount : 0,
+    loanCount: Number.isFinite(stats.loanCount) && stats.loanCount >= 0
+      ? stats.loanCount
+      : (
+        Number.isFinite(stats.totalLoanCount) && stats.totalLoanCount >= 0
+          ? stats.totalLoanCount
+          : 0
+      ),
     totalAmountRequested: Number.isFinite(stats.totalAmountRequested) && stats.totalAmountRequested >= 0 ? stats.totalAmountRequested : 0,
     typeCounts: normalizeTypeCounts(stats.typeCounts || {}),
     eligibility: loanCategoryUtils.normalizeOfficerEligibility(stats.eligibility),
@@ -5100,6 +5199,74 @@ function buildAmountRebalancedSeedAssignmentMap({
   return seedMap;
 }
 
+function buildFreshAmountBalancedSeedAssignmentMap({
+  initialLoanToOfficerMap,
+  optimizedLoans,
+  eligibleOfficersByLoan,
+  activeOfficerNames,
+  runningTotals,
+  prioritizeLargestLoan = true
+}) {
+  if (!(initialLoanToOfficerMap instanceof Map) || !Array.isArray(optimizedLoans) || !optimizedLoans.length || !Array.isArray(activeOfficerNames) || !activeOfficerNames.length) {
+    return null;
+  }
+
+  const seedMap = new Map(initialLoanToOfficerMap);
+  const amountByOfficer = Object.fromEntries(activeOfficerNames.map((officerName) => {
+    const priorStats = normalizeOfficerStats(runningTotals?.officers?.[officerName]);
+    return [officerName, priorStats.totalAmountRequested];
+  }));
+  const countByOfficer = Object.fromEntries(activeOfficerNames.map((officerName) => {
+    const priorStats = normalizeOfficerStats(runningTotals?.officers?.[officerName]);
+    return [officerName, priorStats.loanCount];
+  }));
+
+  optimizedLoans.forEach((loan) => {
+    const assignedOfficer = seedMap.get(loan);
+    if (!assignedOfficer || !activeOfficerNames.includes(assignedOfficer)) {
+      return;
+    }
+    amountByOfficer[assignedOfficer] += getGoalAmountForLoan(loan);
+    countByOfficer[assignedOfficer] += 1;
+  });
+
+  const orderedLoans = [...optimizedLoans].sort((loanA, loanB) => {
+    const amountCompare = prioritizeLargestLoan
+      ? (getGoalAmountForLoan(loanB) - getGoalAmountForLoan(loanA))
+      : (getGoalAmountForLoan(loanA) - getGoalAmountForLoan(loanB));
+    if (amountCompare !== 0) {
+      return amountCompare;
+    }
+    return String(loanA?.name || '').localeCompare(String(loanB?.name || ''));
+  });
+
+  for (let loanIndex = 0; loanIndex < orderedLoans.length; loanIndex += 1) {
+    const loan = orderedLoans[loanIndex];
+    const eligible = (eligibleOfficersByLoan.get(loan) || [])
+      .filter((officerName) => activeOfficerNames.includes(officerName))
+      .sort((officerA, officerB) => {
+        const amountCompare = (amountByOfficer[officerA] || 0) - (amountByOfficer[officerB] || 0);
+        if (amountCompare !== 0) {
+          return amountCompare;
+        }
+        const countCompare = (countByOfficer[officerA] || 0) - (countByOfficer[officerB] || 0);
+        if (countCompare !== 0) {
+          return countCompare;
+        }
+        return String(officerA).localeCompare(String(officerB));
+      });
+    const selectedOfficer = eligible[0];
+    if (!selectedOfficer) {
+      return null;
+    }
+    seedMap.set(loan, selectedOfficer);
+    amountByOfficer[selectedOfficer] += getGoalAmountForLoan(loan);
+    countByOfficer[selectedOfficer] += 1;
+  }
+
+  return seedMap;
+}
+
 function dedupeSeedAssignmentMaps(seedMaps = [], loans = []) {
   const orderedLoans = Array.isArray(loans) ? loans : [];
   const seen = new Set();
@@ -5349,6 +5516,22 @@ function optimizeGlobalAssignmentsResult({
       activeOfficerNames: cleanOfficerNames,
       runningTotals,
       prioritizeLargestLoan: false
+    }),
+    buildFreshAmountBalancedSeedAssignmentMap({
+      initialLoanToOfficerMap,
+      optimizedLoans: optimizationLoans,
+      eligibleOfficersByLoan,
+      activeOfficerNames: cleanOfficerNames,
+      runningTotals,
+      prioritizeLargestLoan: true
+    }),
+    buildFreshAmountBalancedSeedAssignmentMap({
+      initialLoanToOfficerMap,
+      optimizedLoans: optimizationLoans,
+      eligibleOfficersByLoan,
+      activeOfficerNames: cleanOfficerNames,
+      runningTotals,
+      prioritizeLargestLoan: false
     })
   ];
   const globalSeedMaps = dedupeSeedAssignmentMaps(
@@ -5357,6 +5540,13 @@ function optimizeGlobalAssignmentsResult({
       : (isCountVarianceDescriptor ? countSeedMaps : [...amountSeedMaps, ...countSeedMaps]),
     optimizationLoans
   );
+  const evaluateGlobalOptimizationCandidate = createOptimizationFairnessEvaluator({
+    officers: result.officersUsed || [],
+    officerNames: allOfficerNames,
+    cleanLoans,
+    runningTotals,
+    engineType: 'global'
+  });
 
   const optimization = window.OfficerLaneOptimizationService.optimizeConsumerLaneAssignments({
     initialLoanToOfficerMap,
@@ -5394,20 +5584,7 @@ function optimizeGlobalAssignmentsResult({
               : Math.min(300, Math.max(120, cleanLoans.length * Math.max(cleanOfficerNames.length, 2)))
           )
       ),
-    evaluateCandidate: (loanToOfficerMap) => {
-      const candidateLoanAssignments = cleanLoans.map((loan) => ({
-        loan,
-        officers: [loanToOfficerMap.get(loan)],
-        shared: false
-      }));
-      const candidateResult = {
-        ...result,
-        loanAssignments: candidateLoanAssignments,
-        officerAssignments: buildOfficerAssignmentsFromLoanAssignments(allOfficerNames, candidateLoanAssignments)
-      };
-
-      return evaluateResultFairness(candidateResult);
-    }
+    evaluateCandidate: evaluateGlobalOptimizationCandidate
   });
 
   result.optimizationApplied = optimization.optimizationRan;
@@ -5634,12 +5811,45 @@ function optimizeOfficerLaneAssignmentsResult({
       activeOfficerNames: cleanOfficerNames,
       runningTotals,
       prioritizeLargestLoan: false
+    }),
+    buildFreshAmountBalancedSeedAssignmentMap({
+      initialLoanToOfficerMap,
+      optimizedLoans: optimizationLoans,
+      eligibleOfficersByLoan,
+      activeOfficerNames: cleanOfficerNames,
+      runningTotals,
+      prioritizeLargestLoan: true
+    }),
+    buildFreshAmountBalancedSeedAssignmentMap({
+      initialLoanToOfficerMap,
+      optimizedLoans: optimizationLoans,
+      eligibleOfficersByLoan,
+      activeOfficerNames: cleanOfficerNames,
+      runningTotals,
+      prioritizeLargestLoan: false
     })
   ].filter((seedMap) => seedMap instanceof Map);
   const seedLoanToOfficerMaps = dedupeSeedAssignmentMaps(
     isCountVarianceDescriptor ? countSeedMaps : [...amountSeedMaps, ...countSeedMaps],
     optimizationLoans
   );
+  const evaluateOfficerLaneOptimizationCandidate = createOptimizationFairnessEvaluator({
+    officers: result.officersUsed || [],
+    officerNames: allOfficerNames,
+    cleanLoans,
+    runningTotals,
+    engineType: 'officer_lane',
+    getOptimizationMetrics: isHelocOnlySupportPool
+      ? (loanToOfficerMap) => ({
+        helocWeightedVariancePercent: getHomogeneousHelocWeightedVariancePercent({
+          loanToOfficerMap,
+          cleanLoans,
+          cleanOfficerNames,
+          officersByName
+        })
+      })
+      : null
+  });
 
   const optimization = window.OfficerLaneOptimizationService.optimizeConsumerLaneAssignments({
     initialLoanToOfficerMap,
@@ -5665,29 +5875,7 @@ function optimizeOfficerLaneAssignmentsResult({
           : Math.min(250, Math.max(100, cleanLoans.length * Math.max(cleanOfficerNames.length, 2)))
       ),
     forceOptimizationRun: isHelocOnlySupportPool,
-    evaluateCandidate: (loanToOfficerMap) => {
-      const candidateLoanAssignments = cleanLoans.map((loan) => ({
-        loan,
-        officers: [loanToOfficerMap.get(loan)],
-        shared: false
-      }));
-      const candidateResult = {
-        ...result,
-        loanAssignments: candidateLoanAssignments,
-        officerAssignments: buildOfficerAssignmentsFromLoanAssignments(allOfficerNames, candidateLoanAssignments)
-      };
-
-      if (isHelocOnlySupportPool) {
-        candidateResult.optimizationFinalHelocWeightedVariancePercent = getHomogeneousHelocWeightedVariancePercent({
-          loanToOfficerMap,
-          cleanLoans,
-          cleanOfficerNames,
-          officersByName
-        });
-      }
-
-      return evaluateResultFairness(candidateResult);
-    }
+    evaluateCandidate: evaluateOfficerLaneOptimizationCandidate
   });
 
   result.optimizationApplied = optimization.optimizationRan;

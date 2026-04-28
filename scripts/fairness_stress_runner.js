@@ -12,6 +12,8 @@ const FEASIBILITY_SAMPLE_LIMIT = 10;
 const EXACT_FEASIBILITY_MAX_LOANS = 10;
 const EXACT_FEASIBILITY_MAX_OFFICERS = 6;
 const EXACT_FEASIBILITY_AUTO_BUDGET_CAP = 20000;
+const PROGRESS_LOG_INTERVAL_MS = 30000;
+const FEASIBILITY_PROGRESS_LOG_INTERVAL_MS = 15000;
 const CONSUMER_LOAN_TYPES = ['Personal', 'Auto', 'Credit Card', 'Collateralized'];
 const MORTGAGE_LOAN_TYPES = ['HELOC', 'First Mortgage', 'Home Refi'];
 let caseFileSequence = 0;
@@ -26,6 +28,19 @@ const FEASIBILITY_CLASSIFICATIONS = Object.freeze({
   UNAVOIDABLE: 'unavoidable_review',
   UNKNOWN: 'feasibility_unknown_budget_exhausted'
 });
+
+function isMortgageType(type = '') {
+  return MORTGAGE_LOAN_TYPES.includes(String(type || ''));
+}
+
+function getLoanCategory(type = '') {
+  return isMortgageType(type) ? 'mortgage' : 'consumer';
+}
+
+function getGoalAmountForLoan(loan = {}) {
+  const amount = Number(loan.amountRequested);
+  return Number.isFinite(amount) ? amount : 0;
+}
 
 function parseArgs(argv) {
   const args = {
@@ -250,6 +265,53 @@ function writeJsonFile(filePath, value) {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function formatDurationSeconds(totalSeconds = 0) {
+  const normalizedSeconds = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+  const hours = Math.floor(normalizedSeconds / 3600);
+  const minutes = Math.floor((normalizedSeconds % 3600) / 60);
+  const seconds = normalizedSeconds % 60;
+  return [hours, minutes, seconds].map((value) => String(value).padStart(2, '0')).join(':');
+}
+
+function logStressProgress({
+  logs,
+  startedAtMs,
+  endTimeMs,
+  iteration,
+  nextSeed,
+  engineRunStats,
+  failuresCount,
+  suspiciousCount,
+  skippedInvalidScenarioCount,
+  avoidableReviewCount,
+  unavoidableReviewCount,
+  feasibilityUnknownCount
+}) {
+  const completedRuns = engineRunStats.global.completedRuns + engineRunStats.officer_lane.completedRuns;
+  const passCount = engineRunStats.global.passCount + engineRunStats.officer_lane.passCount;
+  const reviewCount = engineRunStats.global.reviewCount + engineRunStats.officer_lane.reviewCount;
+  const unknownResultCount = engineRunStats.global.unknownResultCount + engineRunStats.officer_lane.unknownResultCount;
+  const elapsedSeconds = (Date.now() - startedAtMs) / 1000;
+  const remainingSeconds = Math.max(0, (endTimeMs - Date.now()) / 1000);
+  const progressLine = `[${nowIso()}] progress iterations=${iteration} nextSeed=${nextSeed} elapsed=${formatDurationSeconds(elapsedSeconds)} remaining=${formatDurationSeconds(remainingSeconds)} completedRuns=${completedRuns} passCount=${passCount} reviewCount=${reviewCount} avoidableReviewCount=${avoidableReviewCount} unavoidableReviewCount=${unavoidableReviewCount} feasibilityUnknownCount=${feasibilityUnknownCount} failuresCount=${failuresCount} suspiciousCount=${suspiciousCount} skippedInvalidScenarioCount=${skippedInvalidScenarioCount} unknownResultCount=${unknownResultCount}`;
+  console.log(progressLine);
+  appendLine(logs.summaryLog, progressLine);
+}
+
+function logFeasibilityProgress({
+  logs,
+  seed,
+  engine,
+  reviewBasis,
+  searchType,
+  evaluationsRun,
+  evaluationBudget
+}) {
+  const progressLine = `[${nowIso()}] feasibility_progress seed=${seed} engine=${engine} reviewBasis=${reviewBasis} searchType=${searchType} evaluationsRun=${evaluationsRun} evaluationBudget=${evaluationBudget}`;
+  console.log(progressLine);
+  appendLine(logs.summaryLog, progressLine);
 }
 
 function generateOfficerMix(random) {
@@ -1173,6 +1235,130 @@ function buildFeasibilityCandidateSummary({
   };
 }
 
+function normalizeRunningTotalsOfficerStats(stats = {}) {
+  const typeCounts = stats && typeof stats.typeCounts === 'object' ? stats.typeCounts : {};
+  const totalLoanCount = Number(stats.totalLoanCount ?? stats.loanCount ?? 0) || 0;
+  const totalAmountRequested = Number(stats.totalAmountRequested || 0) || 0;
+  const mortgageLoanCount = Object.entries(typeCounts).reduce((sum, [typeName, count]) => (
+    isMortgageType(typeName) ? sum + (Number(count) || 0) : sum
+  ), 0);
+  const consumerLoanCount = Math.max(0, totalLoanCount - mortgageLoanCount);
+  let mortgageAmount = Number(stats.mortgageAmount);
+  let consumerAmount = Number(stats.consumerAmount);
+
+  if (!Number.isFinite(mortgageAmount) || !Number.isFinite(consumerAmount)) {
+    if (mortgageLoanCount > 0 && consumerLoanCount === 0) {
+      mortgageAmount = totalAmountRequested;
+      consumerAmount = 0;
+    } else if (consumerLoanCount > 0 && mortgageLoanCount === 0) {
+      mortgageAmount = 0;
+      consumerAmount = totalAmountRequested;
+    } else {
+      const categorizedLoanCount = mortgageLoanCount + consumerLoanCount;
+      const mortgageShare = categorizedLoanCount ? (mortgageLoanCount / categorizedLoanCount) : 0;
+      mortgageAmount = totalAmountRequested * mortgageShare;
+      consumerAmount = totalAmountRequested - mortgageAmount;
+    }
+  }
+
+  return {
+    totalLoanCount,
+    totalAmountRequested,
+    mortgageLoanCount,
+    consumerLoanCount,
+    mortgageAmount,
+    consumerAmount
+  };
+}
+
+function getActiveOfficerPopulationForReviewBasis(scenario = {}, reviewBasis = '') {
+  const activeOfficers = (scenario.officers || []).filter((officer) => !officer.isOnVacation);
+  if (reviewBasis === 'flex_lane_dollar_variance') {
+    return activeOfficers.filter((officer) => officer.eligibility?.consumer && officer.eligibility?.mortgage);
+  }
+  if (reviewBasis === 'consumer_lane_dollar_variance') {
+    const consumerOnlyOfficers = activeOfficers.filter((officer) => officer.eligibility?.consumer && !officer.eligibility?.mortgage);
+    return consumerOnlyOfficers.length ? consumerOnlyOfficers : activeOfficers;
+  }
+  if (reviewBasis === 'mortgage_lane_dollar_variance') {
+    const mortgageOnlyOfficers = activeOfficers.filter((officer) => !officer.eligibility?.consumer && officer.eligibility?.mortgage);
+    return mortgageOnlyOfficers.length ? mortgageOnlyOfficers : activeOfficers;
+  }
+  return activeOfficers;
+}
+
+function getRelevantFixedAmountsForReviewBasis(scenario = {}, reviewBasis = '') {
+  const relevantOfficers = getActiveOfficerPopulationForReviewBasis(scenario, reviewBasis);
+  return relevantOfficers.map((officer) => {
+    const prior = normalizeRunningTotalsOfficerStats(scenario.runningTotals?.officers?.[officer.name] || {});
+    if (reviewBasis === 'consumer_lane_dollar_variance') {
+      return Number(prior.consumerAmount) || 0;
+    }
+    if (reviewBasis === 'mortgage_lane_dollar_variance') {
+      return Number(prior.mortgageAmount) || 0;
+    }
+    return Number(prior.totalAmountRequested) || 0;
+  });
+}
+
+function getRelevantAssignableAmountForReviewBasis(loans = [], reviewBasis = '') {
+  return loans.reduce((sum, loan) => {
+    const amount = getGoalAmountForLoan(loan);
+    if (reviewBasis === 'consumer_lane_dollar_variance') {
+      return getLoanCategory(loan.type) === 'consumer' ? sum + amount : sum;
+    }
+    if (reviewBasis === 'mortgage_lane_dollar_variance') {
+      return getLoanCategory(loan.type) === 'mortgage' ? sum + amount : sum;
+    }
+    return sum + amount;
+  }, 0);
+}
+
+function calculateOptimisticMinimumWithAdditionalAmount(fixedAmounts = [], additionalAmount = 0) {
+  if (!fixedAmounts.length) {
+    return 0;
+  }
+  let low = Math.min(...fixedAmounts);
+  let high = Math.max(...fixedAmounts);
+  for (let iteration = 0; iteration < 80; iteration += 1) {
+    const mid = (low + high) / 2;
+    const needed = fixedAmounts.reduce((sum, amount) => (
+      sum + Math.max(0, Math.min(mid, high) - amount)
+    ), 0);
+    if (needed <= additionalAmount) {
+      low = mid;
+    } else {
+      high = mid;
+    }
+  }
+  return Math.min(low, Math.max(...fixedAmounts));
+}
+
+function getDollarVarianceUnavoidabilityLowerBoundPercent(scenario = {}, loans = [], reviewBasis = '') {
+  if (!String(reviewBasis || '').endsWith('_dollar_variance') && reviewBasis !== 'global_dollar_variance') {
+    return null;
+  }
+  const fixedAmounts = getRelevantFixedAmountsForReviewBasis(scenario, reviewBasis);
+  if (!fixedAmounts.length) {
+    return null;
+  }
+  const additionalAmount = getRelevantAssignableAmountForReviewBasis(loans, reviewBasis);
+  const totalAmount = fixedAmounts.reduce((sum, amount) => sum + amount, 0) + additionalAmount;
+  if (!totalAmount) {
+    return 0;
+  }
+  const highestFixedAmount = Math.max(...fixedAmounts);
+  const optimisticMinimum = calculateOptimisticMinimumWithAdditionalAmount(fixedAmounts, additionalAmount);
+  return ((highestFixedAmount - optimisticMinimum) / totalAmount) * 100;
+}
+
+function getDollarVarianceUnavoidabilityThreshold(reviewBasis = '') {
+  if (reviewBasis === 'consumer_lane_dollar_variance') {
+    return 25;
+  }
+  return 20;
+}
+
 function estimateExactFeasibilitySearchSpace(loans = [], eligibleByLoan = {}, cap = EXACT_FEASIBILITY_AUTO_BUDGET_CAP) {
   let total = 1;
   for (let i = 0; i < loans.length; i += 1) {
@@ -1196,7 +1382,8 @@ function analyzeReviewFeasibility({
   run,
   reviewBasis,
   evaluationBudget = 2000,
-  autoExpandExactSearchBudget = true
+  autoExpandExactSearchBudget = true,
+  onProgress = null
 }) {
   const activeOfficers = (scenario.officers || []).filter((officer) => !officer.isOnVacation);
   const scenarioLoans = Array.isArray(scenario.loans) ? scenario.loans : [];
@@ -1250,6 +1437,7 @@ function analyzeReviewFeasibility({
   )
     ? Math.max(evaluationBudget, exactSearchSpaceSize)
     : evaluationBudget;
+  let nextProgressLogAt = Date.now() + FEASIBILITY_PROGRESS_LOG_INTERVAL_MS;
 
   let evaluationsRun = 0;
   let bestFairness = run?.result?.fairnessEvaluation || null;
@@ -1258,12 +1446,34 @@ function analyzeReviewFeasibility({
   let helocRecalculationUnavailable = false;
   let passFairness = null;
   let passAssignmentMap = null;
+  const lowerBoundDollarVariancePercent = getDollarVarianceUnavoidabilityLowerBoundPercent(scenario, loans, reviewBasis);
+  const lowerBoundUnavoidabilityThreshold = getDollarVarianceUnavoidabilityThreshold(reviewBasis);
+  if (Number.isFinite(lowerBoundDollarVariancePercent) && lowerBoundDollarVariancePercent > lowerBoundUnavoidabilityThreshold) {
+    return {
+      classification: FEASIBILITY_CLASSIFICATIONS.UNAVOIDABLE,
+      searchType,
+      ...buildFeasibilityCandidateSummary({
+        fairnessEvaluation: run?.result?.fairnessEvaluation || null,
+        assignmentMap: null,
+        reviewBasis,
+        evaluationsRun: 0
+      })
+    };
+  }
 
   const evaluateMap = (assignmentMap) => {
     if (evaluationsRun >= effectiveEvaluationBudget) {
       return null;
     }
     evaluationsRun += 1;
+    if (typeof onProgress === 'function' && Date.now() >= nextProgressLogAt) {
+      onProgress({
+        searchType,
+        evaluationsRun,
+        evaluationBudget: effectiveEvaluationBudget
+      });
+      nextProgressLogAt = Date.now() + FEASIBILITY_PROGRESS_LOG_INTERVAL_MS;
+    }
     const candidate = evaluateAssignmentCandidate({
       context,
       scenario,
@@ -1695,7 +1905,9 @@ function replayCase(args) {
 function runStress(args) {
   const logs = initLogs(args.outputDir);
   const startedAt = nowIso();
-  const endTime = Date.now() + Math.floor(args.durationMinutes * 60 * 1000);
+  const startedAtMs = Date.now();
+  const endTime = startedAtMs + Math.floor(args.durationMinutes * 60 * 1000);
+  let nextProgressLogAt = startedAtMs + PROGRESS_LOG_INTERVAL_MS;
 
   let iteration = 0;
   let seed = Math.trunc(args.seedStart);
@@ -1809,14 +2021,27 @@ function runStress(args) {
             });
 
             if (args.analyzeReviewFeasibility) {
+              appendLine(logs.summaryLog, `[${nowIso()}] feasibility_start seed=${seed} engine=${engine} reviewBasis=${reviewBasis}`);
               const feasibility = analyzeReviewFeasibility({
                 context,
                 scenario,
                 engine,
                 run,
                 reviewBasis,
-                evaluationBudget: args.feasibilityBudget
+                evaluationBudget: args.feasibilityBudget,
+                onProgress: ({ searchType, evaluationsRun, evaluationBudget }) => {
+                  logFeasibilityProgress({
+                    logs,
+                    seed,
+                    engine,
+                    reviewBasis,
+                    searchType,
+                    evaluationsRun,
+                    evaluationBudget
+                  });
+                }
               });
+              appendLine(logs.summaryLog, `[${nowIso()}] feasibility_end seed=${seed} engine=${engine} reviewBasis=${reviewBasis} classification=${feasibility.classification} evaluationsRun=${feasibility.feasibilityEvaluationsRun || 0}`);
 
               const feasibilityCaseFile = writeCaseFile({
                 outputDir: args.outputDir,
@@ -2000,6 +2225,24 @@ function runStress(args) {
         });
       }
     });
+
+    if (Date.now() >= nextProgressLogAt) {
+      logStressProgress({
+        logs,
+        startedAtMs,
+        endTimeMs: endTime,
+        iteration,
+        nextSeed: seed + 1,
+        engineRunStats,
+        failuresCount,
+        suspiciousCount,
+        skippedInvalidScenarioCount,
+        avoidableReviewCount,
+        unavoidableReviewCount,
+        feasibilityUnknownCount
+      });
+      nextProgressLogAt = Date.now() + PROGRESS_LOG_INTERVAL_MS;
+    }
 
     seed += 1;
   }
