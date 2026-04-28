@@ -195,7 +195,13 @@ function loadAppContext() {
   vm.createContext(context);
 
   const root = path.resolve(__dirname, '..');
-  ['src/utils/loanCategoryUtils.js', 'src/services/fairnessEngineService.js', 'src/bootstrap/initApp.js'].forEach((relativePath) => {
+  [
+    'src/utils/loanCategoryUtils.js',
+    'src/services/fairnessEngines/globalFairnessEngine.js',
+    'src/services/fairnessEngines/officerLaneFairnessEngine.js',
+    'src/services/fairnessEngineService.js',
+    'src/bootstrap/initApp.js'
+  ].forEach((relativePath) => {
     vm.runInContext(fs.readFileSync(path.join(root, relativePath), 'utf8'), context, { filename: relativePath });
   });
 

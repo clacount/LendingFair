@@ -104,6 +104,8 @@ function loadAppContext(seed = 42) {
   const root = path.resolve(__dirname, '..');
   [
     'src/utils/loanCategoryUtils.js',
+    'src/services/fairnessEngines/globalFairnessEngine.js',
+    'src/services/fairnessEngines/officerLaneFairnessEngine.js',
     'src/services/fairnessEngineService.js',
     'src/services/focusWeightSettingsService.js',
     'src/services/mortgageFocusRoutingService.js',

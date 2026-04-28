@@ -46,7 +46,7 @@ test('officer-lane mortgage-only pool emits mortgage descriptor instead of null/
   assert.equal(evaluation.statusMetricDescriptor?.contextLabel, 'Mortgage lane thresholds');
 });
 
-test('officer-lane treats vacationed mortgage-only officers as support-expected for HELOC-only pools but still enforces leadership policy', () => {
+test('officer-lane excludes vacationed mortgage-only officers from active HELOC-only support fairness', () => {
   const evaluation = evaluate({
     officers: [
       { name: 'M1', eligibility: { consumer: false, mortgage: true }, isOnVacation: true },
@@ -61,10 +61,11 @@ test('officer-lane treats vacationed mortgage-only officers as support-expected 
     ]
   });
 
-  assert.equal(evaluation.roleAwareFlags.helocOnlySupportThresholdsApplied, true);
-  assert.equal(evaluation.overallResult, 'REVIEW');
-  assert.equal(evaluation.statusMetricDescriptor?.key, 'heloc_weighted_variance');
-  assert.equal(evaluation.statusMetricDescriptor?.valuePercent, 18);
+  assert.equal(evaluation.roleAwareFlags.helocOnlySupportThresholdsApplied, false);
+  assert.equal(evaluation.roleAwareFlags.flexParticipationExpected, true);
+  assert.equal(evaluation.overallResult, 'PASS');
+  assert.equal(evaluation.statusMetricDescriptor?.key, 'flex_lane_dollar_variance');
+  assert.equal(evaluation.metrics.helocWeightedVariancePercent, 18);
 });
 
 test('officer-lane REVIEW from mortgage variance does not report consumer status descriptor', () => {
@@ -72,16 +73,17 @@ test('officer-lane REVIEW from mortgage variance does not report consumer status
     officers: [
       { name: 'C1', eligibility: { consumer: true, mortgage: false } },
       { name: 'M1', eligibility: { consumer: false, mortgage: true } },
-      { name: 'M2', eligibility: { consumer: false, mortgage: true }, isOnVacation: true }
+      { name: 'M2', eligibility: { consumer: false, mortgage: true } }
     ],
     officerStats: [
-      { officer: 'C1', totalLoans: 1, totalAmount: 124777, consumerLoanCount: 0, consumerAmount: 0, mortgageLoanCount: 1, mortgageAmount: 124777, typeBreakdown: { HELOC: 1 } },
-      { officer: 'M1', totalLoans: 1, totalAmount: 410455, consumerLoanCount: 0, consumerAmount: 0, mortgageLoanCount: 1, mortgageAmount: 410455, typeBreakdown: { 'Home Refi': 1 } },
-      { officer: 'M2', totalLoans: 6, totalAmount: 618304, consumerLoanCount: 0, consumerAmount: 0, mortgageLoanCount: 6, mortgageAmount: 618304, typeBreakdown: { HELOC: 4, 'First Mortgage': 2 } }
+      { officer: 'C1', totalLoans: 2, totalAmount: 40000, consumerLoanCount: 2, consumerAmount: 40000, mortgageLoanCount: 0, mortgageAmount: 0, typeBreakdown: { Personal: 2 } },
+      { officer: 'M1', totalLoans: 1, totalAmount: 100000, consumerLoanCount: 0, consumerAmount: 0, mortgageLoanCount: 1, mortgageAmount: 100000, typeBreakdown: { HELOC: 1 } },
+      { officer: 'M2', totalLoans: 6, totalAmount: 600000, consumerLoanCount: 0, consumerAmount: 0, mortgageLoanCount: 6, mortgageAmount: 600000, typeBreakdown: { HELOC: 6 } }
     ]
   });
 
   assert.equal(evaluation.overallResult, 'REVIEW');
+  assert.ok(evaluation.metrics.mortgageVariance.maxCountVariancePercent > 15);
   assert.ok(evaluation.metrics.mortgageVariance.maxAmountVariancePercent > 20);
   assert.equal(evaluation.statusMetricDescriptor?.key, 'mortgage_lane_count_variance');
 });

@@ -10,6 +10,12 @@ global.localStorage = {
 require('../src/utils/loanCategoryUtils.js');
 require('../src/services/fairnessEngineService.js');
 
+test('fairness engine classes are registered behind the service facade', () => {
+  assert.equal(typeof global.GlobalFairnessEngine, 'function');
+  assert.equal(typeof global.OfficerLaneFairnessEngine, 'function');
+  assert.equal(typeof global.FairnessEngineService.getFairnessEngineEvaluator, 'undefined');
+});
+
 test('officer_lane does not fail routing when no mortgage-only lane exists', () => {
   const evaluation = global.FairnessEngineService.evaluateFairness({
     engineType: 'officer_lane',

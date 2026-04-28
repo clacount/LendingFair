@@ -16,6 +16,11 @@
     [FAIRNESS_ENGINES.OFFICER_LANE]: 'Officer Lane Fairness'
   };
 
+  const GlobalFairnessEngineClass = globalScope.GlobalFairnessEngine
+    || (typeof require === 'function' ? require('./fairnessEngines/globalFairnessEngine.js') : null);
+  const OfficerLaneFairnessEngineClass = globalScope.OfficerLaneFairnessEngine
+    || (typeof require === 'function' ? require('./fairnessEngines/officerLaneFairnessEngine.js') : null);
+
   function normalizeEngineType(engineType) {
     return engineType === FAIRNESS_ENGINES.OFFICER_LANE
       ? FAIRNESS_ENGINES.OFFICER_LANE
@@ -241,34 +246,6 @@
     ));
   }
 
-  function isSingleMloExpectedVarianceScenario(context = {}) {
-    // Officer-lane design: a single mortgage-only officer can legitimately concentrate mortgage lane volume.
-    return Boolean(context.singleMlo && context.mortgageRoutingPass && !context.flexParticipationViolation);
-  }
-
-  function isMortgageLaneVarianceBlockingReview(context = {}) {
-    if (context.mortgageLanePass) {
-      return false;
-    }
-
-    // Keep mortgage variance non-blocking only for intentional single-MLO lane concentration.
-    if (isSingleMloExpectedVarianceScenario(context)) {
-      return false;
-    }
-
-    return true;
-  }
-
-  function determineOfficerLaneOverallPass(context = {}) {
-    return Boolean(
-      context.consumerPass
-      && context.flexLanePass
-      && context.mortgageRoutingPass
-      && !context.flexParticipationViolation
-      && !isMortgageLaneVarianceBlockingReview(context)
-    );
-  }
-
   function buildLaneVarianceStatusDescriptor({ laneKeyPrefix, laneLabel, laneVariance, contextLabel }) {
     const countVariance = Number(laneVariance?.maxCountVariancePercent) || 0;
     const dollarVariance = Number(laneVariance?.maxAmountVariancePercent) || 0;
@@ -312,96 +289,6 @@
     };
   }
 
-  function evaluateGlobalFairness(context) {
-    const { categoryMetrics } = context;
-    const overallCountVariance = calculateMaxVariance(context.officerStats || [], 'totalLoans');
-    const overallAmountVariance = calculateMaxVariance(context.officerStats || [], 'totalAmount');
-
-    const overallPass = overallCountVariance <= COUNT_VARIANCE_THRESHOLD_PERCENT
-      && overallAmountVariance <= AMOUNT_VARIANCE_THRESHOLD_PERCENT;
-    const thresholdBreaches = [];
-    if (overallCountVariance > COUNT_VARIANCE_THRESHOLD_PERCENT) {
-      thresholdBreaches.push('Overall loan variance');
-    }
-    if (overallAmountVariance > AMOUNT_VARIANCE_THRESHOLD_PERCENT) {
-      thresholdBreaches.push('Overall dollar variance');
-    }
-
-    const countFail = overallCountVariance > COUNT_VARIANCE_THRESHOLD_PERCENT;
-    const dollarFail = overallAmountVariance > AMOUNT_VARIANCE_THRESHOLD_PERCENT;
-    let statusMetricDescriptor;
-
-    if (countFail && dollarFail) {
-      const countNormalizedMargin = (overallCountVariance - COUNT_VARIANCE_THRESHOLD_PERCENT) / COUNT_VARIANCE_THRESHOLD_PERCENT;
-      const dollarNormalizedMargin = (overallAmountVariance - AMOUNT_VARIANCE_THRESHOLD_PERCENT) / AMOUNT_VARIANCE_THRESHOLD_PERCENT;
-      statusMetricDescriptor = {
-        key: 'global_count_and_dollar_variance',
-        label: 'Global count and dollar variance',
-        valuePercent: countNormalizedMargin >= dollarNormalizedMargin ? overallCountVariance : overallAmountVariance,
-        contextLabel: 'Global thresholds'
-      };
-    } else if (countFail) {
-      statusMetricDescriptor = {
-        key: 'global_count_variance',
-        label: 'Global count variance',
-        valuePercent: overallCountVariance,
-        contextLabel: 'Global thresholds'
-      };
-    } else if (dollarFail) {
-      statusMetricDescriptor = {
-        key: 'global_dollar_variance',
-        label: 'Global dollar variance',
-        valuePercent: overallAmountVariance,
-        contextLabel: 'Global thresholds'
-      };
-    } else {
-      const shouldUseDollarDescriptor = overallAmountVariance >= overallCountVariance;
-      statusMetricDescriptor = shouldUseDollarDescriptor
-        ? {
-            key: 'global_dollar_variance',
-            label: 'Global dollar variance',
-            valuePercent: overallAmountVariance,
-            contextLabel: 'Global thresholds'
-          }
-        : {
-            key: 'global_count_variance',
-            label: 'Global count variance',
-            valuePercent: overallCountVariance,
-            contextLabel: 'Global thresholds'
-          };
-    }
-
-    return {
-      overallResult: overallPass ? 'PASS' : 'REVIEW',
-      summaryItems: [
-        `Overall loan variance: ${overallCountVariance.toFixed(1)}%`,
-        `Overall dollar variance: ${overallAmountVariance.toFixed(1)}%`,
-        `Consumer loan variance: ${categoryMetrics.consumerVariance.maxCountVariancePercent.toFixed(1)}%`,
-        `Consumer dollar variance: ${categoryMetrics.consumerVariance.maxAmountVariancePercent.toFixed(1)}%`,
-        `Mortgage loan variance: ${categoryMetrics.mortgageVariance.maxCountVariancePercent.toFixed(1)}%`,
-        `Mortgage dollar variance: ${categoryMetrics.mortgageVariance.maxAmountVariancePercent.toFixed(1)}%`
-      ],
-      notes: [
-        overallPass
-          ? 'Threshold status: PASS (all global variance thresholds are within limits).'
-          : `Threshold status: REVIEW (${thresholdBreaches.join(', ')} exceeded threshold${thresholdBreaches.length > 1 ? 's' : ''}).`,
-        'Global Fairness compares distribution across all officers and categories.',
-        'Large cross-officer variance should be reviewed when thresholds are exceeded.'
-      ],
-      chartAnnotations: {
-        mortgageTitleSuffix: '',
-        mortgageNote: 'Mortgage concentrations are evaluated with global cross-officer variance thresholds.'
-      },
-      statusMetricDescriptor,
-      roleAwareFlags: {
-        hasSingleMortgageOnlyOfficer: hasSingleMortgageOnlyOfficer(context.officers),
-        mortgageVarianceExpected: false,
-        flexParticipationExpected: false
-      }
-    };
-  }
-
-
   function isHomogeneousHelocSupportPool({ officers = [], hasConsumerLoans = false, loanTypeNames = [] } = {}) {
     const normalizedOfficers = Array.isArray(officers) ? officers.map((officer) => normalizeOfficer(officer)) : [];
     const hasMortgageOnlyOfficer = normalizedOfficers.some((officer) => isMortgageOnlyOfficer(officer));
@@ -424,267 +311,6 @@
     return normalizedLoanTypes.every((typeName) => typeName === 'heloc');
   }
 
-  function evaluateHelocSupportFlexThresholds(flexVariance = {}) {
-    const countVariance = Number(flexVariance.maxCountVariancePercent) || 0;
-    const amountVariance = Number(flexVariance.maxAmountVariancePercent) || 0;
-    const strictPass = countVariance <= HELOC_SUPPORT_COUNT_THRESHOLD_PERCENT && amountVariance <= HELOC_SUPPORT_AMOUNT_THRESHOLD_PERCENT;
-    const advisoryPass = countVariance <= ADVISORY_AMOUNT_VARIANCE_UPPER_PERCENT && amountVariance <= ADVISORY_AMOUNT_VARIANCE_UPPER_PERCENT;
-
-    return {
-      countVariance,
-      amountVariance,
-      strictPass,
-      advisoryPass,
-      overAdvisory: !advisoryPass,
-      advisoryBandApplied: !strictPass && advisoryPass
-    };
-  }
-
-  function evaluateOfficerLaneFairness(context) {
-    const {
-      officers,
-      officerStats = [],
-      categoryMetrics,
-      mortgageByOfficer = [],
-      mortgageByTypeByOfficer = {},
-      flexVariance
-    } = context;
-    const singleMlo = hasSingleMortgageOnlyOfficer(officers);
-    const normalizedOfficers = officers.map((officer) => normalizeOfficer(officer));
-    const officerClassMap = buildOfficerClassMap(normalizedOfficers);
-    const consumerLaneEntries = officerStats.filter((entry) => officerClassMap[entry.officer] === 'C');
-    const mortgageOfficers = normalizedOfficers.filter((officer) => isMortgageOnlyOfficer(officer)).map((officer) => officer.name);
-    const flexOfficers = normalizedOfficers.filter((officer) => isFlexOfficer(officer)).map((officer) => officer.name);
-    const hasConsumerLane = normalizedOfficers.some((officer) => getOfficerClassCode(officer) === 'C');
-    const hasMortgageLane = normalizedOfficers.some((officer) => getOfficerClassCode(officer) === 'M');
-    const hasFlexLane = normalizedOfficers.some((officer) => getOfficerClassCode(officer) === 'F');
-
-    const activeMortgageOnlyOfficerCount = normalizedOfficers.filter((officer) => isMortgageOnlyOfficer(officer) && !officer.isOnVacation).length;
-    const hasAnyMortgageOnlyOfficer = mortgageOfficers.length > 0;
-    const allowBroadFlexMortgageCoverage = normalizedOfficers.some((officer) => isFlexOfficer(officer) && officer.mortgageOverride);
-
-    const totalMortgageAmount = mortgageByOfficer.reduce((sum, entry) => sum + (Number(entry.amount) || 0), 0);
-    const mortgageAmountForM = mortgageByOfficer
-      .filter((entry) => mortgageOfficers.includes(entry.officer))
-      .reduce((sum, entry) => sum + (Number(entry.amount) || 0), 0);
-
-    const mortgageRoutingShareToM = totalMortgageAmount ? (mortgageAmountForM / totalMortgageAmount) : 1;
-    const mortgageRoutingPass = !hasMortgageLane || singleMlo || !totalMortgageAmount || mortgageRoutingShareToM >= 0.5;
-    const flexMortgageTypesByOfficer = Object.fromEntries(
-      flexOfficers.map((officerName) => [officerName, mortgageByTypeByOfficer[officerName] || {}])
-    );
-
-    const flexParticipationViolation = didFlexMortgageParticipationViolateRules({
-      flexMortgageTypesByOfficer,
-      totalMortgageAmount,
-      activeMortgageOnlyOfficerCount,
-      hasAnyMortgageOnlyOfficer,
-      allowBroadFlexMortgageCoverage
-    });
-
-    const totalConsumerLoans = officerStats.reduce((sum, entry) => sum + (Number(entry.consumerLoanCount) || 0), 0);
-    const allMortgageTypes = officerStats
-      .flatMap((entry) => Object.entries(entry.typeBreakdown || {}))
-      .filter(([, count]) => (Number(count) || 0) > 0)
-      .map(([typeName]) => String(typeName || '').trim().toLowerCase());
-    const isHelocOnlySupportPool = isHomogeneousHelocSupportPool({
-      officers: normalizedOfficers,
-      hasConsumerLoans: totalConsumerLoans > 0,
-      loanTypeNames: allMortgageTypes
-    });
-    const helocSupportThresholds = evaluateHelocSupportFlexThresholds(categoryMetrics.flexVariance);
-    const optimizationMetrics = context.optimizationMetrics || {};
-    const parsedHelocWeightedVariancePercent = Number(optimizationMetrics.helocWeightedVariancePercent);
-    const helocWeightedVariancePercent = Number.isFinite(parsedHelocWeightedVariancePercent)
-      ? parsedHelocWeightedVariancePercent
-      : null;
-    const helocWeightedTargetPass = Number.isFinite(helocWeightedVariancePercent)
-      ? helocWeightedVariancePercent <= HELOC_SUPPORT_AMOUNT_THRESHOLD_PERCENT
-      : false;
-    const flexMortgageParticipationCount = Object.values(flexMortgageTypesByOfficer).reduce((sum, typeBreakdown) => {
-      const helocCount = Number(typeBreakdown?.HELOC) || Number(typeBreakdown?.heloc) || 0;
-      return sum + helocCount;
-    }, 0);
-    const flexParticipationMeaningful = flexMortgageParticipationCount > 0;
-    const mortgageOfficerLoanCounts = mortgageOfficers.map((officerName) => Number((officerStats.find((entry) => entry.officer === officerName)?.mortgageLoanCount) || 0));
-    const flexOfficerLoanCounts = flexOfficers.map((officerName) => Number((officerStats.find((entry) => entry.officer === officerName)?.mortgageLoanCount) || 0));
-    const mortgageLoanCountForM = mortgageOfficerLoanCounts.reduce((sum, count) => sum + count, 0);
-    const totalMortgageLoanCount = mortgageLoanCountForM + flexOfficerLoanCounts.reduce((sum, count) => sum + count, 0);
-    const mortgageLoanCountShareToM = totalMortgageLoanCount ? (mortgageLoanCountForM / totalMortgageLoanCount) : 1;
-    const maxMortgageOfficerLoanCount = mortgageOfficerLoanCounts.length ? Math.max(...mortgageOfficerLoanCounts) : 0;
-    const maxFlexOfficerLoanCount = flexOfficerLoanCounts.length ? Math.max(...flexOfficerLoanCounts) : 0;
-    const mortgageLeadershipPreserved = !hasMortgageLane || maxMortgageOfficerLoanCount >= maxFlexOfficerLoanCount;
-
-    const consumerAmountVariancePercent = categoryMetrics.consumerVariance.maxAmountVariancePercent;
-    const isConsumerDollarInAdvisoryBand = categoryMetrics.consumerVariance.countDistributionPass
-      && consumerAmountVariancePercent > AMOUNT_VARIANCE_THRESHOLD_PERCENT
-      && consumerAmountVariancePercent <= ADVISORY_AMOUNT_VARIANCE_UPPER_PERCENT;
-    const consumerPass = categoryMetrics.consumerVariance.countDistributionPass
-      && (
-        categoryMetrics.consumerVariance.amountDistributionPass
-        || isConsumerDollarInAdvisoryBand
-      );
-    const mortgageLanePass = categoryMetrics.mortgageVariance.countDistributionPass
-      && categoryMetrics.mortgageVariance.amountDistributionPass;
-    const flexLanePass = categoryMetrics.flexVariance.countDistributionPass
-      && categoryMetrics.flexVariance.amountDistributionPass;
-    const adjustedConsumerPass = !hasConsumerLane || consumerPass;
-    const adjustedMortgageLanePass = !hasMortgageLane || mortgageLanePass;
-    const helocSupportPolicyPass = mortgageRoutingPass && !flexParticipationViolation && mortgageLeadershipPreserved && flexParticipationMeaningful;
-    const helocSupportPass = isHelocOnlySupportPool
-      && helocSupportPolicyPass
-      && helocWeightedTargetPass
-      && !helocSupportThresholds.overAdvisory;
-    const adjustedFlexLanePass = isHelocOnlySupportPool
-      ? helocSupportPass
-      : (!hasFlexLane || flexLanePass);
-
-    const overallPass = isHelocOnlySupportPool
-      ? (adjustedConsumerPass && adjustedMortgageLanePass && adjustedFlexLanePass)
-      : determineOfficerLaneOverallPass({
-        singleMlo,
-        consumerPass: adjustedConsumerPass,
-        mortgageLanePass: adjustedMortgageLanePass,
-        flexLanePass: adjustedFlexLanePass,
-        mortgageRoutingPass,
-        flexParticipationViolation
-      });
-
-    let statusMetricDescriptor;
-    if (isHelocOnlySupportPool) {
-      statusMetricDescriptor = {
-        key: 'heloc_weighted_variance',
-        label: 'Weighted HELOC variance',
-        valuePercent: helocWeightedVariancePercent,
-        contextLabel: 'HELOC-only support thresholds'
-      };
-    } else if (hasConsumerLane && !adjustedConsumerPass) {
-      statusMetricDescriptor = buildLaneVarianceStatusDescriptor({
-        laneKeyPrefix: 'consumer_lane',
-        laneLabel: 'Consumer lane',
-        laneVariance: categoryMetrics.consumerVariance,
-        contextLabel: 'Consumer lane thresholds'
-      });
-    } else if (hasMortgageLane && !adjustedMortgageLanePass) {
-      statusMetricDescriptor = buildLaneVarianceStatusDescriptor({
-        laneKeyPrefix: 'mortgage_lane',
-        laneLabel: 'Mortgage lane',
-        laneVariance: categoryMetrics.mortgageVariance,
-        contextLabel: 'Mortgage lane thresholds'
-      });
-    } else if (hasMortgageLane && !mortgageRoutingPass) {
-      statusMetricDescriptor = {
-        key: 'mortgage_routing_policy',
-        label: 'Mortgage routing share to M officers',
-        valuePercent: mortgageRoutingShareToM * 100,
-        contextLabel: 'Mortgage lane policy checks'
-      };
-    } else if (hasMortgageLane && !mortgageLeadershipPreserved) {
-      statusMetricDescriptor = {
-        key: 'mortgage_leadership_policy',
-        label: 'Mortgage leadership preservation',
-        valuePercent: mortgageLoanCountShareToM * 100,
-        contextLabel: 'Mortgage lane policy checks'
-      };
-    } else if (hasMortgageLane && flexParticipationViolation) {
-      statusMetricDescriptor = {
-        key: 'mortgage_flex_participation_policy',
-        label: 'Flex mortgage participation policy',
-        valuePercent: mortgageRoutingShareToM * 100,
-        contextLabel: 'Mortgage lane policy checks'
-      };
-    } else if (hasFlexLane && !adjustedFlexLanePass) {
-      statusMetricDescriptor = buildLaneVarianceStatusDescriptor({
-        laneKeyPrefix: 'flex_lane',
-        laneLabel: 'Flex lane',
-        laneVariance: categoryMetrics.flexVariance,
-        contextLabel: 'Flex lane thresholds'
-      });
-    } else if (hasConsumerLane) {
-      statusMetricDescriptor = buildLaneVarianceStatusDescriptor({
-        laneKeyPrefix: 'consumer_lane',
-        laneLabel: 'Consumer lane',
-        laneVariance: categoryMetrics.consumerVariance,
-        contextLabel: 'Consumer lane thresholds'
-      });
-    } else if (hasFlexLane) {
-      statusMetricDescriptor = buildLaneVarianceStatusDescriptor({
-        laneKeyPrefix: 'flex_lane',
-        laneLabel: 'Flex lane',
-        laneVariance: categoryMetrics.flexVariance,
-        contextLabel: 'Flex lane thresholds'
-      });
-    } else if (hasMortgageLane) {
-      statusMetricDescriptor = buildLaneVarianceStatusDescriptor({
-        laneKeyPrefix: 'mortgage_lane',
-        laneLabel: 'Mortgage lane',
-        laneVariance: categoryMetrics.mortgageVariance,
-        contextLabel: 'Mortgage lane thresholds'
-      });
-    }
-
-    return {
-      overallResult: overallPass ? 'PASS' : 'REVIEW',
-      summaryItems: [
-        ...(hasConsumerLane ? [
-          `Consumer loan variance (C lane): ${categoryMetrics.consumerVariance.maxCountVariancePercent.toFixed(1)}%`,
-          `Consumer dollar variance (C lane): ${categoryMetrics.consumerVariance.maxAmountVariancePercent.toFixed(1)}%`,
-          buildLaneBreakdownText(consumerLaneEntries, 'consumerLoanCount', 'Consumer counts')
-        ] : []),
-        ...(hasMortgageLane ? [
-          `Mortgage loan variance (M lane): ${categoryMetrics.mortgageVariance.maxCountVariancePercent.toFixed(1)}%`,
-          `Mortgage dollar variance (M lane): ${categoryMetrics.mortgageVariance.maxAmountVariancePercent.toFixed(1)}%`
-        ] : []),
-        ...(hasFlexLane ? [
-          `Flex loan variance (F lane): ${categoryMetrics.flexVariance.maxCountVariancePercent.toFixed(1)}%`,
-          `Flex dollar variance (F lane): ${categoryMetrics.flexVariance.maxAmountVariancePercent.toFixed(1)}%`
-        ] : []),
-        ...(hasFlexLane && flexVariance.officerCount ? [
-          `Flex consumer-vs-mortgage share variance: ${flexVariance.consumerShareVariancePercent.toFixed(1)}%`,
-          `Flex total dollars (consumer/mortgage): ${flexVariance.totalConsumerAmount.toFixed(0)} / ${flexVariance.totalMortgageAmount.toFixed(0)}`
-        ] : []),
-        ...(hasMortgageLane ? [`Mortgage lane routing to M officers: ${(mortgageRoutingShareToM * 100).toFixed(1)}%`] : []),
-        ...(isHelocOnlySupportPool ? [
-          `HELOC-only support thresholds applied: ${HELOC_SUPPORT_COUNT_THRESHOLD_PERCENT.toFixed(1)}% count / ${HELOC_SUPPORT_AMOUNT_THRESHOLD_PERCENT.toFixed(1)}% dollar with advisory to ${ADVISORY_AMOUNT_VARIANCE_UPPER_PERCENT.toFixed(1)}%.`,
-          `Weighted HELOC optimization variance: ${Number.isFinite(helocWeightedVariancePercent) ? helocWeightedVariancePercent.toFixed(1) : 'n/a'}%`
-        ] : []),
-        ...(isConsumerDollarInAdvisoryBand ? [
-          `Consumer dollar variance advisory band applied: ${AMOUNT_VARIANCE_THRESHOLD_PERCENT.toFixed(1)}%–${ADVISORY_AMOUNT_VARIANCE_UPPER_PERCENT.toFixed(1)}%`
-        ] : [])
-      ].filter(Boolean),
-      notes: [
-        'Model note: Officer Lane variance is measured on Consumer-lane and Mortgage-lane officers; Flex lane variance is measured and tracked separately.',
-        ...(isConsumerDollarInAdvisoryBand
-          ? [`Advisory note: Consumer dollar variance is slightly above the primary ${AMOUNT_VARIANCE_THRESHOLD_PERCENT.toFixed(1)}% threshold but within the ${ADVISORY_AMOUNT_VARIANCE_UPPER_PERCENT.toFixed(1)}% advisory band; flag for monitoring.`]
-          : []),
-        ...(hasFlexLane ? ['Flex officers are support roles and may cover HELOC or approved mortgage coverage scenarios.'] : []),
-        ...(isHelocOnlySupportPool && helocSupportThresholds.advisoryBandApplied
-          ? [`Advisory note: HELOC-only support flex variance is above ${HELOC_SUPPORT_AMOUNT_THRESHOLD_PERCENT.toFixed(1)}% and within ${ADVISORY_AMOUNT_VARIANCE_UPPER_PERCENT.toFixed(1)}%; monitor distribution.`]
-          : [])
-      ],
-      chartAnnotations: {
-        mortgageTitleSuffix: ' (Role-Based)',
-        mortgageNote: singleMlo
-          ? 'Primary mortgage allocation to MLOs is expected in this one-MLO lane configuration.'
-          : 'Primary mortgage allocation to MLOs is expected. Flex participation may be limited to approved support scenarios.'
-      },
-      roleAwareFlags: {
-        hasSingleMortgageOnlyOfficer: singleMlo,
-        mortgageVarianceExpected: singleMlo,
-        consumerDollarAdvisoryBandApplied: isConsumerDollarInAdvisoryBand,
-        helocOnlySupportThresholdsApplied: isHelocOnlySupportPool,
-        flexParticipationExpected: isFlexMortgageParticipationExpected({
-          totalMortgageAmount,
-          activeMortgageOnlyOfficerCount,
-          hasAnyMortgageOnlyOfficer,
-          allowBroadFlexMortgageCoverage
-        })
-      },
-      statusMetricDescriptor
-    };
-  }
-
-
   function isMortgageTypeName(typeName = '') {
     const normalizedType = String(typeName || '').trim().toLowerCase();
     if (!normalizedType) {
@@ -694,6 +320,43 @@
       return globalScope.getLoanCategoryForType(typeName) === 'mortgage';
     }
     return normalizedType.includes('mortgage') || normalizedType.includes('refi') || normalizedType === 'heloc';
+  }
+
+  function buildEngineDependencies() {
+    return {
+      countVarianceThresholdPercent: COUNT_VARIANCE_THRESHOLD_PERCENT,
+      amountVarianceThresholdPercent: AMOUNT_VARIANCE_THRESHOLD_PERCENT,
+      advisoryAmountVarianceUpperPercent: ADVISORY_AMOUNT_VARIANCE_UPPER_PERCENT,
+      helocSupportCountThresholdPercent: HELOC_SUPPORT_COUNT_THRESHOLD_PERCENT,
+      helocSupportAmountThresholdPercent: HELOC_SUPPORT_AMOUNT_THRESHOLD_PERCENT,
+      calculateMaxVariance,
+      normalizeOfficer,
+      getOfficerClassCode,
+      isFlexOfficer,
+      isMortgageOnlyOfficer,
+      hasSingleMortgageOnlyOfficer,
+      buildOfficerClassMap,
+      buildLaneBreakdownText,
+      buildLaneVarianceStatusDescriptor,
+      isHomogeneousHelocSupportPool,
+      isFlexMortgageParticipationExpected,
+      didFlexMortgageParticipationViolateRules
+    };
+  }
+
+  function getFairnessEngineEvaluator(engineType) {
+    const dependencies = buildEngineDependencies();
+    if (engineType === FAIRNESS_ENGINES.OFFICER_LANE) {
+      if (!OfficerLaneFairnessEngineClass) {
+        throw new Error('OfficerLaneFairnessEngine is unavailable.');
+      }
+      return new OfficerLaneFairnessEngineClass(dependencies);
+    }
+
+    if (!GlobalFairnessEngineClass) {
+      throw new Error('GlobalFairnessEngine is unavailable.');
+    }
+    return new GlobalFairnessEngineClass(dependencies);
   }
 
   function evaluateFairness({ engineType, officers = [], officerStats = [], optimizationMetrics = {} } = {}) {
@@ -761,9 +424,7 @@ Object.entries(typeBreakdown).filter(([typeName]) => isMortgageTypeName(typeName
       optimizationMetrics
     };
 
-    const engineResult = normalizedEngine === FAIRNESS_ENGINES.OFFICER_LANE
-      ? evaluateOfficerLaneFairness(context)
-      : evaluateGlobalFairness(context);
+    const engineResult = getFairnessEngineEvaluator(normalizedEngine).evaluate(context);
 
     return {
       engineType: normalizedEngine,
