@@ -517,9 +517,13 @@ function renderScenarioEngineRecommendation() {
     engineRecommendationBadgeEl.textContent = recommendation.recommendedLabel;
   }
   if (engineRecommendationSummaryEl) {
-    engineRecommendationSummaryEl.textContent = recommendation.matchesCurrent
-      ? `${recommendation.currentLabel} is the best fit for the current scenario.`
-      : `${recommendation.recommendedLabel} is recommended instead of ${recommendation.currentLabel}.`;
+    if (!recommendation.isActionable) {
+      engineRecommendationSummaryEl.textContent = 'Add more scenario details to evaluate the best-fit fairness model.';
+    } else {
+      engineRecommendationSummaryEl.textContent = recommendation.matchesCurrent
+        ? `${recommendation.currentLabel} is the best fit for the current scenario.`
+        : `${recommendation.recommendedLabel} is recommended instead of ${recommendation.currentLabel}.`;
+    }
   }
   if (engineRecommendationReasonsEl) {
     engineRecommendationReasonsEl.innerHTML = '';
