@@ -27,6 +27,11 @@ const loanAssignmentsEl = document.getElementById('loanAssignments');
 const officerAssignmentsEl = document.getElementById('officerAssignments');
 const fairnessAuditEl = document.getElementById('fairnessAudit');
 const fairnessModelSelectEl = document.getElementById('fairnessModelSelect');
+const engineRecommendationCardEl = document.getElementById('engineRecommendationCard');
+const engineRecommendationBadgeEl = document.getElementById('engineRecommendationBadge');
+const engineRecommendationSummaryEl = document.getElementById('engineRecommendationSummary');
+const engineRecommendationReasonsEl = document.getElementById('engineRecommendationReasons');
+const applyRecommendedEngineBtn = document.getElementById('applyRecommendedEngineBtn');
 const focusWeightActiveSummaryEl = document.getElementById('focusWeightActiveSummary');
 const consumerFocusedPrimaryInput = document.getElementById('consumerFocusedPrimaryInput');
 const consumerFocusedSecondaryInput = document.getElementById('consumerFocusedSecondaryInput');
@@ -494,6 +499,55 @@ function updateFairnessMethodologyCopy() {
   if (methodEl) {
     methodEl.textContent = 'Assignments are balanced using loan type mix, total goal dollars, loan count, and historical distribution to keep workloads more even and reduce perceived bias.';
   }
+}
+
+function renderScenarioEngineRecommendation() {
+  if (!engineRecommendationCardEl || !window.ScenarioEngineRecommendationService?.buildRecommendation) {
+    return;
+  }
+
+  const currentEngine = getSelectedFairnessEngine();
+  const recommendation = window.ScenarioEngineRecommendationService.buildRecommendation({
+    officers: getOfficerValues(),
+    loans: getLoanValues(),
+    currentEngine
+  });
+
+  if (engineRecommendationBadgeEl) {
+    engineRecommendationBadgeEl.textContent = recommendation.recommendedLabel;
+  }
+  if (engineRecommendationSummaryEl) {
+    if (!recommendation.isActionable) {
+      engineRecommendationSummaryEl.textContent = 'Add more scenario details to evaluate the best-fit fairness model.';
+    } else {
+      engineRecommendationSummaryEl.textContent = recommendation.matchesCurrent
+        ? `${recommendation.currentLabel} is the best fit for the current scenario.`
+        : `${recommendation.recommendedLabel} is recommended instead of ${recommendation.currentLabel}.`;
+    }
+  }
+  if (engineRecommendationReasonsEl) {
+    engineRecommendationReasonsEl.innerHTML = '';
+    (recommendation.reasons || []).forEach((reason) => {
+      const item = document.createElement('li');
+      item.textContent = reason;
+      engineRecommendationReasonsEl.appendChild(item);
+    });
+  }
+  if (applyRecommendedEngineBtn) {
+    applyRecommendedEngineBtn.hidden = !recommendation.isActionable || recommendation.matchesCurrent;
+    applyRecommendedEngineBtn.textContent = `Use ${recommendation.recommendedLabel}`;
+    applyRecommendedEngineBtn.dataset.engine = recommendation.recommendedEngine;
+  }
+
+  engineRecommendationCardEl.dataset.state = !recommendation.isActionable
+    ? 'idle'
+    : (recommendation.matchesCurrent ? 'recommended' : 'switch');
+}
+
+function refreshFairnessEngineUi() {
+  syncFairnessModelSelect();
+  updateFairnessMethodologyCopy();
+  renderScenarioEngineRecommendation();
 }
 
 function setFocusWeightSettingsMessage(text = '', tone = 'warning') {
@@ -1582,10 +1636,12 @@ function createInputRow(type, value = '', loanType = '', amount = '', isOnVacati
 
 function addOfficer(value = '', isOnVacation = false, officerConfig = {}) {
   officerList.appendChild(createInputRow('officer', value, '', '', isOnVacation, officerConfig));
+  renderScenarioEngineRecommendation();
 }
 
 function addLoan(value = '', loanType = '', amount = '') {
   loanList.appendChild(createInputRow('loan', value, loanType, amount));
+  renderScenarioEngineRecommendation();
 }
 
 function loadDemoLoansIntoForm() {
@@ -6487,6 +6543,7 @@ removeOfficerBtn?.addEventListener('click', () => {
     activeOfficerEditRow.remove();
   }
   closeOfficerEditorModal();
+  renderScenarioEngineRecommendation();
 });
 saveOfficerEditorBtn?.addEventListener('click', () => {
   const officerName = String(officerEditorNameInput?.value || '').trim();
@@ -6528,6 +6585,7 @@ saveOfficerEditorBtn?.addEventListener('click', () => {
   }
 
   closeOfficerEditorModal();
+  renderScenarioEngineRecommendation();
 });
 chooseFolderBtn.addEventListener('click', handleChooseFolderClick);
 launchDemoModeBtn?.addEventListener('click', handleLaunchDemoModeClick);
@@ -6614,14 +6672,34 @@ clearDemoDataBtn?.addEventListener('click', async () => {
   }
 });
 
-syncFairnessModelSelect();
-updateFairnessMethodologyCopy();
+refreshFairnessEngineUi();
 
 fairnessModelSelectEl?.addEventListener('change', () => {
   const selectedEngine = setSelectedFairnessEngine(fairnessModelSelectEl.value);
   fairnessModelSelectEl.value = selectedEngine;
-  updateFairnessMethodologyCopy();
+  refreshFairnessEngineUi();
 });
+
+applyRecommendedEngineBtn?.addEventListener('click', () => {
+  const recommendedEngine = applyRecommendedEngineBtn.dataset.engine;
+  if (!recommendedEngine) {
+    return;
+  }
+  setSelectedFairnessEngine(recommendedEngine);
+  refreshFairnessEngineUi();
+});
+
+officerList?.addEventListener('click', () => {
+  window.setTimeout(renderScenarioEngineRecommendation, 0);
+});
+
+officerList?.addEventListener('input', renderScenarioEngineRecommendation);
+officerList?.addEventListener('change', renderScenarioEngineRecommendation);
+loanList?.addEventListener('click', () => {
+  window.setTimeout(renderScenarioEngineRecommendation, 0);
+});
+loanList?.addEventListener('input', renderScenarioEngineRecommendation);
+loanList?.addEventListener('change', renderScenarioEngineRecommendation);
 
 randomizeBtn.addEventListener('click', async () => {
   if (!outputDirectoryHandle) {
@@ -6718,11 +6796,12 @@ clearBtn.addEventListener('click', () => {
     distributionDetailsEl.open = false;
   }
 
+  renderScenarioEngineRecommendation();
 });
 
 (async function initializeApp() {
   await refreshFocusWeightSettingsState();
-  updateFairnessMethodologyCopy();
+  refreshFairnessEngineUi();
   renderLoanTypes();
 
   if (distributionChartsEl) {

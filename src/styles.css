@@ -611,6 +611,72 @@ select {
   margin-bottom: 14px;
 }
 
+.engine-recommendation-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  border: 1px solid #d9e4ef;
+  border-radius: 14px;
+  background: #f6f9fc;
+}
+
+.engine-recommendation-card[data-state="recommended"] {
+  border-color: #b9dec8;
+  background: #eef8f3;
+}
+
+.engine-recommendation-card[data-state="switch"] {
+  border-color: #efc27e;
+  background: #fff4e5;
+}
+
+.engine-recommendation-copy {
+  min-width: 0;
+}
+
+.engine-recommendation-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.engine-recommendation-header strong {
+  color: var(--text);
+}
+
+.engine-recommendation-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.engine-recommendation-reasons {
+  margin: 8px 0 0 18px;
+  padding: 0;
+  color: #4f6072;
+  line-height: 1.4;
+}
+
+.engine-recommendation-reasons:empty {
+  display: none;
+}
+
+#applyRecommendedEngineBtn {
+  min-width: 210px;
+  background: #ffffff;
+  border-color: #efc27e;
+  color: #8a4f00;
+}
+
+#applyRecommendedEngineBtn:hover {
+  background: #fff9ef;
+}
+
 .folder-status {
   font-weight: 600;
 }
@@ -1489,6 +1555,7 @@ select {
   .output-step-top,
   .output-step-compact,
   .simulation-launch-card,
+  .engine-recommendation-card,
   .modal-header {
     flex-direction: column;
     align-items: flex-start;

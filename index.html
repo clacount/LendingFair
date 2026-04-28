@@ -176,6 +176,17 @@
         <button id="clearBtn" type="button">Reset Screen</button>
         <button id="removeLoanHistoryBtn" type="button">Remove Loan Application</button>
       </div>
+      <div id="engineRecommendationCard" class="engine-recommendation-card" data-state="idle">
+        <div class="engine-recommendation-copy">
+          <div class="engine-recommendation-header">
+            <strong>Recommended fairness model</strong>
+            <span id="engineRecommendationBadge" class="badge">Global Fairness</span>
+          </div>
+          <p id="engineRecommendationSummary">Add active officers and loans to see the best-fit fairness model.</p>
+          <ul id="engineRecommendationReasons" class="engine-recommendation-reasons"></ul>
+        </div>
+        <button id="applyRecommendedEngineBtn" type="button" hidden>Use Recommended Model</button>
+      </div>
       <div id="simulationLaunchCard" class="simulation-launch-card">
         <div class="simulation-launch-copy">
           <strong>Monthly Fairness Simulation</strong> <span class="badge fairness-model-badge" data-fairness-model-badge>Global Fairness</span>
@@ -463,6 +474,7 @@
 <script src="src/services/fairnessEngines/globalFairnessEngine.js"></script>
 <script src="src/services/fairnessEngines/officerLaneFairnessEngine.js"></script>
 <script src="src/services/fairnessEngineService.js"></script>
+<script src="src/services/scenarioEngineRecommendationService.js"></script>
 <script src="src/services/fairnessDisplayService.js"></script>
 <script src="src/services/focusWeightSettingsService.js"></script>
 <script src="src/services/mortgageFocusRoutingService.js"></script>
