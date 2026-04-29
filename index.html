@@ -4,6 +4,17 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LendingFair</title>
+  <script>
+    (function applySavedTheme() {
+      try {
+        const savedTheme = window.localStorage?.getItem('lendingfair-theme');
+        const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+        document.documentElement.dataset.theme = savedTheme || (prefersDark ? 'dark' : 'light');
+      } catch (error) {
+        document.documentElement.dataset.theme = 'light';
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="src/styles.css" />
 </head>
 <body>
@@ -15,6 +26,10 @@
         <h1>LendingFair</h1>
         <p class="brand-slogan">Fair and transparent loan assignment with audit-ready reporting</p>
       </div>
+      <button id="themeToggleBtn" class="theme-toggle-btn" type="button" aria-pressed="false">
+        <span class="theme-toggle-icon" aria-hidden="true">💡</span>
+        <span class="theme-toggle-text">Dark</span>
+      </button>
     </div>
     <div class="intro-steps">
       <strong>Quick steps</strong>

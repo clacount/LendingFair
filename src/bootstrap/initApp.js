@@ -102,6 +102,48 @@ const APP_BRANDING_LOGO_PATHS = [
 
 const logoEl = document.getElementById('logo');
 const footerLogoEl = document.getElementById('footerLogo');
+const themeToggleBtn = document.getElementById('themeToggleBtn');
+const THEME_STORAGE_KEY = 'lendingfair-theme';
+
+function getPreferredTheme() {
+  try {
+    const savedTheme = window.localStorage?.getItem(THEME_STORAGE_KEY);
+    if (savedTheme === 'dark' || savedTheme === 'light') {
+      return savedTheme;
+    }
+  } catch (error) {
+    // Ignore storage failures and fall back to system preference.
+  }
+
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function syncThemeToggle(theme) {
+  if (!themeToggleBtn) {
+    return;
+  }
+
+  const isDark = theme === 'dark';
+  const label = isDark ? 'Light' : 'Dark';
+  const textEl = themeToggleBtn.querySelector?.('.theme-toggle-text');
+  if (textEl) {
+    textEl.textContent = label;
+  } else {
+    themeToggleBtn.textContent = `${label} Mode`;
+  }
+  themeToggleBtn.setAttribute?.('aria-pressed', String(isDark));
+  themeToggleBtn.setAttribute?.('aria-label', `Switch to ${label.toLowerCase()} mode`);
+  themeToggleBtn.title = `Switch to ${label.toLowerCase()} mode`;
+}
+
+function applyTheme(theme) {
+  const normalizedTheme = theme === 'dark' ? 'dark' : 'light';
+  if (document.documentElement?.dataset) {
+    document.documentElement.dataset.theme = normalizedTheme;
+  }
+  syncThemeToggle(normalizedTheme);
+  return normalizedTheme;
+}
 
 function bindBrandLogoImage(imageEl, logoPathOrPaths) {
   if (!imageEl) {
@@ -138,6 +180,7 @@ function bindBrandLogoImage(imageEl, logoPathOrPaths) {
 
 bindBrandLogoImage(logoEl, HEADER_LOGO_PATH);
 bindBrandLogoImage(footerLogoEl, APP_BRANDING_LOGO_PATHS);
+applyTheme(getPreferredTheme());
 
 let outputDirectoryHandle = null;
 
@@ -6699,6 +6742,17 @@ clearDemoDataBtn?.addEventListener('click', async () => {
     setMessage(`Cleared ${removedEntries} item${removedEntries === 1 ? '' : 's'} from /${DEMO_DATA_FOLDER_NAME}. Demo mode ended and the app was reset.`, 'success');
   } catch (error) {
     setMessage(`Could not clear demo data: ${error.message}`, 'warning');
+  }
+});
+
+themeToggleBtn?.addEventListener('click', () => {
+  const currentTheme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+  const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  applyTheme(nextTheme);
+  try {
+    window.localStorage?.setItem(THEME_STORAGE_KEY, nextTheme);
+  } catch (error) {
+    // Theme still applies for this session when storage is unavailable.
   }
 });
 
