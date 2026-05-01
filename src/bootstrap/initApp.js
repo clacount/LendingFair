@@ -151,6 +151,9 @@ function bindBrandLogoImage(imageEl, logoPathOrPaths) {
     return;
   }
 
+  imageEl.onload = null;
+  imageEl.onerror = null;
+
   const logoPaths = Array.isArray(logoPathOrPaths)
     ? logoPathOrPaths.filter(Boolean)
     : [logoPathOrPaths].filter(Boolean);
@@ -179,7 +182,21 @@ function bindBrandLogoImage(imageEl, logoPathOrPaths) {
   imageEl.src = logoPaths[logoIndex];
 }
 
-bindBrandLogoImage(logoEl, HEADER_LOGO_PATH);
+function syncHeaderLogoBranding() {
+  if (canUseFeature(entitlements?.FEATURES?.CUSTOM_BRANDING)) {
+    bindBrandLogoImage(logoEl, HEADER_LOGO_PATH);
+    return;
+  }
+
+  if (logoEl) {
+    logoEl.onload = null;
+    logoEl.onerror = null;
+    logoEl.style.display = 'none';
+    logoEl.removeAttribute('src');
+  }
+}
+
+syncHeaderLogoBranding();
 bindBrandLogoImage(footerLogoEl, APP_BRANDING_LOGO_PATHS);
 applyTheme(getPreferredTheme());
 
@@ -551,76 +568,13 @@ function getTierValidationForRun(officers, loans) {
   });
 }
 
-function applyLockedControlState(control, isAllowed, message) {
-  if (!control) {
-    return;
-  }
-
-  control.disabled = !isAllowed;
-  if (isAllowed) {
-    control.removeAttribute('title');
-    control.removeAttribute('aria-disabled');
-    control.dataset.locked = 'false';
-    return;
-  }
-
-  control.title = message;
-  control.setAttribute('aria-disabled', 'true');
-  control.dataset.locked = 'true';
-}
-
 function updateEntitlementUi() {
-  if (!entitlements) {
-    return;
-  }
-
-  const { FEATURES } = entitlements;
-  const canUseOfficerLane = entitlements.canUseFeature(FEATURES.OFFICER_LANE_ENGINE);
-  const canUseMortgageLoans = entitlements.canUseFeature(FEATURES.MORTGAGE_LOANS);
-  const canUseMultiOfficerRoles = entitlements.canUseFeature(FEATURES.MULTI_OFFICER_ROLES);
-  const canUseSimulation = entitlements.canUseFeature(FEATURES.SIMULATION);
-  const canUseEom = entitlements.canUseFeature(FEATURES.EOM_REPORT);
-
-  const officerLaneOption = fairnessModelSelectEl?.querySelector?.('option[value="officer_lane"]');
-  if (officerLaneOption) {
-    officerLaneOption.disabled = !canUseOfficerLane;
-    officerLaneOption.title = canUseOfficerLane ? '' : 'Officer Lane Fairness requires Pro or Platinum.';
-  }
-  if (!canUseOfficerLane && getSelectedFairnessEngine() === 'officer_lane') {
-    setSelectedFairnessEngine('global');
-    syncFairnessModelSelect();
-  }
-
-  applyLockedControlState(
-    document.getElementById('endOfMonthBtn'),
-    canUseEom,
-    'End-of-month reporting requires Pro or Platinum.'
-  );
-  applyLockedControlState(
-    document.getElementById('runSimulationBtn'),
-    canUseSimulation,
-    'Monthly fairness simulation requires Platinum.'
-  );
-
-  if (loanTypeEditorCategoryInput) {
-    const mortgageOption = loanTypeEditorCategoryInput.querySelector('option[value="mortgage"]');
-    if (mortgageOption) {
-      mortgageOption.disabled = !canUseMortgageLoans;
-    }
-  }
-
-  if (officerEditorClassSelect) {
-    officerEditorClassSelect.disabled = false;
-    officerEditorClassSelect.dataset.locked = canUseMultiOfficerRoles ? 'false' : 'partial';
-    officerEditorClassSelect.title = canUseMultiOfficerRoles
-      ? ''
-      : 'Basic allows Consumer Only officers. Choose Consumer Only to make legacy officers compliant.';
-    [...officerEditorClassSelect.options].forEach((option) => {
-      const isSingleRoleOption = option.value === 'consumer-only';
-      option.disabled = !canUseMultiOfficerRoles && !isSingleRoleOption;
-      option.title = option.disabled ? 'Multiple officer roles require Pro or Platinum.' : '';
-    });
-  }
+  window.LendingFairEntitlementUI?.applyTierEntitlementsToUI?.({
+    fairnessModelSelect: fairnessModelSelectEl,
+    officerEditorClassSelect,
+    getSelectedFairnessEngine,
+    setSelectedFairnessEngine
+  });
 }
 
 function updateFairnessMethodologyCopy() {
@@ -681,6 +635,7 @@ function renderScenarioEngineRecommendation() {
 
 function refreshFairnessEngineUi() {
   updateEntitlementUi();
+  syncHeaderLogoBranding();
   refreshLoanTypeSelects();
   syncFairnessModelSelect();
   updateFairnessMethodologyCopy();
@@ -1197,6 +1152,10 @@ async function ensureImageElementReady(imageEl, timeoutMs = 1800) {
 }
 
 async function getLogoImageDataUrl() {
+  if (!canUseFeature(entitlements?.FEATURES?.CUSTOM_BRANDING)) {
+    return null;
+  }
+
   await ensureImageElementReady(logoEl);
   return getLoadedImageDataUrl(logoEl) || getImageDataUrl(HEADER_LOGO_PATH);
 }
@@ -2502,6 +2461,14 @@ function getDonutColor(index) {
   return palette[index % palette.length];
 }
 
+function getChartTheme(config = {}) {
+  const configuredTheme = String(config.theme || '').trim().toLowerCase();
+  if (configuredTheme === 'dark' || configuredTheme === 'light') {
+    return configuredTheme;
+  }
+  return document.documentElement?.dataset?.theme === 'dark' ? 'dark' : 'light';
+}
+
 function drawDonutChart(config) {
   const {
     title,
@@ -2509,6 +2476,11 @@ function drawDonutChart(config) {
     field,
     valueFormatter
   } = config;
+  const chartTheme = getChartTheme(config);
+  const isDarkTheme = chartTheme === 'dark';
+  const textColor = isDarkTheme ? '#f3f4f6' : '#1c2430';
+  const mutedTextColor = isDarkTheme ? '#c6d1df' : '#5e6b7a';
+  const centerTextColor = '#1c2430';
 
   const canvas = document.createElement('canvas');
   canvas.width = 420;
@@ -2521,8 +2493,12 @@ function drawDonutChart(config) {
   const innerRadius = 40;
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (isDarkTheme) {
+    ctx.fillStyle = '#243042';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
 
-  ctx.fillStyle = '#1c2430';
+  ctx.fillStyle = textColor;
   ctx.font = 'bold 15px Arial';
   const titleLines = wrapChartTitle(ctx, title, 380);
   titleLines.forEach((line, index) => {
@@ -2533,7 +2509,7 @@ function drawDonutChart(config) {
   const totalValue = distribution.reduce((sum, entry) => sum + entry[field], 0);
 
   if (!totalValue) {
-    ctx.fillStyle = '#5e6b7a';
+    ctx.fillStyle = mutedTextColor;
     ctx.font = '14px Arial';
     ctx.fillText('No data available', 55, centerY);
     return { canvas, imageDataUrl: canvas.toDataURL('image/png') };
@@ -2560,7 +2536,7 @@ function drawDonutChart(config) {
   ctx.fillStyle = '#ffffff';
   ctx.fill();
 
-  ctx.fillStyle = '#1c2430';
+  ctx.fillStyle = centerTextColor;
   ctx.font = 'bold 16px Arial';
   ctx.textAlign = 'center';
   ctx.fillText('Total', centerX, centerY - 4);
@@ -2575,7 +2551,7 @@ function drawDonutChart(config) {
     ctx.fillStyle = getDonutColor(index);
     ctx.fillRect(legendX, legendY - 10, 12, 12);
 
-    ctx.fillStyle = '#1c2430';
+    ctx.fillStyle = textColor;
     ctx.font = '12px Arial';
     const percentLabel = `${(segment.percent * 100).toFixed(1)}%`;
     const valueLabel = valueFormatter(segment.value);
@@ -6652,6 +6628,11 @@ addLoanBtn.addEventListener('click', () => {
   addLoan();
 });
 importLoansBtn?.addEventListener('click', () => {
+  if (!canUseFeature(entitlements?.FEATURES?.IMPORT_LOANS)) {
+    setStepMessage('step3', 'Import Loans requires Platinum.', 'warning');
+    return;
+  }
+
   if (!outputDirectoryHandle) {
     setStepMessage('step1', 'Choose an output folder before importing loans.', 'warning');
     return;
@@ -6888,6 +6869,13 @@ themeToggleBtn?.addEventListener('click', () => {
 });
 
 window.addEventListener?.('lendingfair:tierchange', refreshFairnessEngineUi);
+window.LendingFairEntitlementUI?.bindInternalTierSelector?.({
+  fairnessModelSelect: fairnessModelSelectEl,
+  officerEditorClassSelect,
+  getSelectedFairnessEngine,
+  setSelectedFairnessEngine,
+  onTierChange: refreshFairnessEngineUi
+});
 
 refreshFairnessEngineUi();
 

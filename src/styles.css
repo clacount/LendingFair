@@ -145,6 +145,18 @@ header p {
   margin-top: 12px;
 }
 
+.internal-tier-control {
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.internal-tier-control label {
+  display: block;
+  margin-bottom: 6px;
+}
+
 .fairness-model-header {
   display: flex;
   align-items: center;
@@ -831,7 +843,6 @@ select {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  flex-wrap: wrap;
 }
 
 .audit-metric {
@@ -992,7 +1003,6 @@ select {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  flex-wrap: wrap;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
@@ -1219,6 +1229,29 @@ select {
 
 #runSimulationBtn:hover {
   background: #f7fcf9;
+}
+
+[data-theme="dark"] #runSimulationBtn {
+  background: #253146;
+  border-color: var(--border);
+  color: var(--text);
+  box-shadow: none;
+}
+
+[data-theme="dark"] #runSimulationBtn:hover {
+  background: #303d55;
+}
+
+[data-theme="dark"] #submitSimulationBtn {
+  background: #253146;
+  border-color: var(--border);
+  color: var(--text);
+  box-shadow: none;
+}
+
+[data-theme="dark"] #submitSimulationBtn:hover {
+  background: #303d55;
+  border-color: var(--border);
 }
 
 .modal-overlay[hidden] {
@@ -1467,7 +1500,7 @@ select {
   padding: 22px;
 }
 
-#simulationReportingCard 
+#simulationReportingCard,
 
 .loan-import-body {
   display: flex;
@@ -1616,6 +1649,11 @@ select {
   border-color: var(--border);
 }
 
+[data-theme="dark"] .internal-tier-control {
+  background: #172033;
+  border-color: var(--border);
+}
+
 [data-theme="dark"] input::placeholder,
 [data-theme="dark"] textarea::placeholder {
   color: #7f8ea3;
@@ -1634,10 +1672,14 @@ select {
 [data-theme="dark"] .results,
 [data-theme="dark"] .loan-line,
 [data-theme="dark"] .result-group,
+[data-theme="dark"] .simulation-officer-manager,
+[data-theme="dark"] .officer-name-value,
+[data-theme="dark"] .officer-class-label,
 [data-theme="dark"] .distribution-chart-card,
 [data-theme="dark"] .simulation-launch-card,
 [data-theme="dark"] .engine-recommendation-card,
 [data-theme="dark"] .loan-type-details,
+[data-theme="dark"] .loan-import-section,
 [data-theme="dark"] .loan-import-preview-table,
 [data-theme="dark"] .simulation-officer-row,
 [data-theme="dark"] .report-panel,
@@ -1678,6 +1720,36 @@ select {
 
 [data-theme="dark"] .card {
   background: var(--card);
+}
+
+[data-theme="dark"] #simulationReportingCard {
+  background: #243042;
+  border-color: var(--border);
+  color: var(--text);
+}
+
+[data-theme="dark"] #simulationReportingCard .hint {
+  color: var(--muted);
+}
+
+[data-theme="dark"] .simulation-officer-manager .hint,
+[data-theme="dark"] .simulation-officer-column-header {
+  color: var(--muted);
+}
+
+[data-theme="dark"] #simulationOfficerList.results.empty {
+  background: #172033;
+  border-color: var(--border);
+  color: var(--muted);
+}
+
+[data-theme="dark"] .loan-import-section strong,
+[data-theme="dark"] .loan-import-summary-list {
+  color: var(--text);
+}
+
+[data-theme="dark"] .loan-import-mapping-grid label span {
+  color: var(--muted);
 }
 
 [data-theme="dark"] .output-box[data-state="ready"],

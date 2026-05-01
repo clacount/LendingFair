@@ -18,8 +18,21 @@
     return palette[index % palette.length];
   }
 
+  function getChartTheme(config = {}) {
+    const configuredTheme = String(config.theme || '').trim().toLowerCase();
+    if (configuredTheme === 'dark' || configuredTheme === 'light') {
+      return configuredTheme;
+    }
+    return document.documentElement?.dataset?.theme === 'dark' ? 'dark' : 'light';
+  }
+
   function drawDonutChart(config) {
     const { title, distribution, field, valueFormatter } = config;
+    const chartTheme = getChartTheme(config);
+    const isDarkTheme = chartTheme === 'dark';
+    const textColor = isDarkTheme ? '#f3f4f6' : '#1c2430';
+    const mutedTextColor = isDarkTheme ? '#c6d1df' : '#5e6b7a';
+    const centerTextColor = '#1c2430';
     const canvas = document.createElement('canvas');
     canvas.width = 420;
     canvas.height = 340;
@@ -31,7 +44,12 @@
     const innerRadius = 40;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#1c2430';
+    if (isDarkTheme) {
+      ctx.fillStyle = '#243042';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    ctx.fillStyle = textColor;
     ctx.font = 'bold 15px Arial';
     const titleLines = wrapChartTitle(ctx, title, 380);
     titleLines.forEach((line, index) => {
@@ -42,7 +60,7 @@
     const totalValue = distribution.reduce((sum, entry) => sum + (Number(entry[field]) || 0), 0);
 
     if (!totalValue) {
-      ctx.fillStyle = '#5e6b7a';
+      ctx.fillStyle = mutedTextColor;
       ctx.font = '14px Arial';
       ctx.fillText('No data available', 55, centerY);
       return { canvas, imageDataUrl: canvas.toDataURL('image/png') };
@@ -66,7 +84,7 @@
     ctx.fillStyle = '#ffffff';
     ctx.fill();
 
-    ctx.fillStyle = '#1c2430';
+    ctx.fillStyle = centerTextColor;
     ctx.font = 'bold 16px Arial';
     ctx.textAlign = 'center';
     ctx.fillText('Total', centerX, centerY - 4);
@@ -79,7 +97,7 @@
       const legendX = 225;
       ctx.fillStyle = getDonutColor(index);
       ctx.fillRect(legendX, legendY - 10, 12, 12);
-      ctx.fillStyle = '#1c2430';
+      ctx.fillStyle = textColor;
       ctx.font = '12px Arial';
       ctx.fillText(`${segment.officer}`, legendX + 18, legendY);
       ctx.fillText(`${valueFormatter(segment.value)} • ${(segment.percent * 100).toFixed(1)}%`, legendX + 18, legendY + 14);
