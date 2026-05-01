@@ -3574,6 +3574,11 @@ async function handlePreviewLoanImport() {
 }
 
 async function handleConfirmLoanImport() {
+  if (!canUseFeature(entitlements?.FEATURES?.IMPORT_LOANS)) {
+    renderLoanImportMessage('Import Loans requires Platinum.', 'warning');
+    return;
+  }
+
   const preview = currentLoanImportContext?.preview;
   if (!preview?.readyRows?.length) {
     renderLoanImportMessage('Preview the file before importing.', 'warning');
