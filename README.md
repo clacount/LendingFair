@@ -60,6 +60,8 @@ The app also keeps a CSV state file named `loan-randomizer-running-totals.csv` i
 - Basic means consumer-loan assignment only using the Global fairness engine. Auto, Personal, Credit Card, and Collateralized are treated as consumer loans.
 - Pro unlocks mortgage loans, multiple officer roles, and Officer Lane Fairness.
 - Platinum is currently the default tier so all existing behavior remains available while productization continues.
+- The entitlement layer is wired into UI controls, run validation, PDF/report sections, and advanced testing tools.
+- An **Internal Tier Mode** selector is available only as a temporary testing control for Basic, Pro, and Platinum behavior.
 - Licensing and license-code activation are not implemented yet.
 - Future licensing can hydrate the current tier through the entitlement layer to unlock the right capabilities.
 

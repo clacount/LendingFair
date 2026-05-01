@@ -36,6 +36,7 @@
     FAIRNESS_AUDIT_REPORT: 'fairness_audit_report',
     RUNNING_TOTALS_REPORT: 'running_totals_report',
     EOM_REPORT: 'eom_report',
+    IMPORT_LOANS: 'import_loans',
     SIMULATION: 'simulation',
     LIVE_RUNS: 'live_runs',
     CUSTOM_BRANDING: 'custom_branding',
@@ -66,6 +67,7 @@
 
   const PLATINUM_FEATURES = [
     ...PRO_FEATURES,
+    FEATURES.IMPORT_LOANS,
     FEATURES.SIMULATION,
     FEATURES.LIVE_RUNS,
     FEATURES.CUSTOM_BRANDING,

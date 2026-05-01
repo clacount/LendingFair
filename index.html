@@ -35,6 +35,15 @@
       <strong>Quick steps</strong>
       <p>1. Connect a working folder for reports and saved history. 2. Load or enter loan officers and loans. 3. Run fair assignment and generate audit-ready reports.</p>
       <div class="fairness-model-control">
+        <div class="internal-tier-control">
+          <label for="internalTierModeSelect">Internal Tier Mode</label>
+          <select id="internalTierModeSelect" aria-label="Internal Tier Mode">
+            <option value="basic">Basic</option>
+            <option value="pro">Pro</option>
+            <option value="platinum">Platinum</option>
+          </select>
+          <p class="hint" id="internalTierModeStatus">Temporary testing control. Licensing is not implemented yet.</p>
+        </div>
         <div class="fairness-model-header">
           <span class="badge fairness-model-badge" data-fairness-model-badge>Global Fairness</span>
           <label for="fairnessModelSelect">Fairness Model</label>
@@ -493,6 +502,7 @@
 <script src="src/integrations/graph-sharepoint-stub.js"></script>
 <script src="src/utils/loanCategoryUtils.js"></script>
 <script src="src/config/tiers.js"></script>
+<script src="src/ui/entitlement-ui.js"></script>
 <script src="src/services/fairnessEngines/globalFairnessEngine.js"></script>
 <script src="src/services/fairnessEngines/officerLaneFairnessEngine.js"></script>
 <script src="src/services/fairnessEngineService.js"></script>

@@ -34,6 +34,7 @@ test('Basic supports consumer loans and the global engine only', () => {
   assert.equal(entitlements.canUseFeature(FEATURES.OFFICER_LANE_ENGINE, TIERS.BASIC), false);
   assert.equal(entitlements.canUseFeature(FEATURES.MULTI_OFFICER_ROLES, TIERS.BASIC), false);
   assert.equal(entitlements.canUseFeature(FEATURES.MORTGAGE_LOANS, TIERS.BASIC), false);
+  assert.equal(entitlements.canUseFeature(FEATURES.IMPORT_LOANS, TIERS.BASIC), false);
 });
 
 test('Pro supports officer lane, consumer loans, mortgage loans, and multiple officer roles', () => {
@@ -41,6 +42,7 @@ test('Pro supports officer lane, consumer loans, mortgage loans, and multiple of
   assert.equal(entitlements.canUseFeature(FEATURES.CONSUMER_LOANS, TIERS.PRO), true);
   assert.equal(entitlements.canUseFeature(FEATURES.MORTGAGE_LOANS, TIERS.PRO), true);
   assert.equal(entitlements.canUseFeature(FEATURES.MULTI_OFFICER_ROLES, TIERS.PRO), true);
+  assert.equal(entitlements.canUseFeature(FEATURES.IMPORT_LOANS, TIERS.PRO), false);
 });
 
 test('validation rejects Basic with Officer Lane engine', () => {
