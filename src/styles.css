@@ -97,6 +97,14 @@ header p {
   margin: 0;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .theme-toggle-btn {
   position: fixed;
   top: 112px;
@@ -135,6 +143,20 @@ header p {
   background: #ffffff;
   border-color: #f4d47d;
   box-shadow: 0 18px 42px rgba(28, 36, 48, 0.24);
+}
+
+.documentation-btn {
+  width: auto;
+  min-height: 42px;
+  padding: 10px 14px;
+  border-color: var(--border);
+  background: #ffffff;
+  color: var(--text);
+  box-shadow: 0 10px 24px rgba(28, 36, 48, 0.12);
+}
+
+.documentation-btn:hover {
+  background: #f6f8fb;
 }
 
 .fairness-model-control {
@@ -1323,6 +1345,32 @@ select {
   line-height: 1;
 }
 
+.documentation-modal-card {
+  width: min(100%, 620px);
+}
+
+.documentation-link-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.documentation-link-grid a {
+  display: block;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f7f9fc;
+  color: var(--text);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.documentation-link-grid a:hover {
+  background: #edf4f8;
+  border-color: #b9c9d6;
+}
+
 .simulation-form {
   display: flex;
   flex-direction: column;
@@ -1684,6 +1732,27 @@ select {
   border-color: #7f3b3b;
   background: #321b21;
   color: #ffb4b4;
+}
+
+[data-theme="dark"] .documentation-btn {
+  background: #253146;
+  border-color: var(--border);
+  color: var(--text);
+  box-shadow: none;
+}
+
+[data-theme="dark"] .documentation-btn:hover {
+  background: #303d55;
+}
+
+[data-theme="dark"] .documentation-link-grid a {
+  background: #172033;
+  border-color: var(--border);
+  color: var(--text);
+}
+
+[data-theme="dark"] .documentation-link-grid a:hover {
+  background: #253146;
 }
 
 [data-theme="dark"] input::placeholder,

@@ -11,6 +11,9 @@ const quickLaunchDemoModeBtn = document.getElementById('quickLaunchDemoModeBtn')
 const endDemoModeBtn = document.getElementById('endDemoModeBtn');
 const clearDemoDataBtn = document.getElementById('clearDemoDataBtn');
 const endOfMonthBtn = document.getElementById('endOfMonthBtn');
+const documentationBtn = document.getElementById('documentationBtn');
+const documentationModalEl = document.getElementById('documentationModal');
+const closeDocumentationModalBtn = document.getElementById('closeDocumentationModalBtn');
 const randomizeBtn = document.getElementById('randomizeBtn');
 const clearBtn = document.getElementById('clearBtn');
 const removeLoanHistoryBtn = document.getElementById('removeLoanHistoryBtn');
@@ -6904,6 +6907,22 @@ themeToggleBtn?.addEventListener('click', () => {
     window.localStorage?.setItem(THEME_STORAGE_KEY, nextTheme);
   } catch (error) {
     // Theme still applies for this session when storage is unavailable.
+  }
+});
+
+documentationBtn?.addEventListener('click', () => {
+  if (documentationModalEl) {
+    documentationModalEl.hidden = false;
+  }
+});
+closeDocumentationModalBtn?.addEventListener('click', () => {
+  if (documentationModalEl) {
+    documentationModalEl.hidden = true;
+  }
+});
+documentationModalEl?.addEventListener('click', (event) => {
+  if (event.target === documentationModalEl) {
+    documentationModalEl.hidden = true;
   }
 });
 

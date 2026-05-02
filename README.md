@@ -4,6 +4,13 @@
 
 This is a simple local web app for assigning loans to loan officers using fair random distribution.
 
+## Customer-facing documentation
+- Pilot/customer documentation lives in `docs/customer/`.
+- Start with `docs/customer/GETTING_STARTED.md`.
+- Basic customers can use `docs/customer/BASIC_USER_GUIDE.md`.
+- Pro customers can use `docs/customer/PRO_USER_GUIDE.md`.
+- Methodology, implementation, limitations, and pilot QA checklists are also included in that folder.
+
 ## How to use
 1. Download and unzip the project.
 2. Open `index.html` in a current version of Microsoft Edge or Google Chrome.
