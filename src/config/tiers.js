@@ -215,6 +215,10 @@
     };
   }
 
+  function validateSimulationEntitlement({ tier = getCurrentTier(), businessDays } = {}) {
+    return validateSimulationDays(businessDays, tier);
+  }
+
   function canUseFeature(feature, tier = getCurrentTier()) {
     return getTierConfig(tier).features.includes(feature);
   }
@@ -424,6 +428,7 @@
     getSimulationMaxDays,
     canUseUnlimitedSimulation,
     validateSimulationDays,
+    validateSimulationEntitlement,
     canUseFeature,
     requireFeature,
     canUseEngine,

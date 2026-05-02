@@ -11,6 +11,12 @@ This is a simple local web app for assigning loans to loan officers using fair r
 - Pro customers can use `docs/customer/PRO_USER_GUIDE.md`.
 - Methodology, implementation, limitations, and pilot QA checklists are also included in that folder.
 
+## Release readiness checks
+- Run automated guardrails with `node --test test/*.test.js`.
+- Run a browser syntax check with `find src test -name '*.js' -exec node --check {} \;`.
+- Use `docs/customer/PILOT_RELEASE_CHECKLIST.md` before packaging a Basic or Pro pilot build.
+- The checklist covers customer mode, tier locking, simulation limits, PDF generation, CSV persistence, duplicate loan prevention, report metadata, internal-control hiding, and known-limitations review.
+
 ## How to use
 1. Download and unzip the project.
 2. Open `index.html` in a current version of Microsoft Edge or Google Chrome.
