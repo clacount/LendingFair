@@ -7,6 +7,10 @@
     return globalScope.LendingFairCustomerConfig || null;
   }
 
+  function getAppMetadata() {
+    return globalScope.LendingFairAppMetadata || null;
+  }
+
   function canUseFeature(feature, entitlements = getEntitlements()) {
     return !entitlements || entitlements.canUseFeature(feature);
   }
@@ -101,6 +105,7 @@
 
   function renderCustomerProductLabel(state) {
     const customerConfig = getCustomerConfig();
+    const appMetadata = getAppMetadata();
     const labelEl = globalScope.document?.getElementById?.('customerProductLabel');
     if (!labelEl || !customerConfig?.isCustomerMode?.()) {
       if (labelEl) {
@@ -119,12 +124,27 @@
       return;
     }
 
-    const productLabel = customerConfig.getProductLabel?.(state.tierLabel) || `LendingFair ${state.tierLabel}`;
+    const productLabel = appMetadata?.getProductVersionLabel?.(state.tierLabel)
+      || customerConfig.getProductLabel?.(state.tierLabel)
+      || `LendingFair ${state.tierLabel}`;
     const customerName = customerConfig.getCustomerConfig?.().customerName || '';
     labelEl.textContent = customerName
       ? `${productLabel} | Configured for: ${customerName}`
       : productLabel;
     labelEl.dataset.state = 'ready';
+  }
+
+  function renderAppVersionLabel(state) {
+    const appMetadata = getAppMetadata();
+    const labelEl = globalScope.document?.getElementById?.('appVersionLabel');
+    if (!labelEl || !appMetadata) {
+      return;
+    }
+
+    const customerName = getCustomerConfig()?.getCustomerConfig?.().customerName || '';
+    labelEl.textContent = customerName
+      ? `${appMetadata.getProductVersionLabel?.(state.tierLabel)} | Configured for: ${customerName}`
+      : appMetadata.getProductVersionLabel?.(state.tierLabel);
   }
 
   function applyCustomerModeControls() {
@@ -177,6 +197,7 @@
 
     syncInternalTierSelector(state, entitlements);
     renderCustomerProductLabel(state);
+    renderAppVersionLabel(state);
     applyCustomerModeControls();
 
     const fairnessSelect = options.fairnessModelSelect || doc.getElementById('fairnessModelSelect');

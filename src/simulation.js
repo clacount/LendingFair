@@ -1214,9 +1214,17 @@
 
   function buildSimulationPdfLines(simulationResult) {
     const officerLaneModelNote = getOfficerLaneModelNote(simulationResult.fairnessSummary.evaluation);
+    const generatedAtLabel = formatDisplayTimestamp(new Date());
+    const fairnessEngineLabel = fairnessDisplayService?.getFairnessModelLabel(simulationResult.fairnessSummary.evaluation.engineType) || 'Global Fairness';
+    const releaseMetadataLines = window.LendingFairAppMetadata?.buildReportMetadataLines?.({
+      generatedAtLabel,
+      fairnessEngineLabel
+    }) || [`Generated: ${generatedAtLabel}`, `Fairness engine: ${fairnessEngineLabel}`];
 
     const lines = [
       { text: 'SIMULATION REPORT - NOT ACTUAL PRODUCTION DATA', size: 18, gapAfter: 16 },
+      ...releaseMetadataLines.map((text) => ({ text, size: 10, gapAfter: 4 })),
+      { text: '', size: 10, gapAfter: 4 },
       { text: `Simulation month: ${simulationResult.monthLabel}`, size: 11, gapAfter: 4 },
       { text: `Business days: ${simulationResult.businessDays}`, size: 11, gapAfter: 4 },
       { text: `Loan officers: ${simulationResult.officers.length}`, size: 11, gapAfter: 4 },
@@ -1228,7 +1236,7 @@
       { text: `Active simulation loan types: ${simulationResult.effectiveLoanTypes.join(', ') || 'None'}`, size: 11, gapAfter: simulationResult.excludedLoanTypes.length ? 4 : 14 },
       ...(simulationResult.excludedLoanTypes.length ? [{ text: `Excluded loan types due to officer eligibility: ${simulationResult.excludedLoanTypes.join(', ')}`, size: 10, gapAfter: 14 }] : []),
       { text: 'Fairness Summary', size: 14, gapAfter: 10 },
-      { text: `Fairness model: ${fairnessDisplayService?.getFairnessModelLabel(simulationResult.fairnessSummary.evaluation.engineType) || 'Global Fairness'}`, size: 11, gapAfter: 4 },
+      { text: `Fairness model: ${fairnessEngineLabel}`, size: 11, gapAfter: 4 },
       ...(officerLaneModelNote ? [{ text: `Model note: ${officerLaneModelNote}`, size: 10, gapAfter: 6 }] : []),
       { text: `Overall result: ${simulationResult.fairnessSummary.overallPass ? 'PASS' : 'REVIEW'}`, size: 12, gapAfter: 4 },
       { text: `Average loans per officer: ${simulationResult.fairnessSummary.averageLoanCount.toFixed(2)}`, size: 11, gapAfter: 4 },
