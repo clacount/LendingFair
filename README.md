@@ -84,6 +84,12 @@ The app also keeps a CSV state file named `loan-randomizer-running-totals.csv` i
 - Generated assignment, EOM, custom, and simulation reports include app version, active tier, release channel, generated timestamp, and fairness engine metadata for audit/support.
 - Current pilot version metadata is maintained in `src/config/appMetadata.js`.
 
+## Support export
+- The app includes a local-only **Export Support Package** action for Basic, Pro, and Platinum pilots.
+- The export downloads a JSON package with app metadata, active tier, selected fairness engine, expected month files, missing-file notes, and generated report filenames when available.
+- The package may include loan IDs, officer names, and assignment history, so it should only be shared with authorized support contacts.
+- See `docs/customer/SUPPORT_EXPORT.md` for customer-facing guidance.
+
 ## Teams / SharePoint hosting notes
 - If this app is opened *inside* a SharePoint/Teams page frame, folder-picker APIs may be blocked by browser/embed security settings.
 - Recommended flow: open the app directly in Edge/Chrome (not embedded), then select a local OneDrive-synced folder that maps to the SharePoint document library.
