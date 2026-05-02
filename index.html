@@ -27,10 +27,13 @@
         <p class="brand-slogan">Fair and transparent loan assignment with audit-ready reporting</p>
         <div id="customerProductLabel" class="customer-product-label" hidden></div>
       </div>
-      <button id="themeToggleBtn" class="theme-toggle-btn" type="button" aria-pressed="false">
-        <span class="theme-toggle-icon" aria-hidden="true">💡</span>
-        <span class="theme-toggle-text">Dark</span>
-      </button>
+      <div class="header-actions">
+        <button id="documentationBtn" class="documentation-btn" type="button">Documentation</button>
+        <button id="themeToggleBtn" class="theme-toggle-btn" type="button" aria-pressed="false">
+          <span class="theme-toggle-icon" aria-hidden="true">💡</span>
+          <span class="theme-toggle-text">Dark</span>
+        </button>
+      </div>
     </div>
     <div class="intro-steps">
       <strong>Quick steps</strong>
@@ -268,6 +271,27 @@
   </footer>
 </div>
 
+<div id="documentationModal" class="modal-overlay" hidden>
+  <div class="modal-card documentation-modal-card" role="dialog" aria-modal="true" aria-labelledby="documentationModalTitle">
+    <div class="modal-header">
+      <div>
+        <h2 id="documentationModalTitle">Customer Documentation</h2>
+        <p class="hint">Open a guide in a new tab. These files are included with the local LendingFair package.</p>
+      </div>
+      <button id="closeDocumentationModalBtn" class="modal-close-btn" type="button" aria-label="Close documentation">×</button>
+    </div>
+
+    <div class="documentation-link-grid">
+      <a href="docs/customer/GETTING_STARTED.md" target="_blank" rel="noopener">Getting Started</a>
+      <a href="docs/customer/BASIC_USER_GUIDE.md" target="_blank" rel="noopener">Basic User Guide</a>
+      <a href="docs/customer/PRO_USER_GUIDE.md" target="_blank" rel="noopener">Pro User Guide</a>
+      <a href="docs/customer/FAIRNESS_METHODOLOGY.md" target="_blank" rel="noopener">Fairness Methodology</a>
+      <a href="docs/customer/IMPLEMENTATION_CHECKLIST.md" target="_blank" rel="noopener">Implementation Checklist</a>
+      <a href="docs/customer/KNOWN_LIMITATIONS.md" target="_blank" rel="noopener">Known Limitations</a>
+      <a href="docs/customer/PILOT_RELEASE_CHECKLIST.md" target="_blank" rel="noopener">Pilot Release Checklist</a>
+    </div>
+  </div>
+</div>
 
 <div id="loanImportModal" class="modal-overlay" hidden>
   <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="loanImportModalTitle">
