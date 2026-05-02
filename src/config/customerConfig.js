@@ -55,8 +55,12 @@
   const configuredTier = normalizeTier(providedConfig.tier);
   const customerName = String(providedConfig.customerName || '').trim();
   const hasTierValue = String(providedConfig.tier || '').trim().length > 0;
-  const tierConfigurationError = appMode === APP_MODES.CUSTOMER && hasTierValue && !configuredTier
-    ? `Invalid LendingFair customer tier "${providedConfig.tier}". Expected basic, pro, or platinum.`
+  const tierConfigurationError = appMode === APP_MODES.CUSTOMER && !configuredTier
+    ? (
+      hasTierValue
+        ? `Invalid LendingFair customer tier "${providedConfig.tier}". Expected basic, pro, or platinum.`
+        : 'Missing LendingFair customer tier. Expected basic, pro, or platinum.'
+    )
     : '';
 
   const config = Object.freeze({

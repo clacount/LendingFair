@@ -99,6 +99,16 @@ test('customer config tier overrides saved localStorage tier and prevents UI swi
   assert.equal(entitlements.getCurrentTier(), entitlements.TIERS.BASIC);
 });
 
+test('missing customer tier records a configuration error and fails closed to Basic', () => {
+  const { customerConfig, entitlements } = loadCustomerConfigScenario({
+    config: { appMode: 'customer', tier: '' },
+    savedTier: 'platinum'
+  });
+
+  assert.match(customerConfig.getConfigurationError(), /Missing LendingFair customer tier/);
+  assert.equal(entitlements.getCurrentTier(), entitlements.TIERS.BASIC);
+});
+
 test('invalid customer tier records a configuration error and fails closed to Basic', () => {
   const { customerConfig, entitlements } = loadCustomerConfigScenario({
     config: { appMode: 'customer', tier: 'enterprise' },
