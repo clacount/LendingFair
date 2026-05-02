@@ -65,6 +65,13 @@ The app also keeps a CSV state file named `loan-randomizer-running-totals.csv` i
 - Licensing and license-code activation are not implemented yet.
 - Future licensing can hydrate the current tier through the entitlement layer to unlock the right capabilities.
 
+## Customer packaging mode
+- LendingFair can now be packaged in customer mode with `window.LENDINGFAIR_CUSTOMER_CONFIG` or `src/config/customerConfig.js`.
+- Customer mode can lock the app to Basic, Pro, or Platinum without implementing paid licensing or license activation.
+- Development mode preserves the current Platinum default and keeps the **Internal Tier Mode** selector available for testing.
+- Customer mode hides internal tier controls, hides demo/dev-only controls by default unless explicitly enabled, and hydrates the tier from customer config.
+- A customer-safe product label such as `LendingFair Basic` or `LendingFair Pro` is shown in customer mode, with optional customer name display.
+
 ## Teams / SharePoint hosting notes
 - If this app is opened *inside* a SharePoint/Teams page frame, folder-picker APIs may be blocked by browser/embed security settings.
 - Recommended flow: open the app directly in Edge/Chrome (not embedded), then select a local OneDrive-synced folder that maps to the SharePoint document library.

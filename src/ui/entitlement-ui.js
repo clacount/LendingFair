@@ -3,6 +3,10 @@
     return globalScope.LendingFairEntitlements || null;
   }
 
+  function getCustomerConfig() {
+    return globalScope.LendingFairCustomerConfig || null;
+  }
+
   function canUseFeature(feature, entitlements = getEntitlements()) {
     return !entitlements || entitlements.canUseFeature(feature);
   }
@@ -69,14 +73,80 @@
   }
 
   function syncInternalTierSelector(state, entitlements = getEntitlements()) {
+    const customerConfig = getCustomerConfig();
+    const shouldShowSelector = !customerConfig || customerConfig.shouldShowInternalTierSelector?.() !== false;
+    const tierControl = globalScope.document?.querySelector?.('.internal-tier-control');
     const tierSelect = globalScope.document?.getElementById?.('internalTierModeSelect');
     const tierStatus = globalScope.document?.getElementById?.('internalTierModeStatus');
+
+    if (tierControl) {
+      tierControl.hidden = !shouldShowSelector;
+    }
+    if (!shouldShowSelector) {
+      if (tierSelect) {
+        tierSelect.disabled = true;
+      }
+      return;
+    }
+
     if (tierSelect && entitlements) {
+      tierSelect.disabled = false;
       tierSelect.value = state.tier;
     }
     if (tierStatus) {
+      tierStatus.hidden = customerConfig?.shouldShowDevLabels?.() === false;
       tierStatus.textContent = `Current internal tier: ${state.tierLabel}. Licensing is not implemented yet.`;
     }
+  }
+
+  function renderCustomerProductLabel(state) {
+    const customerConfig = getCustomerConfig();
+    const labelEl = globalScope.document?.getElementById?.('customerProductLabel');
+    if (!labelEl || !customerConfig?.isCustomerMode?.()) {
+      if (labelEl) {
+        labelEl.hidden = true;
+        labelEl.textContent = '';
+        labelEl.dataset.state = '';
+      }
+      return;
+    }
+
+    const configurationError = customerConfig.getConfigurationError?.() || '';
+    labelEl.hidden = false;
+    if (configurationError) {
+      labelEl.textContent = configurationError;
+      labelEl.dataset.state = 'error';
+      return;
+    }
+
+    const productLabel = customerConfig.getProductLabel?.(state.tierLabel) || `LendingFair ${state.tierLabel}`;
+    const customerName = customerConfig.getCustomerConfig?.().customerName || '';
+    labelEl.textContent = customerName
+      ? `${productLabel} | Configured for: ${customerName}`
+      : productLabel;
+    labelEl.dataset.state = 'ready';
+  }
+
+  function applyCustomerModeControls() {
+    const customerConfig = getCustomerConfig();
+    const doc = globalScope.document;
+    if (!doc || !customerConfig) {
+      return;
+    }
+
+    const showDemoControls = customerConfig.shouldShowDemoControls?.() !== false;
+    [
+      'launchDemoModeBtn',
+      'quickLaunchDemoModeBtn',
+      'endDemoModeBtn',
+      'clearDemoDataBtn'
+    ].forEach((id) => {
+      const control = doc.getElementById(id);
+      if (control && !showDemoControls) {
+        control.hidden = true;
+        control.disabled = true;
+      }
+    });
   }
 
   function applyOfficerClassEntitlements(selectEl, state) {
@@ -106,6 +176,8 @@
     }
 
     syncInternalTierSelector(state, entitlements);
+    renderCustomerProductLabel(state);
+    applyCustomerModeControls();
 
     const fairnessSelect = options.fairnessModelSelect || doc.getElementById('fairnessModelSelect');
     setOptionAvailability(
@@ -187,8 +259,14 @@
 
   function bindInternalTierSelector(options = {}) {
     const entitlements = getEntitlements();
+    const customerConfig = getCustomerConfig();
     const tierSelect = globalScope.document?.getElementById?.('internalTierModeSelect');
-    if (!entitlements || !tierSelect || tierSelect.dataset.bound === 'true') {
+    if (
+      !entitlements
+      || !tierSelect
+      || tierSelect.dataset.bound === 'true'
+      || customerConfig?.shouldShowInternalTierSelector?.() === false
+    ) {
       return;
     }
 

@@ -115,13 +115,22 @@
     }
   }
 
-  let currentTier = normalizeTier(readSettings().currentTier);
+  const customerConfig = globalScope.LendingFairCustomerConfig;
+  const configuredTier = customerConfig?.getConfiguredTier?.();
+  const hasCustomerTierError = Boolean(customerConfig?.isCustomerMode?.() && customerConfig?.getConfigurationError?.());
+  const isTierLockedByCustomerConfig = Boolean(customerConfig?.isCustomerMode?.());
+
+  let currentTier = configuredTier || (hasCustomerTierError ? TIERS.BASIC : normalizeTier(readSettings().currentTier));
 
   function getCurrentTier() {
     return currentTier;
   }
 
   function setCurrentTier(tier) {
+    if (isTierLockedByCustomerConfig) {
+      return currentTier;
+    }
+
     currentTier = normalizeTier(tier);
     const settings = readSettings();
     settings.currentTier = currentTier;

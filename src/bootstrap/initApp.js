@@ -93,6 +93,11 @@ const loanTypeEditorModalMessageEl = document.getElementById('loanTypeEditorModa
 const distributionDetailsEl = document.getElementById('distributionDetails');
 const distributionChartsEl = document.getElementById('distributionCharts');
 const entitlements = window.LendingFairEntitlements;
+const customerConfig = window.LendingFairCustomerConfig;
+
+function shouldShowDemoControls() {
+  return !customerConfig || customerConfig.shouldShowDemoControls?.() !== false;
+}
 
 const HEADER_LOGO_PATH = './custom_branding.png';
 const APP_BRANDING_LOGO_PATHS = [
@@ -1960,6 +1965,7 @@ function updateFolderStatus() {
   }
 
   if (outputDirectoryHandle) {
+    const showDemoControls = shouldShowDemoControls();
     const activeDataPath = isDemoMode ? `/${DEMO_DATA_FOLDER_NAME}` : `/${getMonthFolderKey()}`;
     const folderSummary = `Selected folder: ${outputDirectoryHandle.name} (using ${activeDataPath})`;
     folderStatusEl.textContent = folderSummary;
@@ -1968,13 +1974,15 @@ function updateFolderStatus() {
     outputStepCompactEl.hidden = false;
     outputStepDetailsEl.hidden = true;
     if (endDemoModeBtn) {
-      endDemoModeBtn.hidden = !isDemoMode;
+      endDemoModeBtn.hidden = !showDemoControls || !isDemoMode;
     }
     if (quickLaunchDemoModeBtn) {
-      quickLaunchDemoModeBtn.hidden = isDemoMode;
+      quickLaunchDemoModeBtn.hidden = !showDemoControls || isDemoMode;
+      quickLaunchDemoModeBtn.disabled = !showDemoControls;
     }
     if (clearDemoDataBtn) {
-      clearDemoDataBtn.hidden = !isDemoMode;
+      clearDemoDataBtn.hidden = !showDemoControls || !isDemoMode;
+      clearDemoDataBtn.disabled = !showDemoControls;
     }
     randomizeBtn.disabled = false;
     randomizeBtn.dataset.state = 'ready';
@@ -6537,11 +6545,21 @@ function handleChooseFolderClick(event) {
 
 function handleLaunchDemoModeClick(event) {
   event?.preventDefault();
+  if (!shouldShowDemoControls()) {
+    setStepMessage('step1', 'Demo controls are not available in this customer package.', 'warning');
+    return;
+  }
+
   chooseOutputFolder('demo');
 }
 
 async function handleQuickLaunchDemoModeClick(event) {
   event?.preventDefault();
+
+  if (!shouldShowDemoControls()) {
+    setStepMessage('step1', 'Demo controls are not available in this customer package.', 'warning');
+    return;
+  }
 
   if (!outputDirectoryHandle) {
     setStepMessage('step1', 'Choose an output folder before launching demo mode.', 'warning');
@@ -6829,6 +6847,10 @@ endOfMonthBtn?.addEventListener('click', async () => {
 });
 
 endDemoModeBtn?.addEventListener('click', () => {
+  if (!shouldShowDemoControls()) {
+    return;
+  }
+
   if (!isDemoMode) {
     return;
   }
@@ -6843,6 +6865,10 @@ endDemoModeBtn?.addEventListener('click', () => {
 });
 
 clearDemoDataBtn?.addEventListener('click', async () => {
+  if (!shouldShowDemoControls()) {
+    return;
+  }
+
   if (!isDemoMode || !outputDirectoryHandle) {
     setMessage('Launch Demo Mode before clearing demo data.', 'warning');
     return;
