@@ -207,7 +207,7 @@
     setControlAvailability(
       doc.getElementById('runSimulationBtn'),
       state.canUseSimulation,
-      'This feature requires Platinum.'
+      'Monthly fairness simulation requires Pro or Platinum.'
     );
     setControlAvailability(
       doc.getElementById('importLoansBtn'),
@@ -242,7 +242,7 @@
     });
 
     doc.querySelectorAll?.('[data-feature="simulation"]').forEach((element) => {
-      setControlAvailability(element, state.canUseSimulation, 'This feature requires Platinum.');
+      setControlAvailability(element, state.canUseSimulation, 'Monthly fairness simulation requires Pro or Platinum.');
     });
     doc.querySelectorAll?.('[data-feature="custom-branding"]').forEach((element) => {
       setControlAvailability(element, state.canUseCustomBranding, 'This feature requires Platinum.');

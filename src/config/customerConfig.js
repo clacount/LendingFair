@@ -3,7 +3,7 @@
   // Leave it empty for normal development behavior.
   const LOCAL_CUSTOMER_CONFIG = {
      // customerName: 'Example Federal Credit Union',
-     // tier: 'basic',
+     // tier: 'pro',
      // appMode: 'customer',
      // showInternalTierSelector: false,
      // showDemoControls: false,

@@ -18,6 +18,7 @@
   const simulationMaxLoansInput = document.getElementById('simulationMaxLoansInput');
   const simulationEomGoalInput = document.getElementById('simulationEomGoalInput');
   const simulationAmountProfileInput = document.getElementById('simulationAmountProfileInput');
+  const simulationTierLimitNoteEl = document.getElementById('simulationTierLimitNote');
   const simulationOfficerNameInput = document.getElementById('simulationOfficerNameInput');
   const simulationAddOfficerBtn = document.getElementById('simulationAddOfficerBtn');
   const simulationOfficerListEl = document.getElementById('simulationOfficerList');
@@ -35,6 +36,61 @@
   function assertFeatureAvailable(feature, message) {
     if (!canUseFeature(feature)) {
       throw new Error(message);
+    }
+  }
+
+  function getSimulationMaxDays() {
+    return entitlements?.getSimulationMaxDays?.() ?? null;
+  }
+
+  function getSimulationAccessMessage() {
+    return 'Monthly fairness simulation requires Pro or Platinum.';
+  }
+
+  function getSimulationLimitMessage(maxDays = getSimulationMaxDays()) {
+    return `Pro simulations are limited to ${maxDays} days. Reduce the simulation length or upgrade to Platinum for unlimited simulation.`;
+  }
+
+  function syncSimulationTierLimitUi() {
+    const maxDays = getSimulationMaxDays();
+    if (simulationBusinessDaysInput) {
+      if (Number.isFinite(maxDays) && maxDays > 0) {
+        simulationBusinessDaysInput.max = String(maxDays);
+      } else {
+        simulationBusinessDaysInput.removeAttribute('max');
+      }
+    }
+
+    if (!simulationTierLimitNoteEl) {
+      return;
+    }
+
+    if (!canUseFeature(entitlements?.FEATURES?.SIMULATION)) {
+      simulationTierLimitNoteEl.textContent = '';
+      return;
+    }
+
+    simulationTierLimitNoteEl.textContent = Number.isFinite(maxDays) && maxDays > 0
+      ? `Pro simulation limit: up to ${maxDays} days.`
+      : 'Platinum simulation: unlimited scenario length.';
+  }
+
+  function validateSimulationTierLimit(businessDays) {
+    if (entitlements?.validateSimulationDays) {
+      const validation = entitlements.validateSimulationDays(businessDays);
+      if (!validation.valid) {
+        throw new Error(validation.message);
+      }
+      return;
+    }
+
+    if (!canUseFeature(entitlements?.FEATURES?.SIMULATION)) {
+      throw new Error(getSimulationAccessMessage());
+    }
+
+    const maxDays = getSimulationMaxDays();
+    if (Number.isFinite(maxDays) && maxDays > 0 && businessDays > maxDays) {
+      throw new Error(getSimulationLimitMessage(maxDays));
     }
   }
 
@@ -71,6 +127,7 @@
     if (simulationAmountProfileInput) {
       simulationAmountProfileInput.value = DEFAULT_AMOUNT_PROFILE;
     }
+    syncSimulationTierLimitUi();
   }
 
   function getOfficerValuesForSimulationSeed() {
@@ -228,7 +285,7 @@
 
   function openSimulationModal() {
     if (!canUseFeature(entitlements?.FEATURES?.SIMULATION)) {
-      setMessage('Monthly fairness simulation requires Platinum.', 'warning');
+      setMessage(getSimulationAccessMessage(), 'warning');
       return;
     }
 
@@ -237,6 +294,7 @@
     }
 
     populateSimulationDefaults();
+    syncSimulationTierLimitUi();
     if (!simulationOfficerState.length) {
       seedSimulationOfficerStateFromMainScreen();
     }
@@ -891,6 +949,8 @@
       throw new Error('Business days must be a positive whole number.');
     }
 
+    validateSimulationTierLimit(businessDays);
+
     if (!Number.isFinite(minLoansPerDay) || minLoansPerDay <= 0) {
       throw new Error('Minimum loans per day must be a positive whole number.');
     }
@@ -1435,7 +1495,8 @@
   }
 
   async function runFairnessSimulationFromConfig(config) {
-    assertFeatureAvailable(entitlements?.FEATURES?.SIMULATION, 'Monthly fairness simulation requires Platinum.');
+    assertFeatureAvailable(entitlements?.FEATURES?.SIMULATION, getSimulationAccessMessage());
+    validateSimulationTierLimit(config.businessDays);
 
     const activeTypes = getActiveLoanTypeNames();
     if (!activeTypes.length) {
@@ -1510,7 +1571,7 @@
     event.preventDefault();
 
     if (!canUseFeature(entitlements?.FEATURES?.SIMULATION)) {
-      setSimulationModalMessage('Monthly fairness simulation requires Platinum.', 'warning');
+      setSimulationModalMessage(getSimulationAccessMessage(), 'warning');
       return;
     }
 
@@ -1549,6 +1610,17 @@
   }
 
   runSimulationBtn?.addEventListener('click', openSimulationModal);
+  simulationBusinessDaysInput?.addEventListener('input', () => {
+    const businessDays = Number.parseInt(simulationBusinessDaysInput.value || '', 10);
+    const maxDays = getSimulationMaxDays();
+    if (Number.isFinite(maxDays) && maxDays > 0 && Number.isFinite(businessDays) && businessDays > maxDays) {
+      setSimulationModalMessage(getSimulationLimitMessage(maxDays), 'warning');
+      return;
+    }
+    setSimulationModalMessage('');
+  });
+  window.addEventListener?.('lendingfair:tierchange', syncSimulationTierLimitUi);
+  syncSimulationTierLimitUi();
   simulationAddOfficerBtn?.addEventListener('click', handleAddSimulationOfficer);
   simulationOfficerNameInput?.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {

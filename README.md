@@ -57,9 +57,9 @@ The app also keeps a CSV state file named `loan-randomizer-running-totals.csv` i
 
 ## Product tiers / entitlement foundation
 - LendingFair now has internal support for Basic, Pro, and Platinum tiers through a centralized entitlement layer.
-- Basic means consumer-loan assignment only using the Global fairness engine. Auto, Personal, Credit Card, and Collateralized are treated as consumer loans.
-- Pro unlocks mortgage loans, multiple officer roles, and Officer Lane Fairness.
-- Platinum is currently the default tier so all existing behavior remains available while productization continues.
+- Basic means consumer-loan assignment only using the Global fairness engine. Auto, Personal, Credit Card, and Collateralized are treated as consumer loans. Basic does not include simulation.
+- Pro unlocks mortgage loans, multiple officer roles, Officer Lane Fairness, and fairness simulation up to 60 business days.
+- Platinum is currently the default tier so all existing behavior remains available while productization continues, including unlimited simulation subject to existing input validation.
 - The entitlement layer is wired into UI controls, run validation, PDF/report sections, and advanced testing tools.
 - An **Internal Tier Mode** selector is available only as a temporary testing control for Basic, Pro, and Platinum behavior.
 - Licensing and license-code activation are not implemented yet.

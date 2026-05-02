@@ -62,18 +62,30 @@
     FEATURES.MULTI_OFFICER_ROLES,
     FEATURES.MORTGAGE_LOANS,
     FEATURES.FAIRNESS_AUDIT_REPORT,
-    FEATURES.EOM_REPORT
+    FEATURES.EOM_REPORT,
+    FEATURES.SIMULATION
   ];
 
   const PLATINUM_FEATURES = [
     ...PRO_FEATURES,
     FEATURES.IMPORT_LOANS,
-    FEATURES.SIMULATION,
     FEATURES.LIVE_RUNS,
     FEATURES.CUSTOM_BRANDING,
     FEATURES.SHAREPOINT_GRAPH_STUB,
     FEATURES.ADVANCED_ANALYTICS
   ];
+
+  const TIER_LIMITS = Object.freeze({
+    [TIERS.BASIC]: Object.freeze({
+      simulationMaxDays: 0
+    }),
+    [TIERS.PRO]: Object.freeze({
+      simulationMaxDays: 60
+    }),
+    [TIERS.PLATINUM]: Object.freeze({
+      simulationMaxDays: null
+    })
+  });
 
   const TIER_CONFIG = Object.freeze({
     [TIERS.BASIC]: Object.freeze({
@@ -149,6 +161,58 @@
 
   function getAvailableFeatures(tier = getCurrentTier()) {
     return [...getTierConfig(tier).features];
+  }
+
+  function getTierLimit(limitName, tier = getCurrentTier()) {
+    const limits = TIER_LIMITS[normalizeTier(tier)] || {};
+    return Object.prototype.hasOwnProperty.call(limits, limitName) ? limits[limitName] : null;
+  }
+
+  function getSimulationMaxDays(tier = getCurrentTier()) {
+    return getTierLimit('simulationMaxDays', tier);
+  }
+
+  function canUseUnlimitedSimulation(tier = getCurrentTier()) {
+    return canUseFeature(FEATURES.SIMULATION, tier) && getSimulationMaxDays(tier) === null;
+  }
+
+  function validateSimulationDays(businessDays, tier = getCurrentTier()) {
+    const normalizedDays = Number(businessDays);
+    const runTier = normalizeTier(tier);
+    if (!canUseFeature(FEATURES.SIMULATION, runTier)) {
+      return buildValidationFailure(
+        'SIMULATION_NOT_AVAILABLE',
+        'Monthly fairness simulation requires Pro or Platinum.',
+        FEATURES.SIMULATION,
+        runTier
+      );
+    }
+
+    if (!Number.isFinite(normalizedDays) || normalizedDays <= 0 || !Number.isInteger(normalizedDays)) {
+      return buildValidationFailure(
+        'SIMULATION_DAYS_INVALID',
+        'Business days must be a positive whole number.',
+        FEATURES.SIMULATION,
+        runTier
+      );
+    }
+
+    const maxDays = getSimulationMaxDays(runTier);
+    if (Number.isFinite(maxDays) && maxDays > 0 && normalizedDays > maxDays) {
+      return buildValidationFailure(
+        'SIMULATION_DAYS_LIMIT_EXCEEDED',
+        `Pro simulations are limited to ${maxDays} days. Reduce the simulation length or upgrade to Platinum for unlimited simulation.`,
+        FEATURES.SIMULATION,
+        runTier
+      );
+    }
+
+    return {
+      valid: true,
+      tier: runTier,
+      businessDays: normalizedDays,
+      maxDays
+    };
   }
 
   function canUseFeature(feature, tier = getCurrentTier()) {
@@ -351,10 +415,15 @@
     LOAN_CATEGORIES,
     FEATURES,
     TIER_CONFIG,
+    TIER_LIMITS,
     getCurrentTier,
     setCurrentTier,
     getTierConfig,
     getAvailableFeatures,
+    getTierLimit,
+    getSimulationMaxDays,
+    canUseUnlimitedSimulation,
+    validateSimulationDays,
     canUseFeature,
     requireFeature,
     canUseEngine,
