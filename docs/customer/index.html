@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LendingFair Customer Documentation</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f3f6f8;
+      --card: #ffffff;
+      --text: #1c2430;
+      --muted: #5e6b7a;
+      --border: #d8e0e8;
+      --accent: #256d85;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Arial, sans-serif;
+      line-height: 1.55;
+    }
+
+    .doc-shell {
+      width: min(1100px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+
+    header,
+    section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 24px;
+      margin-bottom: 18px;
+      box-shadow: 0 10px 26px rgba(28, 36, 48, 0.08);
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin-top: 0;
+      line-height: 1.2;
+    }
+
+    h1 {
+      font-size: 2rem;
+    }
+
+    h2 {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 10px;
+      color: var(--accent);
+    }
+
+    a {
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 18px;
+    }
+
+    nav a {
+      display: inline-flex;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #f7f9fc;
+      text-decoration: none;
+    }
+
+    code,
+    pre {
+      background: #eef3f6;
+      border-radius: 6px;
+    }
+
+    code {
+      padding: 2px 5px;
+    }
+
+    pre {
+      overflow: auto;
+      padding: 12px;
+    }
+
+    .checklist {
+      list-style: none;
+      padding-left: 0;
+    }
+
+    .checklist li::before {
+      content: "☐ ";
+      color: var(--accent);
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+<div class="doc-shell">
+  <header>
+    <h1>LendingFair Customer Documentation</h1>
+    <p>Customer-facing guides for Basic and Pro pilot readiness. Basic and Pro are local-browser products. Platinum is the future enterprise architecture direction.</p>
+    <nav aria-label="Documentation sections">
+      <a href="#getting-started">Getting Started</a>
+      <a href="#basic-user-guide">Basic User Guide</a>
+      <a href="#pro-user-guide">Pro User Guide</a>
+      <a href="#fairness-methodology">Fairness Methodology</a>
+      <a href="#implementation-checklist">Implementation Checklist</a>
+      <a href="#known-limitations">Known Limitations</a>
+      <a href="#support-export">Support Export</a>
+      <a href="#pilot-release-checklist">Pilot Release Checklist</a>
+    </nav>
+  </header>
+
+  <section id="getting-started">
+    <h2>Getting Started</h2>
+    <h3>What LendingFair Is</h3>
+    <p>LendingFair is a local browser application that helps assign loan applications to loan officers using configured eligibility rules and fairness balancing. It creates audit-ready PDF reports and keeps local monthly state so assignments can continue from prior running totals.</p>
+    <p>LendingFair is intended to improve consistency, reduce perceived bias, and make assignment decisions easier to review.</p>
+    <h3>Basic vs. Pro</h3>
+    <p><strong>LendingFair Basic</strong> is designed for consumer-loan assignment using one shared officer pool and the Global fairness engine.</p>
+    <p><strong>LendingFair Pro</strong> adds mortgage loan support, officer roles, Officer Lane Fairness, fairness audit reporting, EOM reporting, and limited fairness simulation.</p>
+    <p><strong>LendingFair Platinum</strong> is the future enterprise direction for hosted/backend capabilities, database-backed persistence, APIs, live runs, and deeper institution-specific integrations.</p>
+    <h3>Local Browser Operation</h3>
+    <p>Basic and Pro run locally in Microsoft Edge or Google Chrome. No backend database or hosted LendingFair service is required for the current Basic/Pro package.</p>
+    <p>The app relies on the browser File System Access API for selecting a working folder and writing local output files.</p>
+    <h3>Working Folder and Monthly Files</h3>
+    <p>Select a working folder approved by your institution. LendingFair creates or uses a monthly subfolder named in <code>YYYY-MM</code> format, such as <code>2026-05</code>.</p>
+    <p>The active monthly folder contains running totals CSV, loan history CSV, generated PDFs, and EOM/custom reports when available.</p>
+    <h3>Outputs</h3>
+    <p>Reports include app version, active tier, generated timestamp, fairness engine, assignments by loan/officer, and fairness audit details when available for the tier.</p>
+    <h3>No LOS/LMS Integration in Basic or Pro</h3>
+    <p>Basic and Pro do not connect directly to a Loan Origination System or Loan Management System. Direct polling, API/webhook ingestion, automated live runs, and writeback are part of the Platinum roadmap.</p>
+  </section>
+
+  <section id="basic-user-guide">
+    <h2>Basic User Guide</h2>
+    <p>LendingFair Basic supports consumer-loan assignment only. It uses the Global fairness engine and one shared officer pool.</p>
+    <h3>Supported Consumer Loan Types</h3>
+    <ul>
+      <li>Auto</li>
+      <li>Personal</li>
+      <li>Credit Card</li>
+      <li>Collateralized</li>
+    </ul>
+    <h3>Adding Officers</h3>
+    <ol>
+      <li>Open LendingFair in Edge or Chrome.</li>
+      <li>Select the working folder.</li>
+      <li>Add each loan officer in the assignment pool.</li>
+      <li>Confirm officer names are spelled consistently.</li>
+    </ol>
+    <h3>Entering Loans</h3>
+    <p>For each loan, enter the loan application number or ID, loan type, and amount requested when applicable. Credit Card loans may be tracked by count and type rather than goal-dollar amount if configured that way.</p>
+    <h3>Importing Loans</h3>
+    <p>Loan import availability depends on the configured tier. In the current packaging, Import Loans is treated as a Platinum-level feature because file formats often require institution-specific customization.</p>
+    <h3>Running Assignment</h3>
+    <ol>
+      <li>Review officers and loans.</li>
+      <li>Click <strong>Run Fair Assignment</strong>.</li>
+      <li>Review on-screen assignments and fairness information.</li>
+      <li>Open the generated PDF from the active monthly folder.</li>
+    </ol>
+    <h3>Duplicate Loan Prevention</h3>
+    <p>LendingFair tracks loan history in the selected monthly folder. Use consistent loan IDs so duplicate prevention works as intended.</p>
+    <h3>What Basic Does Not Include</h3>
+    <p>Basic does not include mortgage loan support, HELOC-specific routing, Officer Lane Fairness, simulation, EOM reporting, custom branding, direct SharePoint upload, LOS/LMS integration, backend database, or centralized authentication.</p>
+  </section>
+
+  <section id="pro-user-guide">
+    <h2>Pro User Guide</h2>
+    <p>LendingFair Pro includes the Basic consumer-loan workflow and adds mortgage loan categories, officer roles, Officer Lane Fairness, fairness audit reporting, EOM reporting when available, and fairness simulation up to 60 business days.</p>
+    <h3>Loan Categories</h3>
+    <ul>
+      <li>Consumer loans</li>
+      <li>Mortgage loans</li>
+    </ul>
+    <h3>Officer Roles</h3>
+    <ul>
+      <li><strong>Consumer:</strong> eligible for consumer loans.</li>
+      <li><strong>Mortgage:</strong> eligible for mortgage loans.</li>
+      <li><strong>Flex:</strong> eligible for both consumer and mortgage loans.</li>
+    </ul>
+    <h3>Officer Lane Fairness</h3>
+    <p>Officer Lane Fairness assigns each loan only to an eligible officer and evaluates fairness within the applicable role/lane context. This avoids comparing officers unfairly against work they are not eligible to receive.</p>
+    <h3>Simulation</h3>
+    <p>Pro includes fairness simulation up to 60 business days. Simulations are intended for validation, training, and policy review, and do not modify production assignment history.</p>
+    <h3>What Pro Does Not Include</h3>
+    <p>Pro does not include automated LOS/LMS integration, live API/webhook assignment runs, backend database persistence, centralized authentication, direct SharePoint upload unless separately integrated, unlimited simulation, or Platinum custom integration workflows.</p>
+  </section>
+
+  <section id="fairness-methodology">
+    <h2>Fairness Methodology</h2>
+    <p>LendingFair assigns each loan to one eligible officer. The assignment is based on configured eligibility rules and fairness balancing across current loans and prior running totals.</p>
+    <h3>What the App Balances</h3>
+    <ul>
+      <li>loan type mix</li>
+      <li>loan count</li>
+      <li>goal-dollar totals</li>
+      <li>officer eligibility</li>
+      <li>historical running totals</li>
+      <li>active/vacation status when supported</li>
+    </ul>
+    <p>Credit Card loans may be count-based or amount-excluded depending on configured loan type behavior.</p>
+    <p>Running totals are stored in the selected working folder and active monthly subfolder, so LendingFair does not treat every run as a blank slate.</p>
+    <h3>Global vs. Officer Lane Fairness</h3>
+    <p>Global Fairness compares active officers as one shared assignment pool. Officer Lane Fairness accounts for Consumer/Mortgage role eligibility and supports Consumer, Mortgage, and Flex officer roles.</p>
+    <h3>Disclaimer</h3>
+    <p>The credit union should review and approve its own assignment policy. LendingFair provides an auditable assignment recommendation based on configured rules and available data.</p>
+  </section>
+
+  <section id="implementation-checklist">
+    <h2>Implementation Checklist</h2>
+    <h3>Tier and Scope</h3>
+    <ul class="checklist">
+      <li>Confirm selected tier: Basic or Pro.</li>
+      <li>Confirm departments in scope.</li>
+      <li>Confirm whether mortgage and HELOC loans are included.</li>
+      <li>Confirm whether simulation is needed during pilot validation.</li>
+    </ul>
+    <h3>Loan Types and Officers</h3>
+    <ul class="checklist">
+      <li>Confirm all consumer loan types.</li>
+      <li>Confirm all mortgage loan types, if using Pro.</li>
+      <li>Confirm full officer list and role assignments.</li>
+      <li>Confirm vacation/inactive handling policy.</li>
+    </ul>
+    <h3>Operations</h3>
+    <ul class="checklist">
+      <li>Confirm output folder location and retention process.</li>
+      <li>Confirm who can run assignments.</li>
+      <li>Confirm who reviews reports.</li>
+      <li>Run sample month validation.</li>
+      <li>Sign off on fairness methodology.</li>
+    </ul>
+  </section>
+
+  <section id="known-limitations">
+    <h2>Known Limitations</h2>
+    <ul>
+      <li>Basic and Pro are local browser apps.</li>
+      <li>No backend database is included.</li>
+      <li>No centralized user authentication is included.</li>
+      <li>No LOS/LMS integration is included.</li>
+      <li>Folder selection requires a compatible Edge/Chrome browser.</li>
+      <li>Data is stored as local/selected-folder CSV, JSON, and PDF files.</li>
+      <li>Licensing is not implemented unless added separately later.</li>
+      <li>Tier locking may be configuration-based for pilots.</li>
+      <li>Direct SharePoint upload is not implemented unless separately integrated.</li>
+      <li>Platinum is intended for hosted/containerized backend, database, API, integration, and live-run architecture.</li>
+    </ul>
+  </section>
+
+  <section id="support-export">
+    <h2>Support Export</h2>
+    <p>The <strong>Export Support Package</strong> action creates a local JSON package for the active month or demo context. It does not upload, email, or send files anywhere.</p>
+    <h3>Included Information</h3>
+    <ul>
+      <li>app name, version, release channel, and build date</li>
+      <li>active tier and selected fairness engine</li>
+      <li>customer mode and customer name, if configured</li>
+      <li>export timestamp, browser user agent, and active month folder key</li>
+      <li>running totals, loan history, and loan type configuration when present</li>
+      <li>simulation history only when the active tier allows simulation</li>
+      <li>recent generated PDF report filenames when available</li>
+      <li>missing-file notes for expected files that were not found</li>
+    </ul>
+    <h3>Privacy Reminder</h3>
+    <p>The support package may include loan IDs, officer names, and assignment history from the selected month. Only share it with authorized support contacts.</p>
+    <p>If support needs generated PDFs, attach the relevant PDFs from the active monthly folder along with the support package.</p>
+  </section>
+
+  <section id="pilot-release-checklist">
+    <h2>Pilot Release Checklist</h2>
+    <h3>Basic QA</h3>
+    <ul class="checklist">
+      <li>Basic assignment run completes with consumer loans.</li>
+      <li>Basic blocks mortgage loan support.</li>
+      <li>Basic blocks Officer Lane Fairness.</li>
+      <li>Basic blocks simulation access.</li>
+      <li>Basic PDF includes app version and active tier.</li>
+    </ul>
+    <h3>Pro QA</h3>
+    <ul class="checklist">
+      <li>Pro mortgage run completes.</li>
+      <li>Pro role-aware run completes with Consumer, Mortgage, and Flex officers.</li>
+      <li>Pro simulation allows 60 business days.</li>
+      <li>Pro simulation above 60 business days is blocked.</li>
+      <li>Pro PDF includes app version and active tier.</li>
+    </ul>
+    <h3>Persistence and Handoff</h3>
+    <ul class="checklist">
+      <li>Duplicate loan prevention works.</li>
+      <li>CSV persistence works after app reload.</li>
+      <li>Customer config locks the intended tier.</li>
+      <li>Version appears in UI and reports.</li>
+      <li>Customer has reviewed guides, methodology, and known limitations.</li>
+    </ul>
+  </section>
+</div>
+</body>
+</html>

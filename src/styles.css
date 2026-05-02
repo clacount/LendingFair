@@ -159,6 +159,21 @@ header p {
   background: #f6f8fb;
 }
 
+.support-export-btn {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  background: #eef2f6;
+  color: var(--text);
+  font-weight: 800;
+  box-shadow: 0 8px 18px rgba(28, 36, 48, 0.1);
+}
+
+.support-export-btn:hover {
+  background: #e1e8ef;
+  border-color: #b9c7d3;
+}
+
 .fairness-model-control {
   display: flex;
   flex-direction: column;
@@ -1925,6 +1940,17 @@ select {
 [data-theme="dark"] .theme-toggle-btn:hover {
   background: #303d55;
   border-color: #f4d47d;
+}
+
+[data-theme="dark"] .support-export-btn {
+  background: #243044;
+  border-color: #53627a;
+  color: var(--text);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+}
+
+[data-theme="dark"] .support-export-btn:hover {
+  background: #303d55;
 }
 
 [data-theme="dark"] .theme-toggle-icon {

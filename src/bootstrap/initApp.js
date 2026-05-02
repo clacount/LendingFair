@@ -14,6 +14,7 @@ const endOfMonthBtn = document.getElementById('endOfMonthBtn');
 const documentationBtn = document.getElementById('documentationBtn');
 const documentationModalEl = document.getElementById('documentationModal');
 const closeDocumentationModalBtn = document.getElementById('closeDocumentationModalBtn');
+const supportExportBtn = document.getElementById('supportExportBtn');
 const randomizeBtn = document.getElementById('randomizeBtn');
 const clearBtn = document.getElementById('clearBtn');
 const removeLoanHistoryBtn = document.getElementById('removeLoanHistoryBtn');
@@ -891,6 +892,143 @@ async function getActiveDataDirectoryHandle() {
   }
 
   return outputDirectoryHandle.getDirectoryHandle(getMonthFolderKey(), { create: true });
+}
+
+function getSupportExportFileNames() {
+  const supportExport = window.LendingFairSupportExport;
+  const kinds = supportExport?.SUPPORT_FILE_KINDS || {};
+  const fileNames = [
+    { kind: kinds.RUNNING_TOTALS || 'runningTotals', fileName: getSessionFileName('runningTotals') },
+    { kind: kinds.LOAN_HISTORY || 'loanHistory', fileName: getSessionFileName('loanHistory') },
+    { kind: kinds.LOAN_TYPES || 'loanTypes', fileName: getSessionFileName('loanTypes') }
+  ];
+
+  if (supportExport?.shouldIncludeSimulationHistory?.(entitlements)) {
+    fileNames.push({
+      kind: kinds.SIMULATION_HISTORY || 'simulationHistory',
+      fileName: getSessionFileName('simulationHistory')
+    });
+  }
+
+  return fileNames;
+}
+
+async function readSupportExportFile(dataDirectoryHandle, { fileName, kind }) {
+  const supportExport = window.LendingFairSupportExport;
+
+  try {
+    const fileHandle = await dataDirectoryHandle.getFileHandle(fileName);
+    const file = await fileHandle.getFile();
+    const content = await file.text();
+    return supportExport.createIncludedFileRecord({
+      fileName,
+      kind,
+      content,
+      size: file.size,
+      lastModified: file.lastModified ? new Date(file.lastModified).toISOString() : null
+    });
+  } catch (error) {
+    if (error?.name === 'NotFoundError') {
+      return supportExport.createMissingFileRecord({ fileName, kind });
+    }
+    throw error;
+  }
+}
+
+async function listSupportReportFilenames(dataDirectoryHandle) {
+  if (typeof dataDirectoryHandle.entries !== 'function') {
+    return [];
+  }
+
+  const reports = [];
+  for await (const [fileName, fileHandle] of dataDirectoryHandle.entries()) {
+    if (fileHandle.kind !== 'file' || !fileName.toLowerCase().endsWith('.pdf')) {
+      continue;
+    }
+
+    try {
+      const file = await fileHandle.getFile();
+      reports.push({
+        fileName,
+        size: file.size,
+        lastModified: file.lastModified ? new Date(file.lastModified).toISOString() : null
+      });
+    } catch (error) {
+      reports.push({ fileName });
+    }
+  }
+
+  return reports;
+}
+
+function downloadSupportPackage(manifest) {
+  const timestamp = new Date(manifest.generatedAt).toISOString().replace(/[:.]/g, '-');
+  const monthKey = manifest.context.monthFolderKey || 'unknown-month';
+  const sessionPrefix = manifest.context.sessionMode === 'demo' ? 'demo-' : '';
+  const fileName = `lendingfair-support-${sessionPrefix}${monthKey}-${timestamp}.json`;
+  const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  return fileName;
+}
+
+async function handleSupportExportClick() {
+  const supportExport = window.LendingFairSupportExport;
+  if (!supportExport) {
+    setMessage('Support export is not available in this browser session.', 'warning');
+    return;
+  }
+
+  if (!outputDirectoryHandle) {
+    setStepMessage('step1', 'Connect a working folder before exporting a support package.', 'warning');
+    return;
+  }
+
+  const confirmed = window.confirm(
+    'This package may include loan IDs, officer names, and assignment history from the selected month. Only share it with authorized support contacts.'
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    const dataDirectoryHandle = await getActiveDataDirectoryHandle();
+    const files = [];
+
+    for (const fileDescriptor of getSupportExportFileNames()) {
+      files.push(await readSupportExportFile(dataDirectoryHandle, fileDescriptor));
+    }
+
+    const appMetadata = window.LendingFairAppMetadata?.getReleaseMetadata?.() || window.LendingFairAppMetadata?.APP_METADATA || {};
+    const customerSettings = customerConfig?.getCustomerConfig?.() || {};
+    const manifest = supportExport.buildSupportManifest({
+      appMetadata,
+      activeTier: entitlements?.getCurrentTier?.() || appMetadata.activeTier || '',
+      activeTierLabel: entitlements?.getTierLabel?.(entitlements?.getCurrentTier?.()) || appMetadata.activeTierLabel || '',
+      fairnessEngine: getSelectedFairnessEngine(),
+      fairnessEngineLabel: getSelectedFairnessEngineLabel(),
+      customerMode: customerSettings.appMode || '',
+      customerName: customerSettings.customerName || '',
+      exportTimestamp: new Date().toISOString(),
+      userAgent: window.navigator?.userAgent || '',
+      monthFolderKey: isDemoMode ? DEMO_DATA_FOLDER_NAME : getMonthFolderKey(),
+      sessionMode: isDemoMode ? 'demo' : 'production',
+      files,
+      reportFilenames: await listSupportReportFilenames(dataDirectoryHandle)
+    });
+
+    const fileName = downloadSupportPackage(manifest);
+    setMessage(`Support package exported to ${fileName}.`, 'success');
+  } catch (error) {
+    setMessage(`Could not export support package: ${error.message}`, 'warning');
+  }
 }
 
 async function hasRestorableSessionData(directoryHandle) {
@@ -6661,6 +6799,7 @@ addLoanBtn.addEventListener('click', () => {
 
   addLoan();
 });
+supportExportBtn?.addEventListener('click', handleSupportExportClick);
 importLoansBtn?.addEventListener('click', () => {
   if (!canUseFeature(entitlements?.FEATURES?.IMPORT_LOANS)) {
     setStepMessage('step3', 'Import Loans requires Platinum.', 'warning');
