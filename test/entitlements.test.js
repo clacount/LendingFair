@@ -35,14 +35,41 @@ test('Basic supports consumer loans and the global engine only', () => {
   assert.equal(entitlements.canUseFeature(FEATURES.MULTI_OFFICER_ROLES, TIERS.BASIC), false);
   assert.equal(entitlements.canUseFeature(FEATURES.MORTGAGE_LOANS, TIERS.BASIC), false);
   assert.equal(entitlements.canUseFeature(FEATURES.IMPORT_LOANS, TIERS.BASIC), false);
+  assert.equal(entitlements.canUseFeature(FEATURES.SIMULATION, TIERS.BASIC), false);
+  assert.equal(entitlements.getSimulationMaxDays(TIERS.BASIC), 0);
 });
 
-test('Pro supports officer lane, consumer loans, mortgage loans, and multiple officer roles', () => {
+test('Pro supports officer lane, consumer loans, mortgage loans, multiple officer roles, and limited simulation', () => {
   assert.equal(entitlements.canUseFeature(FEATURES.OFFICER_LANE_ENGINE, TIERS.PRO), true);
   assert.equal(entitlements.canUseFeature(FEATURES.CONSUMER_LOANS, TIERS.PRO), true);
   assert.equal(entitlements.canUseFeature(FEATURES.MORTGAGE_LOANS, TIERS.PRO), true);
   assert.equal(entitlements.canUseFeature(FEATURES.MULTI_OFFICER_ROLES, TIERS.PRO), true);
   assert.equal(entitlements.canUseFeature(FEATURES.IMPORT_LOANS, TIERS.PRO), false);
+  assert.equal(entitlements.canUseFeature(FEATURES.SIMULATION, TIERS.PRO), true);
+  assert.equal(entitlements.getSimulationMaxDays(TIERS.PRO), 60);
+  assert.equal(entitlements.canUseUnlimitedSimulation(TIERS.PRO), false);
+});
+
+test('Platinum supports unlimited simulation', () => {
+  assert.equal(entitlements.canUseFeature(FEATURES.SIMULATION, TIERS.PLATINUM), true);
+  assert.equal(entitlements.getSimulationMaxDays(TIERS.PLATINUM), null);
+  assert.equal(entitlements.canUseUnlimitedSimulation(TIERS.PLATINUM), true);
+});
+
+test('simulation day validation enforces Basic, Pro, and Platinum limits', () => {
+  const basicResult = entitlements.validateSimulationDays(1, TIERS.BASIC);
+  assert.equal(basicResult.valid, false);
+  assert.equal(basicResult.code, 'SIMULATION_NOT_AVAILABLE');
+
+  const proAllowed = entitlements.validateSimulationDays(60, TIERS.PRO);
+  assert.equal(proAllowed.valid, true);
+
+  const proBlocked = entitlements.validateSimulationDays(61, TIERS.PRO);
+  assert.equal(proBlocked.valid, false);
+  assert.equal(proBlocked.code, 'SIMULATION_DAYS_LIMIT_EXCEEDED');
+
+  const platinumAllowed = entitlements.validateSimulationDays(120, TIERS.PLATINUM);
+  assert.equal(platinumAllowed.valid, true);
 });
 
 test('validation rejects Basic with Officer Lane engine', () => {
