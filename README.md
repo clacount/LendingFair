@@ -72,6 +72,11 @@ The app also keeps a CSV state file named `loan-randomizer-running-totals.csv` i
 - Customer mode hides internal tier controls, hides demo/dev-only controls by default unless explicitly enabled, and hydrates the tier from customer config.
 - A customer-safe product label such as `LendingFair Basic` or `LendingFair Pro` is shown in customer mode, with optional customer name display.
 
+## Release/version metadata
+- Customer pilots include a visible app version and active tier in the UI.
+- Generated assignment, EOM, custom, and simulation reports include app version, active tier, release channel, generated timestamp, and fairness engine metadata for audit/support.
+- Current pilot version metadata is maintained in `src/config/appMetadata.js`.
+
 ## Teams / SharePoint hosting notes
 - If this app is opened *inside* a SharePoint/Teams page frame, folder-picker APIs may be blocked by browser/embed security settings.
 - Recommended flow: open the app directly in Edge/Chrome (not embedded), then select a local OneDrive-synced folder that maps to the SharePoint document library.

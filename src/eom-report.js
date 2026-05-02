@@ -335,10 +335,17 @@
   }
 
   function buildEomPdfLines(report) {
+    const generatedAtLabel = formatDisplayTimestamp(report.generatedAt);
+    const fairnessEngineLabel = fairnessDisplayService?.getFairnessModelLabel(report.fairnessSummary.evaluation.engineType) || 'Global Fairness';
+    const releaseMetadataLines = window.LendingFairAppMetadata?.buildReportMetadataLines?.({
+      generatedAtLabel,
+      fairnessEngineLabel
+    }) || [`Generated: ${generatedAtLabel}`, `Fairness engine: ${fairnessEngineLabel}`];
     const lines = [
       { text: 'End of Month Loan Assignment Report', size: 18, gapAfter: 16 },
       { text: `Month: ${report.monthLabel}`, size: 11, gapAfter: 4 },
-      { text: `Generated: ${formatDisplayTimestamp(report.generatedAt)}`, size: 11, gapAfter: 4 },
+      ...releaseMetadataLines.map((text) => ({ text, size: 10, gapAfter: 4 })),
+      { text: '', size: 10, gapAfter: 4 },
       { text: `Loan officers tracked: ${report.officerStats.length}`, size: 11, gapAfter: 4 },
       { text: `Loans tracked: ${report.totalLoans}`, size: 11, gapAfter: 4 },
       { text: `Goal dollars tracked: ${formatCurrency(report.totalAmountRequested)}`, size: 11, gapAfter: 14 },
@@ -348,7 +355,7 @@
       { text: `Loan count variance: ${report.fairnessSummary.maxCountVariancePercent.toFixed(1)}%`, size: 11, gapAfter: 4 },
       { text: `Goal dollar variance: ${report.fairnessSummary.maxAmountVariancePercent.toFixed(1)}%`, size: 11, gapAfter: 4 },
       { text: `Fairness status: ${report.fairnessSummary.overallPass ? 'PASS' : 'REVIEW'}`, size: 11, gapAfter: 4 },
-      { text: `Fairness model: ${fairnessDisplayService?.getFairnessModelLabel(report.fairnessSummary.evaluation.engineType) || 'Global Fairness'}`, size: 11, gapAfter: 4 },
+      { text: `Fairness model: ${fairnessEngineLabel}`, size: 11, gapAfter: 4 },
       ...report.fairnessSummary.evaluation.summaryItems.map((item) => ({ text: item, size: 11, gapAfter: 4 })),
       ...buildEvaluationNoteLines(report.fairnessSummary.evaluation.notes),
       { text: '', size: 10, gapAfter: 6 },
@@ -385,11 +392,18 @@
   }
 
   function buildCustomReportPdfLines(report) {
+    const generatedAtLabel = formatDisplayTimestamp(report.generatedAt);
+    const fairnessEngineLabel = fairnessDisplayService?.getFairnessModelLabel(report.fairnessSummary.evaluation.engineType) || 'Global Fairness';
+    const releaseMetadataLines = window.LendingFairAppMetadata?.buildReportMetadataLines?.({
+      generatedAtLabel,
+      fairnessEngineLabel
+    }) || [`Generated: ${generatedAtLabel}`, `Fairness engine: ${fairnessEngineLabel}`];
     const lines = [
       { text: `Loan Assignment ${report.reportTypeLabel}`, size: 18, gapAfter: 16 },
       { text: `Report type: ${report.reportTypeLabel}`, size: 11, gapAfter: 4 },
       { text: `Date range: ${report.startDateLabel} through ${report.endDateLabel}`, size: 11, gapAfter: 4 },
-      { text: `Generated: ${formatDisplayTimestamp(report.generatedAt)}`, size: 11, gapAfter: 4 },
+      ...releaseMetadataLines.map((text) => ({ text, size: 10, gapAfter: 4 })),
+      { text: '', size: 10, gapAfter: 4 },
       { text: `Loan officers included: ${report.officerStats.length}`, size: 11, gapAfter: 4 },
       { text: `Loans included: ${report.totalLoans}`, size: 11, gapAfter: 4 },
       { text: `Total dollars included: ${formatCurrency(report.totalAmountRequested)}`, size: 11, gapAfter: 14 }
@@ -400,7 +414,7 @@
       lines.push({ text: `Average loans per officer: ${report.fairnessSummary.averageLoanCount.toFixed(2)}`, size: 11, gapAfter: 4 });
       lines.push({ text: `Average dollars per officer: ${formatCurrency(report.fairnessSummary.averageDollarAmount)}`, size: 11, gapAfter: 4 });
       lines.push({ text: `Fairness status: ${report.fairnessSummary.overallPass ? 'PASS' : 'REVIEW'}`, size: 11, gapAfter: 4 });
-      lines.push({ text: `Fairness model: ${fairnessDisplayService?.getFairnessModelLabel(report.fairnessSummary.evaluation.engineType) || 'Global Fairness'}`, size: 11, gapAfter: 4 });
+      lines.push({ text: `Fairness model: ${fairnessEngineLabel}`, size: 11, gapAfter: 4 });
       report.fairnessSummary.evaluation.summaryItems.forEach((item) => {
         lines.push({ text: item, size: 11, gapAfter: 4 });
       });
@@ -430,7 +444,7 @@
       lines.push({ text: `Lowest loan count: ${report.fairnessSummary.lowestLoanCount}`, size: 11, gapAfter: 4 });
       lines.push({ text: `Highest dollar total: ${formatCurrency(report.fairnessSummary.highestDollarAmount)}`, size: 11, gapAfter: 4 });
       lines.push({ text: `Lowest dollar total: ${formatCurrency(report.fairnessSummary.lowestDollarAmount)}`, size: 11, gapAfter: 4 });
-      lines.push({ text: `Fairness model: ${fairnessDisplayService?.getFairnessModelLabel(report.fairnessSummary.evaluation.engineType) || 'Global Fairness'}`, size: 11, gapAfter: 4 });
+      lines.push({ text: `Fairness model: ${fairnessEngineLabel}`, size: 11, gapAfter: 4 });
       report.fairnessSummary.evaluation.summaryItems.forEach((item) => {
         lines.push({ text: item, size: 11, gapAfter: 4 });
       });
