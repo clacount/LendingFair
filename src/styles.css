@@ -157,6 +157,26 @@ header p {
   margin-bottom: 6px;
 }
 
+.customer-product-label {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-top: 8px;
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.customer-product-label[data-state="error"] {
+  border-color: #f0b8b8;
+  background: #fff2f2;
+  color: #9f2f2f;
+}
+
 .fairness-model-header {
   display: flex;
   align-items: center;
@@ -1652,6 +1672,18 @@ select {
 [data-theme="dark"] .internal-tier-control {
   background: #172033;
   border-color: var(--border);
+}
+
+[data-theme="dark"] .customer-product-label {
+  background: #172033;
+  border-color: var(--border);
+  color: var(--text);
+}
+
+[data-theme="dark"] .customer-product-label[data-state="error"] {
+  border-color: #7f3b3b;
+  background: #321b21;
+  color: #ffb4b4;
 }
 
 [data-theme="dark"] input::placeholder,
