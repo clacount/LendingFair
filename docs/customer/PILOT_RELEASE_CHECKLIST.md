@@ -4,18 +4,27 @@ Use this checklist before sharing a pilot build with a credit union.
 
 ## Basic Tier QA
 
+- [ ] Basic customer mode loads with the product label showing Basic.
+- [ ] Internal Tier Mode is hidden in Basic customer mode.
 - [ ] Basic assignment run completes with consumer loans.
+- [ ] Basic allows Global Fairness with Auto, Personal, Credit Card, and Collateralized loans.
 - [ ] Basic blocks mortgage loan support.
 - [ ] Basic blocks Officer Lane Fairness.
+- [ ] Basic blocks multiple officer roles such as Mortgage and Flex.
 - [ ] Basic blocks simulation access.
 - [ ] Basic generated PDF includes app version and active tier.
 - [ ] Basic running totals persist after app reload.
+- [ ] Basic duplicate loan prevention blocks a repeated loan ID.
 
 ## Pro Tier QA
 
+- [ ] Pro customer mode loads with the product label showing Pro.
+- [ ] Internal Tier Mode is hidden in Pro customer mode.
+- [ ] Pro Global Fairness can be selected.
+- [ ] Pro Officer Lane Fairness can be selected.
+- [ ] Pro consumer loan run completes.
 - [ ] Pro mortgage run completes.
 - [ ] Pro role-aware run completes with Consumer, Mortgage, and Flex officers.
-- [ ] Pro Officer Lane Fairness can be selected.
 - [ ] Pro simulation allows 60 business days.
 - [ ] Pro simulation above 60 business days is blocked.
 - [ ] Pro generated PDF includes app version and active tier.
@@ -37,10 +46,12 @@ Use this checklist before sharing a pilot build with a credit union.
 - [ ] Version appears in UI footer.
 - [ ] Version appears in assignment report.
 - [ ] Version appears in EOM/custom/simulation reports when generated.
+- [ ] Support package export downloads locally and includes app version, active tier, and missing-file notes.
 
 ## Customer Configuration
 
 - [ ] Customer config locks the intended tier.
+- [ ] Customer config overrides any saved development/localStorage tier.
 - [ ] Internal Tier Mode is hidden in customer mode.
 - [ ] Demo controls are hidden in customer mode unless explicitly enabled.
 - [ ] Invalid or missing customer tier fails closed and shows a configuration error.

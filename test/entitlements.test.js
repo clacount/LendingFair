@@ -31,19 +31,32 @@ test('Platinum can use all known features', () => {
 test('Basic supports consumer loans and the global engine only', () => {
   assert.equal(entitlements.canUseFeature(FEATURES.GLOBAL_ENGINE, TIERS.BASIC), true);
   assert.equal(entitlements.canUseFeature(FEATURES.CONSUMER_LOANS, TIERS.BASIC), true);
+  assert.equal(entitlements.canUseFeature(FEATURES.DUPLICATE_LOAN_PREVENTION, TIERS.BASIC), true);
+  assert.equal(entitlements.canUseFeature(FEATURES.RUNNING_TOTALS_REPORT, TIERS.BASIC), true);
+  assert.equal(entitlements.canUseEngine(ENGINES.GLOBAL, TIERS.BASIC), true);
+  assert.equal(entitlements.canUseLoanCategory(LOAN_CATEGORIES.CONSUMER, TIERS.BASIC), true);
   assert.equal(entitlements.canUseFeature(FEATURES.OFFICER_LANE_ENGINE, TIERS.BASIC), false);
   assert.equal(entitlements.canUseFeature(FEATURES.MULTI_OFFICER_ROLES, TIERS.BASIC), false);
   assert.equal(entitlements.canUseFeature(FEATURES.MORTGAGE_LOANS, TIERS.BASIC), false);
   assert.equal(entitlements.canUseFeature(FEATURES.IMPORT_LOANS, TIERS.BASIC), false);
   assert.equal(entitlements.canUseFeature(FEATURES.SIMULATION, TIERS.BASIC), false);
+  assert.equal(entitlements.canUseEngine(ENGINES.OFFICER_LANE, TIERS.BASIC), false);
+  assert.equal(entitlements.canUseLoanCategory(LOAN_CATEGORIES.MORTGAGE, TIERS.BASIC), false);
+  assert.equal(entitlements.canUseOfficerRole(OFFICER_ROLES.FLEX, TIERS.BASIC), false);
   assert.equal(entitlements.getSimulationMaxDays(TIERS.BASIC), 0);
 });
 
 test('Pro supports officer lane, consumer loans, mortgage loans, multiple officer roles, and limited simulation', () => {
+  assert.equal(entitlements.canUseEngine(ENGINES.GLOBAL, TIERS.PRO), true);
+  assert.equal(entitlements.canUseEngine(ENGINES.OFFICER_LANE, TIERS.PRO), true);
   assert.equal(entitlements.canUseFeature(FEATURES.OFFICER_LANE_ENGINE, TIERS.PRO), true);
   assert.equal(entitlements.canUseFeature(FEATURES.CONSUMER_LOANS, TIERS.PRO), true);
   assert.equal(entitlements.canUseFeature(FEATURES.MORTGAGE_LOANS, TIERS.PRO), true);
   assert.equal(entitlements.canUseFeature(FEATURES.MULTI_OFFICER_ROLES, TIERS.PRO), true);
+  assert.equal(entitlements.canUseLoanCategory(LOAN_CATEGORIES.CONSUMER, TIERS.PRO), true);
+  assert.equal(entitlements.canUseLoanCategory(LOAN_CATEGORIES.MORTGAGE, TIERS.PRO), true);
+  assert.equal(entitlements.canUseOfficerRole(OFFICER_ROLES.MORTGAGE, TIERS.PRO), true);
+  assert.equal(entitlements.canUseOfficerRole(OFFICER_ROLES.FLEX, TIERS.PRO), true);
   assert.equal(entitlements.canUseFeature(FEATURES.IMPORT_LOANS, TIERS.PRO), false);
   assert.equal(entitlements.canUseFeature(FEATURES.SIMULATION, TIERS.PRO), true);
   assert.equal(entitlements.getSimulationMaxDays(TIERS.PRO), 60);
@@ -57,19 +70,34 @@ test('Platinum supports unlimited simulation', () => {
 });
 
 test('simulation day validation enforces Basic, Pro, and Platinum limits', () => {
-  const basicResult = entitlements.validateSimulationDays(1, TIERS.BASIC);
+  const basicResult = entitlements.validateSimulationEntitlement({
+    tier: TIERS.BASIC,
+    businessDays: 1
+  });
   assert.equal(basicResult.valid, false);
   assert.equal(basicResult.code, 'SIMULATION_NOT_AVAILABLE');
 
-  const proAllowed = entitlements.validateSimulationDays(60, TIERS.PRO);
+  const proAllowed = entitlements.validateSimulationEntitlement({
+    tier: TIERS.PRO,
+    businessDays: 60
+  });
   assert.equal(proAllowed.valid, true);
+  assert.equal(proAllowed.maxDays, 60);
 
-  const proBlocked = entitlements.validateSimulationDays(61, TIERS.PRO);
+  const proBlocked = entitlements.validateSimulationEntitlement({
+    tier: TIERS.PRO,
+    businessDays: 61
+  });
   assert.equal(proBlocked.valid, false);
   assert.equal(proBlocked.code, 'SIMULATION_DAYS_LIMIT_EXCEEDED');
+  assert.equal(proBlocked.tier, TIERS.PRO);
 
-  const platinumAllowed = entitlements.validateSimulationDays(120, TIERS.PLATINUM);
+  const platinumAllowed = entitlements.validateSimulationEntitlement({
+    tier: TIERS.PLATINUM,
+    businessDays: 120
+  });
   assert.equal(platinumAllowed.valid, true);
+  assert.equal(platinumAllowed.maxDays, null);
 });
 
 test('validation rejects Basic with Officer Lane engine', () => {
