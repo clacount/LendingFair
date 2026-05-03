@@ -50,6 +50,16 @@ For example:
 
 This prevents officers from being measured unfairly against work they are not eligible to receive.
 
+## Recommended Fairness Model
+
+The Recommended Fairness Model considers both the active officer setup and the current entered or imported loan mix. If mortgage-category loans are present and the active officer pool has Consumer, Mortgage, or Flex lane separation, the app may recommend Officer Lane Fairness.
+
+If loans are imported before officers are configured, LendingFair can show preliminary loan-mix guidance. This preview can flag mortgage or mixed consumer/mortgage products, but the final recommendation requires the active officer roles to be loaded or configured.
+
+If mortgage loans are present but all active officers share the same coverage pattern, Global Fairness may still be appropriate because the officers are being compared against the same eligible work.
+
+Custom loan types should be assigned the correct Consumer or Mortgage category. File-imported loans with mortgage-like type names, such as Second Mortgage, Home Equity, HELOC, Refi, First Mortgage, real estate, construction loan, or land loan, can influence the recommendation.
+
 ## Flex Officers
 
 Flex officers can be configured to support both consumer and mortgage lanes. Depending on the configured policy, flex officers may have focus weights or routing behavior that reflects whether they primarily support consumer or mortgage work.

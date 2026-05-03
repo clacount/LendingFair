@@ -26,9 +26,7 @@ function loadCustomerConfigScenario({ config = null, savedTier = '' } = {}) {
     }
   };
 
-  if (config) {
-    global.LENDINGFAIR_CUSTOMER_CONFIG = config;
-  }
+  global.LENDINGFAIR_CUSTOMER_CONFIG = config || {};
 
   const customerConfig = require('../src/config/customerConfig.js');
   const entitlements = require('../src/config/tiers.js');

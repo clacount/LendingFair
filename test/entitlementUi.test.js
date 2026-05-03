@@ -25,7 +25,7 @@ test('UI entitlement state locks Basic to global consumer single-role behavior',
   assert.equal(state.canUseImportLoans, false);
 });
 
-test('UI entitlement state allows Pro lane-aware operating features and limited simulation without Platinum-only tools', () => {
+test('UI entitlement state allows Pro lane-aware operating features, file import, and limited simulation without Platinum-only tools', () => {
   entitlements.setCurrentTier(entitlements.TIERS.PRO);
 
   const state = entitlementUi.getEntitlementState(entitlements);
@@ -35,7 +35,7 @@ test('UI entitlement state allows Pro lane-aware operating features and limited 
   assert.equal(state.canUseMultiOfficerRoles, true);
   assert.equal(state.canUseEom, true);
   assert.equal(state.canUseSimulation, true);
-  assert.equal(state.canUseImportLoans, false);
+  assert.equal(state.canUseImportLoans, true);
   assert.equal(state.canUseCustomBranding, false);
   assert.equal(state.canUseSharePointGraph, false);
 });

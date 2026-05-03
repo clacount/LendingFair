@@ -615,7 +615,9 @@ function renderScenarioEngineRecommendation() {
   }
   if (engineRecommendationSummaryEl) {
     if (!recommendation.isActionable) {
-      engineRecommendationSummaryEl.textContent = 'Add more scenario details to evaluate the best-fit fairness model.';
+      engineRecommendationSummaryEl.textContent = recommendation.mode === 'loan_mix_only'
+        ? `${recommendation.recommendedLabel} is preliminary guidance based on the current loan mix.`
+        : 'Add more scenario details to evaluate the best-fit fairness model.';
     } else {
       engineRecommendationSummaryEl.textContent = recommendation.matchesCurrent
         ? `${recommendation.currentLabel} is the best fit for the current scenario.`
@@ -1421,6 +1423,15 @@ function isAmountOptionalForType(typeName) {
 function getLoanTypeByName(typeName) {
   return allLoanTypes.find((loanType) => loanType.name === typeName) || null;
 }
+
+window.LendingFairLoanTypeRegistry = Object.freeze({
+  getLoanCategoryForType(typeName) {
+    return getLoanCategoryForType(typeName);
+  },
+  getLoanTypes() {
+    return allLoanTypes.map((loanType) => ({ ...loanType }));
+  }
+});
 
 function setOfficerVacationState(row, isOnVacation) {
   row.dataset.active = String(!isOnVacation);
@@ -3724,7 +3735,7 @@ async function handlePreviewLoanImport() {
 
 async function handleConfirmLoanImport() {
   if (!canUseFeature(entitlements?.FEATURES?.IMPORT_LOANS)) {
-    renderLoanImportMessage('Import Loans requires Platinum.', 'warning');
+    renderLoanImportMessage('Loan import requires Pro or Platinum.', 'warning');
     return;
   }
 
@@ -6802,7 +6813,7 @@ addLoanBtn.addEventListener('click', () => {
 supportExportBtn?.addEventListener('click', handleSupportExportClick);
 importLoansBtn?.addEventListener('click', () => {
   if (!canUseFeature(entitlements?.FEATURES?.IMPORT_LOANS)) {
-    setStepMessage('step3', 'Import Loans requires Platinum.', 'warning');
+    setStepMessage('step3', 'Loan import requires Pro or Platinum.', 'warning');
     return;
   }
 

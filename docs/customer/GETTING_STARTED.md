@@ -10,7 +10,7 @@ LendingFair is intended to improve consistency, reduce perceived bias, and make 
 
 **LendingFair Basic** is designed for consumer-loan assignment using one shared officer pool and the Global fairness engine.
 
-**LendingFair Pro** adds mortgage loan support, officer roles, Officer Lane Fairness, fairness audit reporting, EOM reporting, and limited fairness simulation.
+**LendingFair Pro** adds mortgage loan support, officer roles, Officer Lane Fairness, file-based loan import, fairness audit reporting, EOM reporting, and limited fairness simulation.
 
 **LendingFair Platinum** is the future enterprise direction for hosted/backend capabilities, database-backed persistence, APIs, live runs, and deeper institution-specific integrations. Platinum architecture is not part of the Basic/Pro local-browser package.
 
@@ -62,7 +62,7 @@ CSV files are used for local persistence, duplicate prevention, monthly history,
 
 ## No LOS/LMS Integration in Basic or Pro
 
-Basic and Pro do not connect directly to a Loan Origination System or Loan Management System. Loans are entered manually or through available local import workflows based on the configured tier.
+Basic and Pro do not connect directly to a Loan Origination System or Loan Management System. Basic uses manual loan entry. Pro supports file-based loan import, such as a user-selected CSV export with mapping, preview, validation, and confirm.
 
 Direct LOS/LMS polling, API/webhook ingestion, automated live assignment runs, and writeback are part of the Platinum roadmap and would require a backend/integration architecture.
 
