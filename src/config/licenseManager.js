@@ -1,6 +1,7 @@
 (function initializeLendingFairLicenseManager(globalScope) {
   const LICENSE_STORAGE_KEY = 'lendingfair-license-v1';
   const LICENSE_FILE_NAME = 'lendingfair-license.json';
+  const LICENSE_OBFUSCATION_PREFIX = 'b64:';
   const EXPIRING_SOON_DAYS = 14;
   const VALID_TIERS = new Set(['basic', 'pro', 'platinum']);
   const VALID_LICENSE_TYPES = new Set(['pilot', 'monthly', 'annual']);
@@ -82,11 +83,66 @@
   }
 
   function writeStoredLicenseInput(licenseInput) {
-    fileLicenseInput = String(licenseInput || '');
+    fileLicenseInput = obfuscateLicenseInput(licenseInput);
     try {
-      globalScope.localStorage?.setItem(LICENSE_STORAGE_KEY, String(licenseInput || ''));
+      globalScope.localStorage?.setItem(LICENSE_STORAGE_KEY, fileLicenseInput);
     } catch (error) {
       // Local license persistence is best-effort in restricted browser contexts.
+    }
+  }
+
+  function encodeUtf8ToBase64(value) {
+    const normalized = String(value || '');
+    if (typeof globalScope.btoa === 'function') {
+      return globalScope.btoa(unescape(encodeURIComponent(normalized)));
+    }
+    if (typeof Buffer !== 'undefined') {
+      return Buffer.from(normalized, 'utf8').toString('base64');
+    }
+    return '';
+  }
+
+  function decodeBase64ToUtf8(value) {
+    const normalized = String(value || '');
+    if (!normalized) {
+      return '';
+    }
+    if (typeof globalScope.atob === 'function') {
+      return decodeURIComponent(escape(globalScope.atob(normalized)));
+    }
+    if (typeof Buffer !== 'undefined') {
+      return Buffer.from(normalized, 'base64').toString('utf8');
+    }
+    return '';
+  }
+
+  function obfuscateLicenseInput(licenseInput) {
+    const raw = String(licenseInput || '').trim();
+    if (!raw) {
+      return '';
+    }
+    const encoded = encodeUtf8ToBase64(raw);
+    return encoded ? `${LICENSE_OBFUSCATION_PREFIX}${encoded}` : raw;
+  }
+
+  function deobfuscateLicenseInput(licenseInput) {
+    const raw = String(licenseInput || '').trim();
+    if (!raw) {
+      return '';
+    }
+    if (!raw.startsWith(LICENSE_OBFUSCATION_PREFIX)) {
+      return raw;
+    }
+
+    const encoded = raw.slice(LICENSE_OBFUSCATION_PREFIX.length);
+    if (!encoded) {
+      return '';
+    }
+
+    try {
+      return decodeBase64ToUtf8(encoded);
+    } catch (error) {
+      return '';
     }
   }
 
@@ -128,8 +184,9 @@
       return;
     }
 
-    await fileAdapter.writeText(LICENSE_FILE_NAME, rawLicenseInput);
-    fileLicenseInput = String(rawLicenseInput || '');
+    const obfuscated = obfuscateLicenseInput(rawLicenseInput);
+    await fileAdapter.writeText(LICENSE_FILE_NAME, obfuscated);
+    fileLicenseInput = obfuscated;
     try {
       globalScope.localStorage?.removeItem?.(LICENSE_STORAGE_KEY);
     } catch (error) {
@@ -146,7 +203,7 @@
       return { license: { ...licenseInput }, raw: JSON.stringify(licenseInput) };
     }
 
-    const raw = String(licenseInput || '').trim();
+    const raw = deobfuscateLicenseInput(licenseInput);
     if (!raw) {
       return { license: null, raw, error: 'License is missing.' };
     }
