@@ -980,6 +980,16 @@ select {
   margin-left: 8px;
 }
 
+.badge-advisory {
+  background: var(--accent-warm-soft);
+  color: var(--accent-warm);
+}
+
+.badge-review {
+  background: rgba(201, 61, 43, 0.12);
+  color: var(--danger);
+}
+
 .loan-pill {
   display: inline-block;
   margin: 6px 8px 0 0;

@@ -1146,6 +1146,7 @@
       countDistributionPass: fairnessEvaluation.metrics.maxCountVariancePercent <= COUNT_VARIANCE_THRESHOLD_PERCENT,
       amountDistributionPass: fairnessEvaluation.metrics.maxAmountVariancePercent <= AMOUNT_VARIANCE_THRESHOLD_PERCENT,
       overallPass: fairnessEvaluation.overallResult === 'PASS',
+      overallStatus: fairnessEvaluation.overallResult || 'REVIEW',
       evaluation: fairnessEvaluation
     };
   }
@@ -1250,7 +1251,7 @@
       { text: 'Fairness Summary', size: 14, gapAfter: 10 },
       { text: `Fairness model: ${fairnessEngineLabel}`, size: 11, gapAfter: 4 },
       ...(officerLaneModelNote ? [{ text: `Model note: ${officerLaneModelNote}`, size: 10, gapAfter: 6 }] : []),
-      { text: `Overall result: ${simulationResult.fairnessSummary.overallPass ? 'PASS' : 'REVIEW'}`, size: 12, gapAfter: 4 },
+      { text: `Overall result: ${simulationResult.fairnessSummary.overallStatus}`, size: 12, gapAfter: 4 },
       { text: `Average loans per officer: ${simulationResult.fairnessSummary.averageLoanCount.toFixed(2)}`, size: 11, gapAfter: 4 },
       { text: `Average goal dollars per officer: ${formatCurrency(simulationResult.fairnessSummary.averageDollarAmount)}`, size: 11, gapAfter: 4 },
       { text: `${simulationResult.fairnessSummary.evaluation.engineType === 'officer_lane' ? 'Consumer loan variance (C lane)' : 'Consumer loan variance'}: ${simulationResult.fairnessSummary.consumerVariance.maxCountVariancePercent.toFixed(1)}%`, size: 11, gapAfter: 4 },
@@ -1377,8 +1378,9 @@
 
     const summaryCard = document.createElement('div');
     summaryCard.className = 'result-group';
+    const simulationStatus = String(simulationResult.fairnessSummary.overallStatus || 'REVIEW').toUpperCase();
     summaryCard.innerHTML = `
-      <h3>Monthly Simulation Summary <span class="badge">${simulationResult.fairnessSummary.overallPass ? 'PASS' : 'REVIEW'}</span></h3>
+      <h3>Monthly Simulation Summary <span class="badge badge-${escapeHtml(simulationStatus.toLowerCase())}">${escapeHtml(simulationStatus)}</span></h3>
       <div class="amount-summary">Simulation month: ${escapeHtml(simulationResult.monthLabel)}</div>
       <div class="amount-summary">Business days: ${escapeHtml(String(simulationResult.businessDays))}</div>
       <div class="amount-summary">Loans simulated: ${escapeHtml(String(simulationResult.totalLoans))}</div>
@@ -1415,7 +1417,7 @@
       <div class="audit-summary-line"><strong>Fairness model:</strong> ${escapeHtml(fairnessDisplayService?.getFairnessModelLabel(simulationResult.fairnessSummary.evaluation.engineType) || 'Global Fairness')}</div>
       ${officerLaneModelNote ? `<div class="audit-summary-line">${escapeHtml(officerLaneModelNote)}</div>` : ''}
       <div class="audit-summary">
-        <div class="audit-summary-line"><strong>Overall status:</strong> ${escapeHtml(simulationResult.fairnessSummary.overallPass ? 'PASS' : 'REVIEW')}</div>
+        <div class="audit-summary-line"><strong>Overall status:</strong> ${escapeHtml(simulationStatus)}</div>
         <div class="audit-summary-line"><strong>Average loans per officer:</strong> ${escapeHtml(simulationResult.fairnessSummary.averageLoanCount.toFixed(2))}</div>
         <div class="audit-summary-line"><strong>Average goal dollars per officer:</strong> ${escapeHtml(formatCurrency(simulationResult.fairnessSummary.averageDollarAmount))}</div>
         <div class="audit-summary-line"><strong>${simulationResult.fairnessSummary.evaluation.engineType === 'officer_lane' ? 'Consumer loan variance (C lane):' : 'Consumer loan variance:'}</strong> ${escapeHtml(simulationResult.fairnessSummary.consumerVariance.maxCountVariancePercent.toFixed(1))}%</div>
