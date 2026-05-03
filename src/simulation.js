@@ -28,6 +28,7 @@
   const fairnessEngineService = window.FairnessEngineService;
   const fairnessDisplayService = window.FairnessDisplayService;
   const entitlements = window.LendingFairEntitlements;
+  const licenseManager = window.LendingFairLicenseManager;
 
   function canUseFeature(feature) {
     return !entitlements || entitlements.canUseFeature(feature);
@@ -45,6 +46,11 @@
 
   function getSimulationAccessMessage() {
     return 'Monthly fairness simulation requires Pro or Platinum.';
+  }
+
+  function canRunOperationalAction(actionName) {
+    const guard = licenseManager?.canPerformOperationalAction?.(actionName);
+    return guard?.allowed === false ? guard : { allowed: true };
   }
 
   function getSimulationLimitMessage(maxDays = getSimulationMaxDays()) {
@@ -284,6 +290,12 @@
   }
 
   function openSimulationModal() {
+    const licenseGuard = canRunOperationalAction('simulation');
+    if (!licenseGuard.allowed) {
+      setMessage(licenseGuard.message || 'Enter an active LendingFair license to continue.', 'warning');
+      return;
+    }
+
     if (!canUseFeature(entitlements?.FEATURES?.SIMULATION)) {
       setMessage(getSimulationAccessMessage(), 'warning');
       return;
@@ -1577,6 +1589,12 @@
 
   async function handleSimulationSubmit(event) {
     event.preventDefault();
+
+    const licenseGuard = canRunOperationalAction('simulation');
+    if (!licenseGuard.allowed) {
+      setSimulationModalMessage(licenseGuard.message || 'Enter an active LendingFair license to continue.', 'warning');
+      return;
+    }
 
     if (!canUseFeature(entitlements?.FEATURES?.SIMULATION)) {
       setSimulationModalMessage(getSimulationAccessMessage(), 'warning');

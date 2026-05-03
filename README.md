@@ -75,15 +75,22 @@ The app also keeps a CSV state file named `loan-randomizer-running-totals.csv` i
 - Platinum is currently the default tier so all existing behavior remains available while productization continues, including unlimited simulation subject to existing input validation. Future live LOS/LMS integrations remain a Platinum architecture direction.
 - The entitlement layer is wired into UI controls, run validation, PDF/report sections, and advanced testing tools.
 - An **Internal Tier Mode** selector is available only as a temporary testing control for Basic, Pro, and Platinum behavior.
-- Licensing and license-code activation are not implemented yet.
+- Basic/Pro customer pilots use an offline local license file for pilot, monthly, or annual access. No online activation or payment processing is implemented.
 - Future licensing can hydrate the current tier through the entitlement layer to unlock the right capabilities.
 
 ## Customer packaging mode
 - LendingFair can now be packaged in customer mode with `window.LENDINGFAIR_CUSTOMER_CONFIG` or `src/config/customerConfig.js`.
-- Customer mode can lock the app to Basic, Pro, or Platinum without implementing paid licensing or license activation.
+- Customer mode can package the app for Basic, Pro, or Platinum; an installed local license is authoritative for the active tier in customer mode.
 - Development mode preserves the current Platinum default and keeps the **Internal Tier Mode** selector available for testing.
 - Customer mode hides internal tier controls, hides demo/dev-only controls by default unless explicitly enabled, and hydrates the tier from customer config.
 - A customer-safe product label such as `LendingFair Basic` or `LendingFair Pro` is shown in customer mode, with optional customer name display.
+
+## Offline pilot licenses
+- Basic/Pro pilots can be issued as local JSON license payloads for 30-day, 60-day, monthly, or annual windows.
+- The installed license is stored as `lendingfair-license.json` in the selected working folder root, so another authorized user can use the same license by selecting the same working folder.
+- Users renew by choosing **Update License** and pasting an updated local license payload. LendingFair overwrites `lendingfair-license.json`; this is local-only and does not contact a server.
+- In customer mode, missing, invalid, or expired licenses block new operational actions such as assignments, imports, officer edits, loan type edits, simulations, and new report generation.
+- Expiration does not delete local data. Folder selection, support export, license renewal, and existing local files remain available for review/support.
 
 ## Release/version metadata
 - Customer pilots include a visible app version and active tier in the UI.

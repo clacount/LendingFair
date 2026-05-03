@@ -255,8 +255,9 @@
       <li>No LOS/LMS integration is included.</li>
       <li>Folder selection requires a compatible Edge/Chrome browser.</li>
       <li>Data is stored as local/selected-folder CSV, JSON, and PDF files.</li>
-      <li>Licensing is not implemented unless added separately later.</li>
-      <li>Tier locking may be configuration-based for pilots.</li>
+      <li>Basic/Pro pilots use a local offline license payload saved as lendingfair-license.json in the selected working folder.</li>
+      <li>No online activation, payment processing, or user account validation is included.</li>
+      <li>Expired licenses block new operational actions but do not delete local data.</li>
       <li>Direct SharePoint upload is not implemented unless separately integrated.</li>
       <li>Platinum is intended for hosted/containerized backend, database, API, integration, and live-run architecture.</li>
     </ul>
@@ -268,7 +269,7 @@
     <h3>Included Information</h3>
     <ul>
       <li>app name, version, release channel, and build date</li>
-      <li>active tier and selected fairness engine</li>
+      <li>active tier, selected fairness engine, and license status</li>
       <li>customer mode and customer name, if configured</li>
       <li>export timestamp, browser user agent, and active month folder key</li>
       <li>running totals, loan history, and loan type configuration when present</li>

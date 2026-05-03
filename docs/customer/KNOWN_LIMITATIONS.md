@@ -43,9 +43,11 @@ Institutions should decide where these files should live and how they should be 
 
 ## Licensing
 
-Paid licensing and license-code activation are not implemented in the current Basic/Pro local-browser package unless added separately later.
+Basic/Pro customer pilots use a local offline license payload. The app does not perform online activation, payment processing, user account validation, or server-side license checks.
 
-Pilot tier locking may be configuration-based.
+Pilot licenses can be issued for 30 or 60 days, and monthly/annual renewals are handled by entering an updated local license. The installed license is saved as `lendingfair-license.json` in the selected working folder root. Expired licenses block new operational actions but do not delete local data.
+
+The current offline license layer is suitable for pilot packaging. It is not a full hosted licensing platform.
 
 ## SharePoint
 

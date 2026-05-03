@@ -6,6 +6,10 @@ Use this checklist before sharing a pilot build with a credit union.
 
 - [ ] Basic customer mode loads with the product label showing Basic.
 - [ ] Internal Tier Mode is hidden in Basic customer mode.
+- [ ] Basic customer mode with a missing license blocks new operational actions.
+- [ ] Basic customer mode with an active local license allows permitted Basic actions.
+- [ ] Basic customer mode reads `lendingfair-license.json` from the selected working folder.
+- [ ] Basic customer mode with an expired license blocks assignments/imports/edits but does not delete data.
 - [ ] Basic assignment run completes with consumer loans.
 - [ ] Basic allows Global Fairness with Auto, Personal, Credit Card, and Collateralized loans.
 - [ ] Basic blocks mortgage loan support.
@@ -21,6 +25,11 @@ Use this checklist before sharing a pilot build with a credit union.
 
 - [ ] Pro customer mode loads with the product label showing Pro.
 - [ ] Internal Tier Mode is hidden in Pro customer mode.
+- [ ] Pro customer mode with a missing license blocks new operational actions.
+- [ ] Pro customer mode with an active local license allows permitted Pro actions.
+- [ ] Pro customer mode reads `lendingfair-license.json` from the selected working folder.
+- [ ] Pro customer mode with an expired license blocks assignments/imports/edits but does not delete data.
+- [ ] Updating the local license overwrites `lendingfair-license.json`, renews access, and refreshes the active tier/status display.
 - [ ] Pro Global Fairness can be selected.
 - [ ] Pro Officer Lane Fairness can be selected.
 - [ ] Pro consumer loan run completes.
@@ -51,11 +60,12 @@ Use this checklist before sharing a pilot build with a credit union.
 - [ ] Version appears in UI footer.
 - [ ] Version appears in assignment report.
 - [ ] Version appears in EOM/custom/simulation reports when generated.
-- [ ] Support package export downloads locally and includes app version, active tier, and missing-file notes.
+- [ ] Support package export downloads locally and includes app version, active tier, license status, and missing-file notes.
 
 ## Customer Configuration
 
 - [ ] Customer config locks the intended tier.
+- [ ] Installed license tier is authoritative over customer config tier when present.
 - [ ] Customer config overrides any saved development/localStorage tier.
 - [ ] Internal Tier Mode is hidden in customer mode.
 - [ ] Demo controls are hidden in customer mode unless explicitly enabled.
@@ -68,4 +78,5 @@ Use this checklist before sharing a pilot build with a credit union.
 - [ ] Customer has received the Basic or Pro user guide.
 - [ ] Customer has reviewed the Fairness Methodology.
 - [ ] Customer has reviewed Known Limitations.
+- [ ] Customer understands pilot license expiration/renewal process.
 - [ ] Customer has agreed to pilot scope and review cadence.

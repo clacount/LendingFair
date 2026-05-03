@@ -30,6 +30,17 @@ test('product version label combines app name, tier, and version', () => {
 });
 
 test('report metadata lines include version, tier, engine, generated timestamp, and customer', () => {
+  global.LendingFairLicenseManager = {
+    getLicenseState() {
+      return {
+        license: {
+          licenseType: 'pilot',
+          expiresAt: '2026-06-30'
+        }
+      };
+    }
+  };
+
   const lines = metadata.buildReportMetadataLines({
     generatedAtLabel: 'May 2, 2026, 10:00 AM',
     fairnessEngineLabel: 'Officer Lane Fairness'
@@ -39,4 +50,6 @@ test('report metadata lines include version, tier, engine, generated timestamp, 
   assert.equal(lines.some((line) => line.includes('Officer Lane Fairness')), true);
   assert.equal(lines.some((line) => line.includes('May 2, 2026')), true);
   assert.equal(lines.some((line) => line.includes('Example Credit Union')), true);
+  assert.equal(lines.some((line) => line.includes('License type: pilot')), true);
+  assert.equal(lines.some((line) => line.includes('License expires: 2026-06-30')), true);
 });

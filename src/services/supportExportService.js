@@ -54,6 +54,7 @@
     userAgent = '',
     monthFolderKey = '',
     sessionMode = 'production',
+    licenseMetadata = {},
     files = [],
     reportFilenames = []
   } = {}) {
@@ -81,6 +82,13 @@
         userAgent,
         monthFolderKey,
         sessionMode
+      },
+      license: {
+        licenseId: licenseMetadata.licenseId || '',
+        licenseType: licenseMetadata.licenseType || '',
+        expiresAt: licenseMetadata.expiresAt || '',
+        licenseStatus: licenseMetadata.licenseStatus || '',
+        activeTier: licenseMetadata.activeTier || activeTier
       },
       files: normalizedFiles,
       reports: normalizeReportFilenames(reportFilenames),

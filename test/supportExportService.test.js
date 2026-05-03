@@ -17,6 +17,13 @@ test('support manifest includes app version, active tier, and fairness engine', 
     activeTierLabel: 'Pro',
     fairnessEngine: 'officer_lane',
     fairnessEngineLabel: 'Officer Lane Fairness',
+    licenseMetadata: {
+      licenseId: 'pilot-001',
+      licenseType: 'pilot',
+      expiresAt: '2026-06-30',
+      licenseStatus: 'active',
+      activeTier: 'pro'
+    },
     exportTimestamp: '2026-05-02T12:00:00.000Z',
     monthFolderKey: '2026-05'
   });
@@ -26,6 +33,8 @@ test('support manifest includes app version, active tier, and fairness engine', 
   assert.equal(manifest.context.activeTier, 'pro');
   assert.equal(manifest.context.fairnessEngine, 'officer_lane');
   assert.equal(manifest.context.monthFolderKey, '2026-05');
+  assert.equal(manifest.license.licenseId, 'pilot-001');
+  assert.equal(manifest.license.licenseStatus, 'active');
 });
 
 test('missing support files are represented as missing and not fatal', () => {
