@@ -29,7 +29,7 @@ Use this checklist before sharing a pilot build with a credit union.
 - [ ] Pro customer mode with an active local license allows permitted Pro actions.
 - [ ] Pro customer mode reads `lendingfair-license.json` from the selected working folder.
 - [ ] Pro customer mode with an expired license blocks assignments/imports/edits but does not delete data.
-- [ ] Updating the local license overwrites `lendingfair-license.json`, renews access, and refreshes the active tier/status display.
+- [ ] Updating the Base64 local license (paste/import) overwrites `lendingfair-license.json`, renews access, and refreshes the active tier/status display.
 - [ ] Pro Global Fairness can be selected.
 - [ ] Pro Officer Lane Fairness can be selected.
 - [ ] Pro consumer loan run completes.

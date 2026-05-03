@@ -280,13 +280,18 @@
     <div class="modal-header">
       <div>
         <h2 id="licenseModalTitle">Update License</h2>
-        <p class="hint">Paste the local LendingFair license JSON provided for this customer build. It is saved as lendingfair-license.json in the selected working folder.</p>
+        <p class="hint">Paste the license text provided by LendingFair. This will be saved in the selected working folder.</p>
       </div>
       <button id="closeLicenseModalBtn" class="modal-close-btn" type="button" aria-label="Close license update">×</button>
     </div>
     <label class="full-width">
-      <span>License JSON</span>
-      <textarea id="licenseInput" class="license-input" rows="10" placeholder='{"licenseId":"pilot-001","customerName":"Example Credit Union","tier":"pro","licenseType":"pilot","issuedAt":"2026-05-03","expiresAt":"2026-07-02","graceDays":0}'></textarea>
+      <span>Paste license text</span>
+      <textarea id="licenseInput" class="license-input" rows="8" placeholder="Paste license text"></textarea>
+    </label>
+    <p class="hint">Paste the license text provided by LendingFair.</p>
+    <label class="full-width">
+      <span>Import License File</span>
+      <input id="licenseFileInput" type="file" accept=".txt,.lic,.license,.json,text/plain,application/json">
     </label>
     <div id="licenseModalMessage" class="message"></div>
     <div class="modal-actions">

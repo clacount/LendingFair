@@ -62,6 +62,14 @@ function attachMemoryLicenseFile(licenseManager, initialFiles = {}) {
   return files;
 }
 
+function toBase64(value) {
+  return Buffer.from(String(value || ''), 'utf8').toString('base64');
+}
+
+function encodeLicense(license) {
+  return toBase64(JSON.stringify(license));
+}
+
 function validLicense(overrides = {}) {
   return {
     licenseId: 'pilot-001',
@@ -89,7 +97,7 @@ test('development mode allows unlicensed usage', () => {
 test('development mode does not block when a stale invalid license is stored', () => {
   const { licenseManager } = resetGlobals({
     config: { appMode: 'development' },
-    storage: { 'lendingfair-license-v1': JSON.stringify(validLicense({ issuedAt: '2026-04-01', expiresAt: '2026-04-30' })) }
+    storage: { 'lendingfair-license-v1': encodeLicense(validLicense({ issuedAt: '2026-04-01', expiresAt: '2026-04-30' })) }
   });
 
   const action = licenseManager.canPerformOperationalAction('run-assignment', { now: new Date('2026-05-03T12:00:00Z') });
@@ -113,7 +121,7 @@ test('valid active pilot license allows operational actions', async () => {
   const { licenseManager } = resetGlobals({ config: { appMode: 'customer', tier: 'pro' } });
   attachMemoryLicenseFile(licenseManager);
 
-  const installResult = await licenseManager.installLicense(JSON.stringify(validLicense()));
+  const installResult = await licenseManager.installLicense(encodeLicense(validLicense()));
   const action = licenseManager.canPerformOperationalAction('run-assignment', { now: new Date('2026-05-03T12:00:00Z') });
 
   assert.equal(installResult.installed, true);
@@ -122,7 +130,7 @@ test('valid active pilot license allows operational actions', async () => {
 });
 
 test('expired license blocks operational actions', async () => {
-  const expiredLicense = JSON.stringify(validLicense({ issuedAt: '2026-04-01', expiresAt: '2026-04-30' }));
+  const expiredLicense = encodeLicense(validLicense({ issuedAt: '2026-04-01', expiresAt: '2026-04-30' }));
   const { licenseManager } = resetGlobals({ config: { appMode: 'customer', tier: 'pro' } });
   attachMemoryLicenseFile(licenseManager, { [licenseManager.LICENSE_FILE_NAME]: expiredLicense });
   await licenseManager.hydrateFromFile();
@@ -135,7 +143,7 @@ test('expired license blocks operational actions', async () => {
 });
 
 test('license expiring within 14 days returns expiring soon', async () => {
-  const expiringLicense = JSON.stringify(validLicense({ expiresAt: '2026-05-10' }));
+  const expiringLicense = encodeLicense(validLicense({ expiresAt: '2026-05-10' }));
   const { licenseManager } = resetGlobals({ config: { appMode: 'customer', tier: 'pro' } });
   attachMemoryLicenseFile(licenseManager, { [licenseManager.LICENSE_FILE_NAME]: expiringLicense });
   await licenseManager.hydrateFromFile();
@@ -147,7 +155,7 @@ test('license expiring within 14 days returns expiring soon', async () => {
 });
 
 test('license can hydrate from shared working-folder file', async () => {
-  const fileLicense = JSON.stringify(validLicense({ tier: 'pro' }));
+  const fileLicense = encodeLicense(validLicense({ tier: 'pro' }));
   const { licenseManager } = resetGlobals({ config: { appMode: 'customer', tier: 'basic' } });
   attachMemoryLicenseFile(licenseManager, { [licenseManager.LICENSE_FILE_NAME]: fileLicense });
   const entitlements = require('../src/config/tiers.js');
@@ -161,7 +169,7 @@ test('license can hydrate from shared working-folder file', async () => {
 test('customer mode cannot install license until file storage is available', async () => {
   const { licenseManager } = resetGlobals({ config: { appMode: 'customer', tier: 'pro' } });
 
-  const result = await licenseManager.installLicense(JSON.stringify(validLicense()));
+  const result = await licenseManager.installLicense(encodeLicense(validLicense()));
 
   assert.equal(result.installed, false);
   assert.match(result.message, /working folder/i);
@@ -170,7 +178,7 @@ test('customer mode cannot install license until file storage is available', asy
 test('customer mode ignores browser localStorage license without shared file storage', () => {
   const { licenseManager } = resetGlobals({
     config: { appMode: 'customer', tier: 'pro' },
-    storage: { 'lendingfair-license-v1': JSON.stringify(validLicense()) }
+    storage: { 'lendingfair-license-v1': encodeLicense(validLicense()) }
   });
 
   const state = licenseManager.getLicenseState({ now: new Date('2026-05-03T12:00:00Z') });
@@ -179,18 +187,21 @@ test('customer mode ignores browser localStorage license without shared file sto
 });
 
 test('newer valid license can replace an old stored license', async () => {
-  const oldLicense = JSON.stringify(validLicense({ licenseId: 'pilot-old', expiresAt: '2026-05-10' }));
+  const oldLicense = encodeLicense(validLicense({ licenseId: 'pilot-old', expiresAt: '2026-05-10' }));
   const { licenseManager } = resetGlobals({ config: { appMode: 'customer', tier: 'pro' } });
   const files = attachMemoryLicenseFile(licenseManager, { [licenseManager.LICENSE_FILE_NAME]: oldLicense });
   await licenseManager.hydrateFromFile();
 
-  const result = await licenseManager.installLicense(JSON.stringify(validLicense({
+  const result = await licenseManager.installLicense(encodeLicense(validLicense({
     licenseId: 'pilot-renewed',
     expiresAt: '2026-12-31'
   })));
 
   assert.equal(result.installed, true);
-  assert.equal(JSON.parse(files[licenseManager.LICENSE_FILE_NAME]).licenseId, 'pilot-renewed');
+  assert.equal(files[licenseManager.LICENSE_FILE_NAME], encodeLicense(validLicense({
+    licenseId: 'pilot-renewed',
+    expiresAt: '2026-12-31'
+  })));
 });
 
 test('license tier hydrates entitlements in customer mode', async () => {
@@ -200,7 +211,7 @@ test('license tier hydrates entitlements in customer mode', async () => {
 
   assert.equal(entitlements.getCurrentTier(), entitlements.TIERS.BASIC);
 
-  const result = await licenseManager.installLicense(JSON.stringify(validLicense({ tier: 'pro' })));
+  const result = await licenseManager.installLicense(encodeLicense(validLicense({ tier: 'pro' })));
 
   assert.equal(result.installed, true);
   assert.equal(entitlements.getCurrentTier(), entitlements.TIERS.PRO);
@@ -209,7 +220,7 @@ test('license tier hydrates entitlements in customer mode', async () => {
 test('invalid license is rejected', async () => {
   const { licenseManager } = resetGlobals({ config: { appMode: 'customer', tier: 'pro' } });
 
-  const result = await licenseManager.installLicense(JSON.stringify(validLicense({ expiresAt: '2026-02-31' })));
+  const result = await licenseManager.installLicense(encodeLicense(validLicense({ expiresAt: '2026-02-31' })));
 
   assert.equal(result.installed, false);
   assert.equal(result.state, licenseManager.LICENSE_STATES.INVALID);
@@ -220,11 +231,40 @@ test('support metadata includes license status and active tier', async () => {
   const { licenseManager } = resetGlobals({ config: { appMode: 'customer', tier: 'pro' } });
   attachMemoryLicenseFile(licenseManager);
 
-  await licenseManager.installLicense(JSON.stringify(validLicense({ tier: 'pro', licenseType: 'monthly' })));
+  await licenseManager.installLicense(encodeLicense(validLicense({ tier: 'pro', licenseType: 'monthly' })));
   const metadata = licenseManager.getSupportMetadata();
 
   assert.equal(metadata.licenseId, 'pilot-001');
   assert.equal(metadata.licenseType, 'monthly');
   assert.equal(metadata.licenseStatus, licenseManager.LICENSE_STATES.ACTIVE);
   assert.equal(metadata.activeTier, 'pro');
+});
+
+test('raw JSON license input is rejected', async () => {
+  const { licenseManager } = resetGlobals({ config: { appMode: 'customer', tier: 'pro' } });
+  const result = await licenseManager.installLicense(JSON.stringify(validLicense()));
+  assert.equal(result.installed, false);
+  assert.equal(result.message, 'License must be Base64-encoded text, not raw JSON.');
+});
+
+test('object license input is rejected', async () => {
+  const { licenseManager } = resetGlobals({ config: { appMode: 'customer', tier: 'pro' } });
+  const result = await licenseManager.installLicense(validLicense());
+  assert.equal(result.installed, false);
+  assert.match(result.message, /Base64-encoded text/);
+});
+
+test('invalid Base64 license is rejected', async () => {
+  const { licenseManager } = resetGlobals({ config: { appMode: 'customer', tier: 'pro' } });
+  const result = await licenseManager.installLicense('not-base64!!');
+  assert.equal(result.installed, false);
+  assert.match(result.message, /Base64 text is invalid/);
+});
+
+test('legacy b64 prefix license is migrated on hydrate', async () => {
+  const encoded = encodeLicense(validLicense());
+  const { licenseManager } = resetGlobals({ config: { appMode: 'customer', tier: 'pro' } });
+  const files = attachMemoryLicenseFile(licenseManager, { [licenseManager.LICENSE_FILE_NAME]: `b64:${encoded}` });
+  await licenseManager.hydrateFromFile();
+  assert.equal(files[licenseManager.LICENSE_FILE_NAME], encoded);
 });

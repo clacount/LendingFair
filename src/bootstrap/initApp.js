@@ -22,6 +22,7 @@ const closeLicenseModalBtn = document.getElementById('closeLicenseModalBtn');
 const cancelLicenseModalBtn = document.getElementById('cancelLicenseModalBtn');
 const installLicenseBtn = document.getElementById('installLicenseBtn');
 const licenseInput = document.getElementById('licenseInput');
+const licenseFileInput = document.getElementById('licenseFileInput');
 const licenseModalMessageEl = document.getElementById('licenseModalMessage');
 const supportExportBtn = document.getElementById('supportExportBtn');
 const randomizeBtn = document.getElementById('randomizeBtn');
@@ -7277,12 +7278,40 @@ installLicenseBtn?.addEventListener('click', async () => {
     return;
   }
 
-  licenseModalMessageEl.textContent = `License installed. ${result.license.licenseType} license expires ${result.license.expiresAt}.`;
+  const tierLabel = result.license?.tier ? `${result.license.tier.charAt(0).toUpperCase()}${result.license.tier.slice(1)}` : 'Licensed';
+  licenseModalMessageEl.textContent = `License installed. ${tierLabel} ${result.license.licenseType} active until ${result.license.expiresAt}.`;
   licenseModalMessageEl.dataset.tone = 'success';
   licenseInput.value = '';
   updateFolderStatus();
   refreshFairnessEngineUi();
   syncLicenseStatusUi();
+});
+
+licenseFileInput?.addEventListener('change', async (event) => {
+  const file = event?.target?.files?.[0];
+  if (!file) {
+    return;
+  }
+  try {
+    const fileText = await file.text();
+    const result = await licenseManager?.installLicense?.(fileText || '');
+    if (!result?.installed) {
+      licenseModalMessageEl.textContent = result?.message || 'License could not be installed.';
+      licenseModalMessageEl.dataset.tone = 'warning';
+      return;
+    }
+    const tierLabel = result.license?.tier ? `${result.license.tier.charAt(0).toUpperCase()}${result.license.tier.slice(1)}` : 'Licensed';
+    licenseModalMessageEl.textContent = `License installed. ${tierLabel} ${result.license.licenseType} active until ${result.license.expiresAt}.`;
+    licenseModalMessageEl.dataset.tone = 'success';
+    licenseInput.value = '';
+    licenseFileInput.value = '';
+    updateFolderStatus();
+    refreshFairnessEngineUi();
+    syncLicenseStatusUi();
+  } catch (error) {
+    licenseModalMessageEl.textContent = error.message || 'License file could not be read.';
+    licenseModalMessageEl.dataset.tone = 'warning';
+  }
 });
 
 window.addEventListener?.('lendingfair:tierchange', refreshFairnessEngineUi);

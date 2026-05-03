@@ -88,7 +88,7 @@ The app also keeps a CSV state file named `loan-randomizer-running-totals.csv` i
 ## Offline pilot licenses
 - Basic/Pro pilots can be issued as local JSON license payloads for 30-day, 60-day, monthly, or annual windows.
 - The installed license is stored as `lendingfair-license.json` in the selected working folder root, so another authorized user can use the same license by selecting the same working folder.
-- Users renew by choosing **Update License** and pasting an updated local license payload. LendingFair overwrites `lendingfair-license.json`; this is local-only and does not contact a server.
+- Users renew by choosing **Update License** and pasting Base64 license text or importing a Base64 license text file. LendingFair overwrites `lendingfair-license.json`; this is local-only and does not contact a server. Raw JSON licenses are rejected; LendingFair decodes Base64 locally to determine tier/expiration.
 - In customer mode, missing, invalid, or expired licenses block new operational actions such as assignments, imports, officer edits, loan type edits, simulations, and new report generation.
 - Expiration does not delete local data. Folder selection, support export, license renewal, and existing local files remain available for review/support.
 

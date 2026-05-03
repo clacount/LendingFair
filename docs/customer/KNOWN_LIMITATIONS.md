@@ -45,7 +45,7 @@ Institutions should decide where these files should live and how they should be 
 
 Basic/Pro customer pilots use a local offline license payload. The app does not perform online activation, payment processing, user account validation, or server-side license checks.
 
-Pilot licenses can be issued for 30 or 60 days, and monthly/annual renewals are handled by entering an updated local license. The installed license is saved as `lendingfair-license.json` in the selected working folder root. Expired licenses block new operational actions but do not delete local data.
+Pilot licenses can be issued for 30 or 60 days, and monthly/annual renewals are handled by entering updated Base64 license text (or importing a Base64 license text file). The installed license is saved as `lendingfair-license.json` as Base64 text only in the selected working folder root. Expired licenses block new operational actions but do not delete local data.
 
 The current offline license layer is suitable for pilot packaging. It is not a full hosted licensing platform.
 
