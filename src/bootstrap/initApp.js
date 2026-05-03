@@ -2167,9 +2167,24 @@ function syncLicenseStatusUi() {
       if (!button) {
         return;
       }
-      button.disabled = shouldLock || button.disabled;
       if (shouldLock) {
+        button.dataset.licensePreviousDisabled = button.disabled ? 'true' : 'false';
+        button.dataset.licenseLocked = 'true';
+        button.dataset.licenseLockedTitle = lockedMessage;
+        button.disabled = true;
         button.title = lockedMessage;
+        return;
+      }
+
+      if (button.dataset.licenseLocked === 'true') {
+        button.disabled = button.dataset.licensePreviousDisabled === 'true';
+        const previousLicenseTitle = button.dataset.licenseLockedTitle || '';
+        delete button.dataset.licenseLocked;
+        delete button.dataset.licensePreviousDisabled;
+        delete button.dataset.licenseLockedTitle;
+        if (previousLicenseTitle && button.title === previousLicenseTitle) {
+          button.removeAttribute('title');
+        }
       }
     });
 }

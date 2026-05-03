@@ -2,12 +2,12 @@
   // Edit this object when packaging a customer build without adding an inline script.
   // Leave it empty for normal development behavior.
   const LOCAL_CUSTOMER_CONFIG = {
-     customerName: 'Example Federal Credit Union',
-     tier: 'pro',
-     appMode: 'customer',
-     showInternalTierSelector: false,
-     showDemoControls: false,
-     showDevLabels: false
+     // customerName: 'Example Federal Credit Union',
+     // tier: 'pro',
+     // appMode: 'customer',
+     // showInternalTierSelector: false,
+     // showDemoControls: false,
+     // showDevLabels: false
   };
 
   const APP_MODES = {
