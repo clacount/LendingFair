@@ -72,7 +72,10 @@
       const singleMlo = this.hasSingleMortgageOnlyOfficer(officers);
       const normalizedOfficers = officers.map((officer) => this.normalizeOfficer(officer));
       const officerClassMap = this.buildOfficerClassMap(normalizedOfficers);
-      const consumerLaneEntries = officerStats.filter((entry) => officerClassMap[entry.officer] === 'C');
+      const consumerLaneEntries = officerStats.filter((entry) => {
+        const officerConfig = normalizedOfficers.find((officer) => officer.name === entry.officer);
+        return Boolean(officerConfig?.eligibility?.consumer);
+      });
       const flexOfficers = normalizedOfficers.filter((officer) => this.isFlexOfficer(officer)).map((officer) => officer.name);
       const hasConsumerLane = normalizedOfficers.some((officer) => this.getOfficerClassCode(officer) === 'C');
       const hasFlexLane = normalizedOfficers.some((officer) => this.getOfficerClassCode(officer) === 'F');
@@ -155,15 +158,29 @@
       const isConsumerDollarInAdvisoryBand = categoryMetrics.consumerVariance.countDistributionPass
         && consumerAmountVariancePercent > this.amountVarianceThresholdPercent
         && consumerAmountVariancePercent <= this.advisoryAmountVarianceUpperPercent;
+      const mortgageAmountVariancePercent = categoryMetrics.mortgageVariance.maxAmountVariancePercent;
+      const isMortgageDollarInAdvisoryBand = categoryMetrics.mortgageVariance.countDistributionPass
+        && mortgageAmountVariancePercent > this.amountVarianceThresholdPercent
+        && mortgageAmountVariancePercent <= this.advisoryAmountVarianceUpperPercent;
+      const flexAmountVariancePercent = categoryMetrics.flexVariance.maxAmountVariancePercent;
+      const isFlexDollarInAdvisoryBand = categoryMetrics.flexVariance.countDistributionPass
+        && flexAmountVariancePercent > this.amountVarianceThresholdPercent
+        && flexAmountVariancePercent <= this.advisoryAmountVarianceUpperPercent;
       const consumerPass = categoryMetrics.consumerVariance.countDistributionPass
         && (
           categoryMetrics.consumerVariance.amountDistributionPass
           || isConsumerDollarInAdvisoryBand
         );
       const mortgageLanePass = categoryMetrics.mortgageVariance.countDistributionPass
-        && categoryMetrics.mortgageVariance.amountDistributionPass;
+        && (
+          categoryMetrics.mortgageVariance.amountDistributionPass
+          || isMortgageDollarInAdvisoryBand
+        );
       const flexLanePass = categoryMetrics.flexVariance.countDistributionPass
-        && categoryMetrics.flexVariance.amountDistributionPass;
+        && (
+          categoryMetrics.flexVariance.amountDistributionPass
+          || isFlexDollarInAdvisoryBand
+        );
       const adjustedConsumerPass = !hasConsumerLane || consumerPass;
       const adjustedMortgageLanePass = !hasMortgageLane || mortgageLanePass;
       const helocSupportPolicyPass = mortgageRoutingPass && !flexParticipationViolation && mortgageLeadershipPreserved && flexParticipationMeaningful;
@@ -185,6 +202,12 @@
           mortgageRoutingPass,
           flexParticipationViolation
         });
+      const overallAdvisory = overallPass && (
+        isConsumerDollarInAdvisoryBand
+        || isMortgageDollarInAdvisoryBand
+        || isFlexDollarInAdvisoryBand
+        || (isHelocOnlySupportPool && helocSupportThresholds.advisoryBandApplied)
+      );
 
       let statusMetricDescriptor;
       if (isHelocOnlySupportPool) {
@@ -260,11 +283,11 @@
       }
 
       return {
-        overallResult: overallPass ? 'PASS' : 'REVIEW',
+        overallResult: overallAdvisory ? 'ADVISORY' : (overallPass ? 'PASS' : 'REVIEW'),
         summaryItems: [
           ...(hasConsumerLane ? [
-            `Consumer loan variance (C lane): ${categoryMetrics.consumerVariance.maxCountVariancePercent.toFixed(1)}%`,
-            `Consumer dollar variance (C lane): ${categoryMetrics.consumerVariance.maxAmountVariancePercent.toFixed(1)}%`,
+            `Consumer loan variance (consumer-eligible lane): ${categoryMetrics.consumerVariance.maxCountVariancePercent.toFixed(1)}%`,
+            `Consumer dollar variance (consumer-eligible lane): ${categoryMetrics.consumerVariance.maxAmountVariancePercent.toFixed(1)}%`,
             this.buildLaneBreakdownText(consumerLaneEntries, 'consumerLoanCount', 'Consumer counts')
           ] : []),
           ...(hasMortgageLane ? [
@@ -286,12 +309,24 @@
           ] : []),
           ...(isConsumerDollarInAdvisoryBand ? [
             `Consumer dollar variance advisory band applied: ${this.amountVarianceThresholdPercent.toFixed(1)}%–${this.advisoryAmountVarianceUpperPercent.toFixed(1)}%`
+          ] : []),
+          ...(isMortgageDollarInAdvisoryBand ? [
+            `Mortgage dollar variance advisory band applied: ${this.amountVarianceThresholdPercent.toFixed(1)}%–${this.advisoryAmountVarianceUpperPercent.toFixed(1)}%`
+          ] : []),
+          ...(isFlexDollarInAdvisoryBand ? [
+            `Flex dollar variance advisory band applied: ${this.amountVarianceThresholdPercent.toFixed(1)}%–${this.advisoryAmountVarianceUpperPercent.toFixed(1)}%`
           ] : [])
         ].filter(Boolean),
         notes: [
           'Model note: Officer Lane variance is measured on Consumer-lane and Mortgage-lane officers; Flex lane variance is measured and tracked separately.',
           ...(isConsumerDollarInAdvisoryBand
-            ? [`Advisory note: Consumer dollar variance is slightly above the primary ${this.amountVarianceThresholdPercent.toFixed(1)}% threshold but within the ${this.advisoryAmountVarianceUpperPercent.toFixed(1)}% advisory band; flag for monitoring.`]
+            ? [`Advisory note: Consumer dollar variance is above the primary ${this.amountVarianceThresholdPercent.toFixed(1)}% threshold but within the ${this.advisoryAmountVarianceUpperPercent.toFixed(1)}% advisory band; flag for monitoring.`]
+            : []),
+          ...(isMortgageDollarInAdvisoryBand
+            ? [`Advisory note: Mortgage dollar variance is above the primary ${this.amountVarianceThresholdPercent.toFixed(1)}% threshold but within the ${this.advisoryAmountVarianceUpperPercent.toFixed(1)}% advisory band; flag for monitoring.`]
+            : []),
+          ...(isFlexDollarInAdvisoryBand
+            ? [`Advisory note: Flex dollar variance is above the primary ${this.amountVarianceThresholdPercent.toFixed(1)}% threshold but within the ${this.advisoryAmountVarianceUpperPercent.toFixed(1)}% advisory band; flag for monitoring.`]
             : []),
           ...(hasFlexLane ? ['Flex officers are support roles and may cover HELOC or approved mortgage coverage scenarios.'] : []),
           ...(isHelocOnlySupportPool && helocSupportThresholds.advisoryBandApplied

@@ -302,3 +302,58 @@ test('Scenario 3 override-enabled flex participates in full mortgage competition
   assert.equal(optimization.ran, true);
   assert.equal(strictPass || advisoryPass || optimization.tier === 'best_available_over_25', true);
 });
+
+test('sample import balances consumer dollars across consumer-only and flex officers', () => {
+  const context = loadAppContext();
+  vm.runInContext(`
+    allLoanTypes.push({
+      name: 'Auto',
+      category: 'consumer',
+      activeFrom: null,
+      activeTo: null,
+      isBuiltIn: false,
+      amountOptional: false
+    });
+  `, context);
+  const officers = [
+    { name: 'Ashley', eligibility: { consumer: true, mortgage: false }, weights: { consumer: 1, mortgage: 0 } },
+    { name: 'Peter', eligibility: { consumer: true, mortgage: true }, weights: { consumer: 0.5, mortgage: 0.5 } },
+    { name: 'Jade', eligibility: { consumer: true, mortgage: true }, weights: { consumer: 0.5, mortgage: 0.5 } },
+    { name: 'Kash', eligibility: { consumer: false, mortgage: true }, weights: { consumer: 0, mortgage: 1 } }
+  ];
+  const loans = [
+    { name: 'APP-2026-009', type: 'Collateralized', amountRequested: 25000 },
+    { name: 'APP-2026-010', type: 'Personal', amountRequested: 8200 },
+    { name: 'APP-2026-011', type: 'Credit Card', amountRequested: 0 },
+    { name: 'APP-2026-012', type: 'HELOC', amountRequested: 46000 },
+    { name: 'APP-2026-013', type: 'Auto', amountRequested: 17500 },
+    { name: 'APP-2026-014', type: 'Personal', amountRequested: 6400 },
+    { name: 'APP-2026-015', type: 'Collateralized', amountRequested: 12000 },
+    { name: 'APP-2026-016', type: 'Personal', amountRequested: 5400 },
+    { name: 'APP-2026-017', type: 'Credit Card', amountRequested: 0 },
+    { name: 'APP-2026-018', type: 'HELOC', amountRequested: 38500 }
+  ];
+
+  const result = context.assignLoans(officers, loans, { officers: {} });
+  assert.ifError(result.error);
+
+  const consumerEligibleOfficerNames = ['Ashley', 'Peter', 'Jade'];
+  const consumerLoanTypes = new Set(['Auto', 'Personal', 'Credit Card', 'Collateralized']);
+  const consumerGoalAmounts = Object.fromEntries(consumerEligibleOfficerNames.map((officerName) => {
+    const total = (result.officerAssignments[officerName] || [])
+      .filter((loan) => consumerLoanTypes.has(loan.type))
+      .reduce((sum, loan) => sum + (loan.type === 'Credit Card' ? 0 : Number(loan.amountRequested || 0)), 0);
+    return [officerName, total];
+  }));
+
+  const consumerTotal = Object.values(consumerGoalAmounts).reduce((sum, value) => sum + value, 0);
+  const consumerValues = Object.values(consumerGoalAmounts);
+  const maxConsumerShare = Math.max(...consumerValues) / consumerTotal;
+  const consumerSpreadPercent = ((Math.max(...consumerValues) - Math.min(...consumerValues)) / consumerTotal) * 100;
+
+  assert.equal(consumerTotal, 74500);
+  assert.equal(maxConsumerShare < 0.5, true, JSON.stringify(consumerGoalAmounts));
+  assert.equal(consumerSpreadPercent <= 25, true, JSON.stringify(consumerGoalAmounts));
+  assert.equal(result.fairnessEvaluation?.overallResult, 'ADVISORY');
+  assert.equal(result.optimizationTargetLabel, 'consumer-lane variance');
+});

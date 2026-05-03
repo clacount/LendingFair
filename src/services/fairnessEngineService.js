@@ -165,7 +165,7 @@
     const lowest = sorted[sorted.length - 1];
     const spreadPercent = ((highest.value - lowest.value) / total) * 100;
 
-    return `${unitLabel} distribution (C lane): ${breakdown} (spread ${spreadPercent.toFixed(1)}%).`;
+    return `${unitLabel} distribution (consumer-eligible lane): ${breakdown} (spread ${spreadPercent.toFixed(1)}%).`;
   }
 
   function buildOfficerClassMap(officers = []) {
@@ -382,7 +382,10 @@
       : 0;
 
     const officerClassMap = buildOfficerClassMap(activeOfficers);
-    const consumerLaneEntries = participatingOfficerStats.filter((entry) => officerClassMap[entry.officer] === 'C');
+    const consumerLaneEntries = participatingOfficerStats.filter((entry) => {
+      const officerConfig = activeOfficers.find((officer) => officer.name === entry.officer);
+      return Boolean(officerConfig?.eligibility?.consumer);
+    });
     const flexEntries = participatingOfficerStats.filter((entry) => officerClassMap[entry.officer] === 'F');
     const observedLoanTypeNames = [
       ...new Set(participatingOfficerStats.flatMap((entry) => (

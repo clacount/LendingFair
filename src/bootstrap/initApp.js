@@ -5885,6 +5885,53 @@ function getOfficerLaneCandidateConstraint(statusMetricDescriptorKey) {
   }
 }
 
+function getOfficerLaneDescriptorPreservationThreshold(statusMetricDescriptorKey) {
+  const key = String(statusMetricDescriptorKey || '');
+  if (key.endsWith('_count_variance')) {
+    return 15;
+  }
+  if (
+    key.endsWith('_dollar_variance')
+    || key === 'heloc_weighted_variance'
+  ) {
+    return window.OfficerLaneOptimizationService?.ADVISORY_TARGET_PERCENT || 25;
+  }
+  return null;
+}
+
+function buildOfficerLaneCandidateConstraint({
+  currentDescriptorKey,
+  attemptedDescriptorKeys = [],
+  baselineFairnessEvaluation
+} = {}) {
+  const currentConstraint = getOfficerLaneCandidateConstraint(currentDescriptorKey);
+  const preservationConstraints = [...new Set(attemptedDescriptorKeys)]
+    .filter((descriptorKey) => descriptorKey && descriptorKey !== currentDescriptorKey)
+    .map((descriptorKey) => {
+      const selector = getOfficerLaneTargetVarianceSelector(descriptorKey);
+      const threshold = getOfficerLaneDescriptorPreservationThreshold(descriptorKey);
+      if (typeof selector !== 'function' || !Number.isFinite(threshold)) {
+        return null;
+      }
+
+      const baselineValue = Number(selector(baselineFairnessEvaluation));
+      const maxAllowed = Number.isFinite(baselineValue)
+        ? Math.max(baselineValue, threshold)
+        : threshold;
+      return (fairnessEvaluation) => Number(selector(fairnessEvaluation)) <= maxAllowed;
+    })
+    .filter(Boolean);
+
+  if (typeof currentConstraint !== 'function' && !preservationConstraints.length) {
+    return null;
+  }
+
+  return (fairnessEvaluation) => {
+    const currentAllowed = typeof currentConstraint !== 'function' || currentConstraint(fairnessEvaluation);
+    return currentAllowed && preservationConstraints.every((constraint) => constraint(fairnessEvaluation));
+  };
+}
+
 
 
 function isHomogeneousHelocSupportPool(cleanLoans, officersByName) {
@@ -6212,7 +6259,11 @@ function optimizeOfficerLaneAssignmentsResult({
   const baselineDescriptorKey = baselineFairnessEvaluation?.statusMetricDescriptor?.key;
   const isHelocOnlySupportPool = isHomogeneousHelocSupportPool(cleanLoans, officersByName);
   const descriptorVarianceSelector = getOfficerLaneTargetVarianceSelector(baselineDescriptorKey);
-  const candidateConstraint = getOfficerLaneCandidateConstraint(baselineDescriptorKey);
+  const candidateConstraint = buildOfficerLaneCandidateConstraint({
+    currentDescriptorKey: baselineDescriptorKey,
+    attemptedDescriptorKeys,
+    baselineFairnessEvaluation
+  });
   const attemptedDescriptors = new Set([...(Array.isArray(attemptedDescriptorKeys) ? attemptedDescriptorKeys : []), baselineDescriptorKey].filter(Boolean));
   const isCountVarianceDescriptor = typeof baselineDescriptorKey === 'string' && baselineDescriptorKey.endsWith('_count_variance');
   const shouldIncludeOptimizationLoan = (loan) => (
@@ -6224,10 +6275,14 @@ function optimizeOfficerLaneAssignmentsResult({
   const officerConfigs = cleanOfficerNames
     .map((officerName) => normalizeOfficerConfig(officersByName[officerName]))
     .filter((officer) => officer?.name);
-  const consumerLaneCount = officerConfigs.filter((officer) => {
+  const hasConsumerOnlyLaneOfficer = officerConfigs.some((officer) => {
     const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officer.eligibility);
     return eligibility.consumer && !eligibility.mortgage;
-  }).length;
+  });
+  const consumerLaneCount = hasConsumerOnlyLaneOfficer ? officerConfigs.filter((officer) => {
+    const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officer.eligibility);
+    return eligibility.consumer;
+  }).length : 0;
   const mortgageLaneCount = officerConfigs.filter((officer) => {
     const eligibility = loanCategoryUtils.normalizeOfficerEligibility(officer.eligibility);
     return !eligibility.consumer && eligibility.mortgage;
@@ -6718,9 +6773,11 @@ function renderResults(result) {
     window.FairnessView.renderLiveFairnessSummaryCard(fairnessAuditEl, fairnessEvaluation);
   } else {
     const fairnessSummaryCard = document.createElement('div');
+    const statusLabel = String(fairnessEvaluation.overallResult || 'REVIEW').toUpperCase();
+    const statusClass = statusLabel.toLowerCase();
     fairnessSummaryCard.className = 'audit-card';
     fairnessSummaryCard.innerHTML = `
-      <h3>Live Fairness Summary <span class="badge">${escapeHtml(fairnessEvaluation.overallResult)}</span></h3>
+      <h3>Live Fairness Summary <span class="badge badge-${escapeHtml(statusClass)}">${escapeHtml(statusLabel)}</span></h3>
       <div class="audit-summary">
         <div class="audit-summary-line"><strong>Fairness model:</strong> ${escapeHtml(getSelectedFairnessEngineLabel())}</div>
       </div>

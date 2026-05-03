@@ -195,6 +195,7 @@
       countDistributionPass: fairnessEvaluation.metrics.maxCountVariancePercent <= 15,
       amountDistributionPass: fairnessEvaluation.metrics.maxAmountVariancePercent <= 20,
       overallPass: fairnessEvaluation.overallResult === 'PASS',
+      overallStatus: fairnessEvaluation.overallResult || 'REVIEW',
       evaluation: fairnessEvaluation
     };
   }
@@ -355,7 +356,7 @@
       { text: `Average goal dollars per officer: ${formatCurrency(report.fairnessSummary.averageDollarAmount)}`, size: 11, gapAfter: 4 },
       { text: `Loan count variance: ${report.fairnessSummary.maxCountVariancePercent.toFixed(1)}%`, size: 11, gapAfter: 4 },
       { text: `Goal dollar variance: ${report.fairnessSummary.maxAmountVariancePercent.toFixed(1)}%`, size: 11, gapAfter: 4 },
-      { text: `Fairness status: ${report.fairnessSummary.overallPass ? 'PASS' : 'REVIEW'}`, size: 11, gapAfter: 4 },
+      { text: `Fairness status: ${report.fairnessSummary.overallStatus}`, size: 11, gapAfter: 4 },
       { text: `Fairness model: ${fairnessEngineLabel}`, size: 11, gapAfter: 4 },
       ...report.fairnessSummary.evaluation.summaryItems.map((item) => ({ text: item, size: 11, gapAfter: 4 })),
       ...buildEvaluationNoteLines(report.fairnessSummary.evaluation.notes),
@@ -414,7 +415,7 @@
       lines.push({ text: 'Summary', size: 14, gapAfter: 10 });
       lines.push({ text: `Average loans per officer: ${report.fairnessSummary.averageLoanCount.toFixed(2)}`, size: 11, gapAfter: 4 });
       lines.push({ text: `Average dollars per officer: ${formatCurrency(report.fairnessSummary.averageDollarAmount)}`, size: 11, gapAfter: 4 });
-      lines.push({ text: `Fairness status: ${report.fairnessSummary.overallPass ? 'PASS' : 'REVIEW'}`, size: 11, gapAfter: 4 });
+      lines.push({ text: `Fairness status: ${report.fairnessSummary.overallStatus}`, size: 11, gapAfter: 4 });
       lines.push({ text: `Fairness model: ${fairnessEngineLabel}`, size: 11, gapAfter: 4 });
       report.fairnessSummary.evaluation.summaryItems.forEach((item) => {
         lines.push({ text: item, size: 11, gapAfter: 4 });

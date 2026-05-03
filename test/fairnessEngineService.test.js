@@ -53,6 +53,70 @@ test('officer_lane does not fail routing when no mortgage-only lane exists', () 
   assert.equal(evaluation.statusMetricDescriptor?.key, 'flex_lane_dollar_variance');
 });
 
+test('officer_lane consumer variance includes flex officers that receive consumer loans', () => {
+  const evaluation = global.FairnessEngineService.evaluateFairness({
+    engineType: 'officer_lane',
+    officers: [
+      { name: 'Ashley', eligibility: { consumer: true, mortgage: false } },
+      { name: 'Peter', eligibility: { consumer: true, mortgage: true } },
+      { name: 'Jade', eligibility: { consumer: true, mortgage: true } },
+      { name: 'Kash', eligibility: { consumer: false, mortgage: true } }
+    ],
+    officerStats: [
+      {
+        officer: 'Ashley',
+        totalLoans: 3,
+        totalAmount: 18300,
+        consumerLoanCount: 3,
+        consumerAmount: 18300,
+        mortgageLoanCount: 0,
+        mortgageAmount: 0,
+        typeBreakdown: { Auto: 3 }
+      },
+      {
+        officer: 'Peter',
+        totalLoans: 8,
+        totalAmount: 65600,
+        consumerLoanCount: 8,
+        consumerAmount: 65600,
+        mortgageLoanCount: 0,
+        mortgageAmount: 0,
+        typeBreakdown: { Auto: 8 }
+      },
+      {
+        officer: 'Jade',
+        totalLoans: 2,
+        totalAmount: 16100,
+        consumerLoanCount: 2,
+        consumerAmount: 16100,
+        mortgageLoanCount: 0,
+        mortgageAmount: 0,
+        typeBreakdown: { Personal: 2 }
+      },
+      {
+        officer: 'Kash',
+        totalLoans: 5,
+        totalAmount: 250000,
+        consumerLoanCount: 0,
+        consumerAmount: 0,
+        mortgageLoanCount: 5,
+        mortgageAmount: 250000,
+        typeBreakdown: { HELOC: 5 }
+      }
+    ]
+  });
+
+  assert.equal(evaluation.overallResult, 'REVIEW');
+  assert.ok(
+    ['consumer_lane_count_variance', 'consumer_lane_dollar_variance'].includes(evaluation.statusMetricDescriptor?.key),
+    `Expected consumer lane variance descriptor, got ${evaluation.statusMetricDescriptor?.key}`
+  );
+  assert.ok(evaluation.metrics.consumerVariance.maxAmountVariancePercent > 20);
+  assert.match(evaluation.summaryItems.join(' | '), /Ashley/i);
+  assert.match(evaluation.summaryItems.join(' | '), /Peter/i);
+  assert.match(evaluation.summaryItems.join(' | '), /Jade/i);
+});
+
 test('homogeneous HELOC support pool can PASS with specialized thresholds and weighted optimization target', () => {
   const evaluation = global.FairnessEngineService.evaluateFairness({
     engineType: 'officer_lane',
