@@ -237,6 +237,40 @@ test('configured loan type registry category influences imported loan recommenda
   assert.deepEqual(recommendation.loanCategoryCounts, { consumer: 0, mortgage: 1 });
 });
 
+test('mortgage keyword fallback still runs when global helper defaults unknown type to consumer', () => {
+  global.getLoanCategoryForType = () => 'consumer';
+
+  const recommendation = global.ScenarioEngineRecommendationService.buildRecommendation({
+    currentEngine: 'global',
+    officers: separatedOfficers(),
+    loans: [
+      { name: 'L1', type: 'Construction Loan' },
+      { name: 'L2', type: 'Land Loan' },
+      { name: 'L3', type: 'Real Estate' }
+    ]
+  });
+
+  delete global.getLoanCategoryForType;
+
+  assert.deepEqual(recommendation.loanCategoryCounts, { consumer: 0, mortgage: 3 });
+  assert.equal(recommendation.recommendedEngine, 'officer_lane');
+});
+
+test('configured registry consumer category can override mortgage-like type name', () => {
+  global.LendingFairLoanTypeRegistry = {
+    getLoanCategoryForType() {
+      return 'consumer';
+    },
+    getLoanTypes() {
+      return [{ name: 'Construction Loan', category: 'consumer' }];
+    }
+  };
+
+  assert.equal(global.ScenarioEngineRecommendationService.getLoanCategory({ type: 'Construction Loan' }), 'consumer');
+
+  delete global.LendingFairLoanTypeRegistry;
+});
+
 test('mortgage loans with role-homogeneous officers keep global with shared-coverage reason', () => {
   const recommendation = global.ScenarioEngineRecommendationService.buildRecommendation({
     currentEngine: 'global',

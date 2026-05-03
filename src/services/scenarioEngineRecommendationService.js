@@ -52,11 +52,6 @@
     }
 
     const registry = globalScope.LendingFairLoanTypeRegistry;
-    const registryCategory = registry?.getLoanCategoryForType?.(trimmedType);
-    if (registryCategory) {
-      return normalizeLoanCategory(registryCategory);
-    }
-
     const configuredTypes = registry?.getLoanTypes?.();
     if (Array.isArray(configuredTypes)) {
       const match = configuredTypes.find((loanType) => String(loanType?.name || '').trim().toLowerCase() === trimmedType.toLowerCase());
@@ -65,8 +60,16 @@
       }
     }
 
+    const registryCategory = registry?.getLoanCategoryForType?.(trimmedType);
+    if (normalizeLoanCategory(registryCategory) === LOAN_CATEGORIES.MORTGAGE) {
+      return LOAN_CATEGORIES.MORTGAGE;
+    }
+
     if (typeof globalScope.getLoanCategoryForType === 'function') {
-      return normalizeLoanCategory(globalScope.getLoanCategoryForType(trimmedType));
+      const helperCategory = normalizeLoanCategory(globalScope.getLoanCategoryForType(trimmedType));
+      if (helperCategory === LOAN_CATEGORIES.MORTGAGE) {
+        return helperCategory;
+      }
     }
 
     return null;
