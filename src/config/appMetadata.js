@@ -12,6 +12,10 @@
     return globalScope.LendingFairCustomerConfig || null;
   }
 
+  function getLicenseManager() {
+    return globalScope.LendingFairLicenseManager || null;
+  }
+
   function getActiveTierLabel() {
     const entitlements = getEntitlements();
     const tier = entitlements?.getCurrentTier?.();
@@ -56,6 +60,11 @@
     }
     if (metadata.customerName) {
       lines.push(`Configured for: ${metadata.customerName}`);
+    }
+    const license = getLicenseManager()?.getLicenseState?.();
+    if (license?.license) {
+      lines.push(`License type: ${license.license.licenseType}`);
+      lines.push(`License expires: ${license.license.expiresAt}`);
     }
 
     return lines;

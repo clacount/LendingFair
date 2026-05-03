@@ -214,6 +214,27 @@ header p {
   color: #9f2f2f;
 }
 
+.license-status-label {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.top-license-status {
+  margin-top: 8px;
+}
+
 .fairness-model-header {
   display: flex;
   align-items: center;
@@ -1690,13 +1711,16 @@ select {
   margin-top: 18px;
   position: relative;
   min-height: 76px;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
+  column-gap: 16px;
   padding: 6px 0;
 }
 
 .footer-branding-logo {
+  grid-column: 2;
+  justify-self: center;
   width: 180px;
   max-width: min(50%, 220px);
   height: auto;
@@ -1705,19 +1729,47 @@ select {
 }
 
 .version-label {
-  position: absolute;
-  right: 0;
-  bottom: 6px;
-  display: inline-flex;
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: #ffffff;
-  color: var(--muted);
-  font-size: 0.8rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  position: static;
+  justify-self: end;
+  text-align: right;
+}
+
+#appVersionLabel {
+  grid-column: 3;
+}
+
+#licenseStatusLabel {
+  grid-column: 1;
+  justify-self: start;
+  text-align: left;
+}
+
+.license-status-label[data-state="expired"],
+.license-status-label[data-state="invalid"],
+.license-status-label[data-state="missing"] {
+  background: #fff1f2;
+  border-color: #dc2626;
+  color: #991b1b;
+}
+
+.license-status-label[data-state="expiring_soon"] {
+  background: #fffbeb;
+  border-color: #d97706;
+  color: #92400e;
+}
+
+.license-status-label[data-state="active"] {
+  background: #ecfdf5;
+  border-color: #059669;
+  color: #065f46;
+}
+
+.license-input {
+  width: 100%;
+  min-height: 180px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.88rem;
 }
 
 [data-theme="dark"] img {
@@ -1904,6 +1956,26 @@ select {
   background: #253146;
   border-color: var(--border);
   color: #d7e2ef;
+}
+
+[data-theme="dark"] .license-status-label[data-state="expired"],
+[data-theme="dark"] .license-status-label[data-state="invalid"],
+[data-theme="dark"] .license-status-label[data-state="missing"] {
+  background: #3b1717;
+  border-color: #ef4444;
+  color: #ffd1d1;
+}
+
+[data-theme="dark"] .license-status-label[data-state="expiring_soon"] {
+  background: #39280f;
+  border-color: #f59e0b;
+  color: #fde68a;
+}
+
+[data-theme="dark"] .license-status-label[data-state="active"] {
+  background: #123524;
+  border-color: #10b981;
+  color: #bbf7d0;
 }
 
 [data-theme="dark"] .audit-summary {

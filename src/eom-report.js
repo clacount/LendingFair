@@ -3,6 +3,7 @@
   const fairnessDisplayService = window.FairnessDisplayService;
   const loanCategoryUtils = window.LoanCategoryUtils;
   const entitlements = window.LendingFairEntitlements;
+  const licenseManager = window.LendingFairLicenseManager;
 
   function canUseFeature(feature) {
     return !entitlements || entitlements.canUseFeature(feature);
@@ -648,6 +649,12 @@
   }
 
   async function handleEndOfMonthClick() {
+    const licenseGuard = licenseManager?.canPerformOperationalAction?.('eom-report');
+    if (licenseGuard?.allowed === false) {
+      setMessage(licenseGuard.message || 'Enter an active LendingFair license to continue.', 'warning');
+      return;
+    }
+
     if (!canUseFeature(entitlements?.FEATURES?.EOM_REPORT)) {
       setMessage('End-of-month reporting requires Pro or Platinum.', 'warning');
       return;
@@ -689,6 +696,12 @@
     event.preventDefault();
 
     const customReportMessage = document.getElementById('customReportMessage');
+    const licenseGuard = licenseManager?.canPerformOperationalAction?.('custom-report');
+    if (licenseGuard?.allowed === false) {
+      setReportingMessage(customReportMessage, licenseGuard.message || 'Enter an active LendingFair license to continue.', 'warning');
+      return;
+    }
+
     setReportingMessage(customReportMessage, 'Generating custom report...', 'success');
 
     if (!outputDirectoryHandle) {

@@ -10,6 +10,7 @@ The package includes:
 
 - app name, version, release channel, and build date
 - active tier
+- license status, license type, and expiration date when available
 - selected fairness engine
 - customer mode and customer name, if configured
 - export timestamp
@@ -34,7 +35,7 @@ Use a support export when:
 - duplicate loan history needs troubleshooting
 - a generated report needs to be matched to source CSV data
 - Basic/Pro tier behavior needs validation
-- support needs app version and tier metadata for a pilot
+- support needs app version, tier, and license metadata for a pilot
 
 ## What It Does Not Do
 

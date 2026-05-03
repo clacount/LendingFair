@@ -128,7 +128,8 @@
   }
 
   const customerConfig = globalScope.LendingFairCustomerConfig;
-  const configuredTier = customerConfig?.getConfiguredTier?.();
+  const licenseManager = globalScope.LendingFairLicenseManager;
+  const configuredTier = licenseManager?.getEntitlementTier?.() || customerConfig?.getConfiguredTier?.();
   const hasCustomerTierError = Boolean(customerConfig?.isCustomerMode?.() && customerConfig?.getConfigurationError?.());
   const isTierLockedByCustomerConfig = Boolean(customerConfig?.isCustomerMode?.());
 
@@ -138,8 +139,8 @@
     return currentTier;
   }
 
-  function setCurrentTier(tier) {
-    if (isTierLockedByCustomerConfig) {
+  function setCurrentTier(tier, options = {}) {
+    if (isTierLockedByCustomerConfig && !options.force) {
       return currentTier;
     }
 

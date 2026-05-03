@@ -14,6 +14,16 @@ const endOfMonthBtn = document.getElementById('endOfMonthBtn');
 const documentationBtn = document.getElementById('documentationBtn');
 const documentationModalEl = document.getElementById('documentationModal');
 const closeDocumentationModalBtn = document.getElementById('closeDocumentationModalBtn');
+const topLicenseStatusLabel = document.getElementById('topLicenseStatusLabel');
+const licenseUpdateBtn = document.getElementById('licenseUpdateBtn');
+const licenseStatusLabel = document.getElementById('licenseStatusLabel');
+const licenseModalEl = document.getElementById('licenseModal');
+const closeLicenseModalBtn = document.getElementById('closeLicenseModalBtn');
+const cancelLicenseModalBtn = document.getElementById('cancelLicenseModalBtn');
+const installLicenseBtn = document.getElementById('installLicenseBtn');
+const licenseInput = document.getElementById('licenseInput');
+const licenseFileInput = document.getElementById('licenseFileInput');
+const licenseModalMessageEl = document.getElementById('licenseModalMessage');
 const supportExportBtn = document.getElementById('supportExportBtn');
 const randomizeBtn = document.getElementById('randomizeBtn');
 const clearBtn = document.getElementById('clearBtn');
@@ -98,6 +108,27 @@ const distributionDetailsEl = document.getElementById('distributionDetails');
 const distributionChartsEl = document.getElementById('distributionCharts');
 const entitlements = window.LendingFairEntitlements;
 const customerConfig = window.LendingFairCustomerConfig;
+const licenseManager = window.LendingFairLicenseManager;
+
+licenseManager?.setFileAdapter?.({
+  async readText(fileName) {
+    if (!outputDirectoryHandle) {
+      return '';
+    }
+    const fileHandle = await outputDirectoryHandle.getFileHandle(fileName);
+    const file = await fileHandle.getFile();
+    return file.text();
+  },
+  async writeText(fileName, value) {
+    if (!outputDirectoryHandle) {
+      throw new Error('Choose a working folder before installing a license.');
+    }
+    const fileHandle = await outputDirectoryHandle.getFileHandle(fileName, { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(String(value || ''));
+    await writable.close();
+  }
+});
 
 function shouldShowDemoControls() {
   return !customerConfig || customerConfig.shouldShowDemoControls?.() !== false;
@@ -1022,6 +1053,7 @@ async function handleSupportExportClick() {
       userAgent: window.navigator?.userAgent || '',
       monthFolderKey: isDemoMode ? DEMO_DATA_FOLDER_NAME : getMonthFolderKey(),
       sessionMode: isDemoMode ? 'demo' : 'production',
+      licenseMetadata: licenseManager?.getSupportMetadata?.() || {},
       files,
       reportFilenames: await listSupportReportFilenames(dataDirectoryHandle)
     });
@@ -1880,12 +1912,21 @@ function createInputRow(type, value = '', loanType = '', amount = '', isOnVacati
   editBtn.type = 'button';
   editBtn.className = 'officer-edit-btn';
   editBtn.textContent = 'Edit';
-  editBtn.addEventListener('click', () => openOfficerEditorModal(row));
+  editBtn.addEventListener('click', () => {
+    if (!requireOperationalLicense('edit-officer', 'step3')) {
+      return;
+    }
+    openOfficerEditorModal(row);
+  });
 
   const vacationBtn = document.createElement('button');
   vacationBtn.type = 'button';
   vacationBtn.className = 'vacation-btn';
   vacationBtn.addEventListener('click', async () => {
+    if (!requireOperationalLicense('toggle-officer-availability', 'step3')) {
+      return;
+    }
+
     const isCurrentlyActive = row.dataset.active !== 'false';
     setOfficerVacationState(row, isCurrentlyActive);
 
@@ -2062,6 +2103,92 @@ function setMessage(text = '', tone = 'warning') {
   messageEl.dataset.tone = text ? tone : '';
 }
 
+function getLicenseGuardMessage(actionName) {
+  const guard = licenseManager?.canPerformOperationalAction?.(actionName);
+  return guard?.allowed === false
+    ? (guard.message || 'Enter an active LendingFair license to continue.')
+    : '';
+}
+
+function requireOperationalLicense(actionName, messageTarget = 'main') {
+  const message = getLicenseGuardMessage(actionName);
+  if (!message) {
+    return true;
+  }
+
+  if (messageTarget === 'step1') {
+    setStepMessage('step1', message, 'warning');
+  } else if (messageTarget === 'step2') {
+    setStepMessage('step2', message, 'warning');
+  } else if (messageTarget === 'step3') {
+    setStepMessage('step3', message, 'warning');
+  } else if (messageTarget === 'loanImport') {
+    renderLoanImportMessage(message, 'warning');
+  } else if (messageTarget === 'officerEditor') {
+    setOfficerEditorModalMessage(message, 'warning');
+  } else if (messageTarget === 'loanTypeEditor') {
+    setLoanTypeEditorModalMessage(message, 'warning');
+  } else {
+    setMessage(message, 'warning');
+  }
+
+  return false;
+}
+
+function syncLicenseStatusUi() {
+  if (licenseManager) {
+    const state = licenseManager.getLicenseState();
+    const license = state.license;
+    const activeTier = entitlements?.getCurrentTier?.();
+    const tierLabel = entitlements?.getTierLabel?.(activeTier) || 'Platinum';
+    const typeLabel = license?.licenseType ? `${license.licenseType} ` : '';
+    const expiryLabel = license?.expiresAt ? ` · expires ${license.expiresAt}` : '';
+    const configuredTier = customerConfig?.getConfiguredTier?.();
+    const tierOverrideLabel = customerConfig?.isCustomerMode?.()
+      && license?.tier
+      && configuredTier
+      && license.tier !== configuredTier
+      ? ' · license tier overrides package tier'
+      : '';
+    const labelText = `${tierLabel} · ${typeLabel}${licenseManager.getLicenseStatusLabel()}${expiryLabel}${tierOverrideLabel}`;
+    [topLicenseStatusLabel, licenseStatusLabel].forEach((statusLabel) => {
+      if (!statusLabel) {
+        return;
+      }
+      statusLabel.textContent = labelText;
+      statusLabel.dataset.state = state.state;
+    });
+  }
+
+  const lockedMessage = getLicenseGuardMessage('ui');
+  const shouldLock = Boolean(lockedMessage);
+  [addOfficerBtn, addLoanBtn, importPriorMonthBtn, importLoansBtn, randomizeBtn, addLoanTypeBtn, endOfMonthBtn, launchDemoModeBtn, quickLaunchDemoModeBtn]
+    .forEach((button) => {
+      if (!button) {
+        return;
+      }
+      if (shouldLock) {
+        button.dataset.licensePreviousDisabled = button.disabled ? 'true' : 'false';
+        button.dataset.licenseLocked = 'true';
+        button.dataset.licenseLockedTitle = lockedMessage;
+        button.disabled = true;
+        button.title = lockedMessage;
+        return;
+      }
+
+      if (button.dataset.licenseLocked === 'true') {
+        button.disabled = button.dataset.licensePreviousDisabled === 'true';
+        const previousLicenseTitle = button.dataset.licenseLockedTitle || '';
+        delete button.dataset.licenseLocked;
+        delete button.dataset.licensePreviousDisabled;
+        delete button.dataset.licenseLockedTitle;
+        if (previousLicenseTitle && button.title === previousLicenseTitle) {
+          button.removeAttribute('title');
+        }
+      }
+    });
+}
+
 function setStepMessage(stepKey, text = '', tone = 'warning') {
   const stepMessageMap = {
     step1: step1MessageEl,
@@ -2117,6 +2244,7 @@ function updateFolderStatus() {
   }
 
   if (outputDirectoryHandle) {
+    const licenseLocked = Boolean(getLicenseGuardMessage('ui'));
     const showDemoControls = shouldShowDemoControls();
     const activeDataPath = isDemoMode ? `/${DEMO_DATA_FOLDER_NAME}` : `/${getMonthFolderKey()}`;
     const folderSummary = `Selected folder: ${outputDirectoryHandle.name} (using ${activeDataPath})`;
@@ -2136,9 +2264,9 @@ function updateFolderStatus() {
       clearDemoDataBtn.hidden = !showDemoControls || !isDemoMode;
       clearDemoDataBtn.disabled = !showDemoControls;
     }
-    randomizeBtn.disabled = false;
-    randomizeBtn.dataset.state = 'ready';
-    setStep3LockedState(false);
+    randomizeBtn.disabled = licenseLocked;
+    randomizeBtn.dataset.state = licenseLocked ? 'locked' : 'ready';
+    setStep3LockedState(licenseLocked);
     return;
   }
 
@@ -2427,6 +2555,10 @@ async function editLoanType(existingName, updates) {
 
 async function handleLoanTypeEditorSubmit(event) {
   event.preventDefault();
+
+  if (!requireOperationalLicense('edit-loan-type', 'loanTypeEditor')) {
+    return;
+  }
 
   if (!editingLoanTypeOriginalName) {
     setLoanTypeEditorModalMessage('Select a loan type to edit first.', 'warning');
@@ -3017,7 +3149,12 @@ function renderLoanTypes() {
     editButton.type = 'button';
     editButton.textContent = 'Edit';
     editButton.className = 'loan-type-action-btn activate';
-    editButton.addEventListener('click', () => openLoanTypeEditorModal(loanType));
+    editButton.addEventListener('click', () => {
+      if (!requireOperationalLicense('edit-loan-type', 'step2')) {
+        return;
+      }
+      openLoanTypeEditorModal(loanType);
+    });
     actionRow.appendChild(editButton);
 
     if (!loanType.isBuiltIn) {
@@ -3027,6 +3164,9 @@ function renderLoanTypes() {
       toggleButton.className = `loan-type-action-btn ${isActive ? 'deactivate' : 'activate'}`;
 
       toggleButton.addEventListener('click', async () => {
+        if (!requireOperationalLicense('toggle-loan-type', 'step2')) {
+          return;
+        }
         try {
           if (isActive) {
             await deactivateCustomLoanType(loanType.name);
@@ -3050,6 +3190,9 @@ function renderLoanTypes() {
       removeButton.setAttribute('aria-label', `Remove ${loanType.name}`);
 
       removeButton.addEventListener('click', async () => {
+        if (!requireOperationalLicense('remove-loan-type', 'step2')) {
+          return;
+        }
         const confirmed = window.confirm(`Remove ${loanType.name} from available loan types?`);
         if (!confirmed) {
           return;
@@ -3158,6 +3301,7 @@ async function activateSessionInDirectory(directoryHandle, sessionMode = 'produc
     await ensureDemoDataSeeded();
   }
 
+  await licenseManager?.hydrateFromFile?.();
   await refreshFocusWeightSettingsState();
   syncOfficerEditorFromClassPreset();
 
@@ -3705,6 +3849,10 @@ function applyImportedLoansToForm(importRows) {
 }
 
 async function handlePreviewLoanImport() {
+  if (!requireOperationalLicense('preview-loan-import', 'loanImport')) {
+    return;
+  }
+
   if (!currentLoanImportContext) {
     renderLoanImportMessage('Select a CSV file before previewing the import.', 'warning');
     return;
@@ -3734,6 +3882,9 @@ async function handlePreviewLoanImport() {
 }
 
 async function handleConfirmLoanImport() {
+  if (!requireOperationalLicense('import-loans', 'loanImport')) {
+    return;
+  }
   if (!canUseFeature(entitlements?.FEATURES?.IMPORT_LOANS)) {
     renderLoanImportMessage('Loan import requires Pro or Platinum.', 'warning');
     return;
@@ -6709,6 +6860,9 @@ function handleLaunchDemoModeClick(event) {
     setStepMessage('step1', 'Demo controls are not available in this customer package.', 'warning');
     return;
   }
+  if (!requireOperationalLicense('launch-demo-mode', 'step1')) {
+    return;
+  }
 
   chooseOutputFolder('demo');
 }
@@ -6718,6 +6872,9 @@ async function handleQuickLaunchDemoModeClick(event) {
 
   if (!shouldShowDemoControls()) {
     setStepMessage('step1', 'Demo controls are not available in this customer package.', 'warning');
+    return;
+  }
+  if (!requireOperationalLicense('launch-demo-mode', 'step1')) {
     return;
   }
 
@@ -6792,6 +6949,9 @@ async function handleImportPriorMonthClick() {
 }
 
 addOfficerBtn.addEventListener('click', () => {
+  if (!requireOperationalLicense('add-officer', 'step3')) {
+    return;
+  }
   if (!outputDirectoryHandle) {
     setStepMessage('step1', 'Choose an output folder (live mode) or launch demo mode before adding officers.', 'warning');
     return;
@@ -6800,9 +6960,15 @@ addOfficerBtn.addEventListener('click', () => {
   openOfficerEditorModal(null);
 });
 importPriorMonthBtn.addEventListener('click', () => {
+  if (!requireOperationalLicense('import-prior-month', 'step3')) {
+    return;
+  }
   handleImportPriorMonthClick();
 });
 addLoanBtn.addEventListener('click', () => {
+  if (!requireOperationalLicense('add-loan', 'step3')) {
+    return;
+  }
   if (!outputDirectoryHandle) {
     setStepMessage('step1', 'Choose an output folder (live mode) or launch demo mode before adding loans.', 'warning');
     return;
@@ -6812,6 +6978,9 @@ addLoanBtn.addEventListener('click', () => {
 });
 supportExportBtn?.addEventListener('click', handleSupportExportClick);
 importLoansBtn?.addEventListener('click', () => {
+  if (!requireOperationalLicense('import-loans', 'step3')) {
+    return;
+  }
   if (!canUseFeature(entitlements?.FEATURES?.IMPORT_LOANS)) {
     setStepMessage('step3', 'Loan import requires Pro or Platinum.', 'warning');
     return;
@@ -6848,6 +7017,9 @@ mortgageFocusedSecondaryInput?.addEventListener('input', () => {
   syncFocusWeightPair(mortgageFocusedSecondaryInput, mortgageFocusedPrimaryInput, 30);
 });
 saveFocusWeightsBtn?.addEventListener('click', async () => {
+  if (!requireOperationalLicense('save-focus-weights')) {
+    return;
+  }
   const consumerConsumer = normalizeFocusPercentInput(consumerFocusedPrimaryInput?.value, 70);
   const mortgageMortgage = normalizeFocusPercentInput(mortgageFocusedPrimaryInput?.value, 70);
   const saveResult = await focusWeightSettingsService?.saveFocusWeights?.({
@@ -6874,6 +7046,9 @@ saveFocusWeightsBtn?.addEventListener('click', async () => {
   setFocusWeightSettingsMessage('Focus weights saved. New Consumer-Focused and Mortgage-Focused assignments will use these values.', 'success');
 });
 resetFocusWeightsBtn?.addEventListener('click', async () => {
+  if (!requireOperationalLicense('reset-focus-weights')) {
+    return;
+  }
   const resetResult = await focusWeightSettingsService?.resetFocusWeightsToDefaults?.();
   if (!resetResult?.success) {
     setFocusWeightSettingsMessage('Focus weights were reset in memory, but the override file could not be removed.', 'warning');
@@ -6902,6 +7077,9 @@ officerEditorModalEl?.addEventListener('click', (event) => {
   }
 });
 removeOfficerBtn?.addEventListener('click', () => {
+  if (!requireOperationalLicense('remove-officer', 'officerEditor')) {
+    return;
+  }
   if (activeOfficerEditRow) {
     activeOfficerEditRow.remove();
   }
@@ -6909,6 +7087,9 @@ removeOfficerBtn?.addEventListener('click', () => {
   renderScenarioEngineRecommendation();
 });
 saveOfficerEditorBtn?.addEventListener('click', () => {
+  if (!requireOperationalLicense('save-officer', 'officerEditor')) {
+    return;
+  }
   const officerName = String(officerEditorNameInput?.value || '').trim();
   if (!officerName) {
     setOfficerEditorModalMessage('Enter a loan officer name.', 'warning');
@@ -6963,6 +7144,9 @@ changeFolderBtn.addEventListener('click', handleChooseFolderClick);
 
 
 addLoanTypeBtn?.addEventListener('click', async () => {
+  if (!requireOperationalLicense('add-loan-type', 'step2')) {
+    return;
+  }
   if (!outputDirectoryHandle) {
     setStepMessage('step2', 'Choose an output folder before adding loan types.', 'warning');
     return;
@@ -6988,6 +7172,9 @@ addLoanTypeBtn?.addEventListener('click', async () => {
 });
 
 endOfMonthBtn?.addEventListener('click', async () => {
+  if (!requireOperationalLicense('end-of-month')) {
+    return;
+  }
   if (!outputDirectoryHandle) {
     setStepMessage('step1', 'Choose an output folder before ending the month.', 'warning');
     return;
@@ -7027,6 +7214,9 @@ endDemoModeBtn?.addEventListener('click', () => {
 
 clearDemoDataBtn?.addEventListener('click', async () => {
   if (!shouldShowDemoControls()) {
+    return;
+  }
+  if (!requireOperationalLicense('clear-demo-data')) {
     return;
   }
 
@@ -7075,8 +7265,76 @@ documentationModalEl?.addEventListener('click', (event) => {
     documentationModalEl.hidden = true;
   }
 });
+licenseUpdateBtn?.addEventListener('click', () => {
+  if (licenseModalEl) {
+    licenseModalEl.hidden = false;
+  }
+});
+closeLicenseModalBtn?.addEventListener('click', () => {
+  if (licenseModalEl) {
+    licenseModalEl.hidden = true;
+  }
+});
+cancelLicenseModalBtn?.addEventListener('click', () => {
+  if (licenseModalEl) {
+    licenseModalEl.hidden = true;
+  }
+});
+licenseModalEl?.addEventListener('click', (event) => {
+  if (event.target === licenseModalEl) {
+    licenseModalEl.hidden = true;
+  }
+});
+installLicenseBtn?.addEventListener('click', async () => {
+  const result = await licenseManager?.installLicense?.(licenseInput?.value || '');
+  if (!result?.installed) {
+    licenseModalMessageEl.textContent = result?.message || 'License could not be installed.';
+    licenseModalMessageEl.dataset.tone = 'warning';
+    return;
+  }
+
+  const tierLabel = result.license?.tier ? `${result.license.tier.charAt(0).toUpperCase()}${result.license.tier.slice(1)}` : 'Licensed';
+  licenseModalMessageEl.textContent = `License installed. ${tierLabel} ${result.license.licenseType} active until ${result.license.expiresAt}.`;
+  licenseModalMessageEl.dataset.tone = 'success';
+  licenseInput.value = '';
+  updateFolderStatus();
+  refreshFairnessEngineUi();
+  syncLicenseStatusUi();
+});
+
+licenseFileInput?.addEventListener('change', async (event) => {
+  const file = event?.target?.files?.[0];
+  if (!file) {
+    return;
+  }
+  try {
+    const fileText = await file.text();
+    const result = await licenseManager?.installLicense?.(fileText || '');
+    if (!result?.installed) {
+      licenseModalMessageEl.textContent = result?.message || 'License could not be installed.';
+      licenseModalMessageEl.dataset.tone = 'warning';
+      return;
+    }
+    const tierLabel = result.license?.tier ? `${result.license.tier.charAt(0).toUpperCase()}${result.license.tier.slice(1)}` : 'Licensed';
+    licenseModalMessageEl.textContent = `License installed. ${tierLabel} ${result.license.licenseType} active until ${result.license.expiresAt}.`;
+    licenseModalMessageEl.dataset.tone = 'success';
+    licenseInput.value = '';
+    licenseFileInput.value = '';
+    updateFolderStatus();
+    refreshFairnessEngineUi();
+    syncLicenseStatusUi();
+  } catch (error) {
+    licenseModalMessageEl.textContent = error.message || 'License file could not be read.';
+    licenseModalMessageEl.dataset.tone = 'warning';
+  }
+});
 
 window.addEventListener?.('lendingfair:tierchange', refreshFairnessEngineUi);
+window.addEventListener?.('lendingfair:licensechange', () => {
+  updateFolderStatus();
+  refreshFairnessEngineUi();
+  syncLicenseStatusUi();
+});
 window.LendingFairEntitlementUI?.bindInternalTierSelector?.({
   fairnessModelSelect: fairnessModelSelectEl,
   officerEditorClassSelect,
@@ -7086,6 +7344,7 @@ window.LendingFairEntitlementUI?.bindInternalTierSelector?.({
 });
 
 refreshFairnessEngineUi();
+syncLicenseStatusUi();
 
 fairnessModelSelectEl?.addEventListener('change', () => {
   const selectedEngine = setSelectedFairnessEngine(fairnessModelSelectEl.value);
@@ -7115,6 +7374,9 @@ loanList?.addEventListener('input', renderScenarioEngineRecommendation);
 loanList?.addEventListener('change', renderScenarioEngineRecommendation);
 
 randomizeBtn.addEventListener('click', async () => {
+  if (!requireOperationalLicense('run-assignment')) {
+    return;
+  }
   if (!outputDirectoryHandle) {
     setStepMessage('step1', 'Choose an output folder before randomizing assignments.', 'warning');
     updateFolderStatus();
@@ -7170,6 +7432,9 @@ randomizeBtn.addEventListener('click', async () => {
 });
 
 removeLoanHistoryBtn?.addEventListener('click', async () => {
+  if (!requireOperationalLicense('remove-loan-history')) {
+    return;
+  }
   if (!outputDirectoryHandle) {
     setStepMessage('step1', 'Choose an output folder before removing loan history.', 'warning');
     return;
