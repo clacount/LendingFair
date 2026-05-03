@@ -139,7 +139,7 @@
     <h3>Outputs</h3>
     <p>Reports include app version, active tier, generated timestamp, fairness engine, assignments by loan/officer, and fairness audit details when available for the tier.</p>
     <h3>No LOS/LMS Integration in Basic or Pro</h3>
-    <p>Basic and Pro do not connect directly to a Loan Origination System or Loan Management System. Direct polling, API/webhook ingestion, automated live runs, and writeback are part of the Platinum roadmap.</p>
+    <p>Basic and Pro do not connect directly to a Loan Origination System or Loan Management System. Pro supports file-based loan import only, such as a user-selected CSV export with mapping, preview, validation, and confirm. Direct polling, API/webhook ingestion, automated live runs, and writeback are part of the Platinum roadmap.</p>
   </section>
 
   <section id="basic-user-guide">
@@ -162,7 +162,7 @@
     <h3>Entering Loans</h3>
     <p>For each loan, enter the loan application number or ID, loan type, and amount requested when applicable. Credit Card loans may be tracked by count and type rather than goal-dollar amount if configured that way.</p>
     <h3>Importing Loans</h3>
-    <p>Loan import availability depends on the configured tier. In the current packaging, Import Loans is treated as a Platinum-level feature because file formats often require institution-specific customization.</p>
+    <p>Basic uses manual loan entry only. File-based loan import requires Pro or Platinum.</p>
     <h3>Running Assignment</h3>
     <ol>
       <li>Review officers and loans.</li>
@@ -173,12 +173,12 @@
     <h3>Duplicate Loan Prevention</h3>
     <p>LendingFair tracks loan history in the selected monthly folder. Use consistent loan IDs so duplicate prevention works as intended.</p>
     <h3>What Basic Does Not Include</h3>
-    <p>Basic does not include mortgage loan support, HELOC-specific routing, Officer Lane Fairness, simulation, EOM reporting, custom branding, direct SharePoint upload, LOS/LMS integration, backend database, or centralized authentication.</p>
+    <p>Basic does not include mortgage loan support, HELOC-specific routing, Officer Lane Fairness, file-based loan import, simulation, EOM reporting, custom branding, direct SharePoint upload, LOS/LMS integration, backend database, or centralized authentication.</p>
   </section>
 
   <section id="pro-user-guide">
     <h2>Pro User Guide</h2>
-    <p>LendingFair Pro includes the Basic consumer-loan workflow and adds mortgage loan categories, officer roles, Officer Lane Fairness, fairness audit reporting, EOM reporting when available, and fairness simulation up to 60 business days.</p>
+    <p>LendingFair Pro includes the Basic consumer-loan workflow and adds mortgage loan categories, officer roles, Officer Lane Fairness, file-based loan import, fairness audit reporting, EOM reporting when available, and fairness simulation up to 60 business days.</p>
     <h3>Loan Categories</h3>
     <ul>
       <li>Consumer loans</li>
@@ -194,8 +194,10 @@
     <p>Officer Lane Fairness assigns each loan only to an eligible officer and evaluates fairness within the applicable role/lane context. This avoids comparing officers unfairly against work they are not eligible to receive.</p>
     <h3>Simulation</h3>
     <p>Pro includes fairness simulation up to 60 business days. Simulations are intended for validation, training, and policy review, and do not modify production assignment history.</p>
+    <h3>File-Based Loan Import</h3>
+    <p>Pro supports importing loan files such as CSV exports. Users should review detected headers, map required columns, preview the import, and confirm only after validating the results. This is not live LOS/LMS integration.</p>
     <h3>What Pro Does Not Include</h3>
-    <p>Pro does not include automated LOS/LMS integration, live API/webhook assignment runs, backend database persistence, centralized authentication, direct SharePoint upload unless separately integrated, unlimited simulation, or Platinum custom integration workflows.</p>
+    <p>Pro does not include automated LOS/LMS integration, scheduled or live loan data sync, live API/webhook assignment runs, backend database persistence, centralized authentication, direct SharePoint upload unless separately integrated, unlimited simulation, or Platinum custom integration workflows.</p>
   </section>
 
   <section id="fairness-methodology">

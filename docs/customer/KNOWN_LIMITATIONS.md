@@ -22,6 +22,8 @@ Basic and Pro do not directly integrate with a Loan Origination System or Loan M
 
 Loan data is entered manually or through available local import workflows based on the package and configuration.
 
+Pro supports file-based import only, such as a user-selected CSV export with mapping, preview, validation, and confirm. Pro file import does not include live sync, scheduled polling, API ingestion, database-backed workflows, or writeback to an LOS/LMS.
+
 ## Browser Compatibility
 
 Folder selection and direct PDF saving require the File System Access API, which is supported in current Microsoft Edge and Google Chrome.

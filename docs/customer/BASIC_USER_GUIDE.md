@@ -11,7 +11,7 @@ Supported consumer loan types:
 - Credit Card
 - Collateralized
 
-Basic does not support mortgage loans, HELOC routing, Officer Lane Fairness, mortgage officer roles, flex officer roles, simulation, EOM reporting, direct SharePoint upload, or LOS/LMS integration.
+Basic does not support mortgage loans, HELOC routing, Officer Lane Fairness, mortgage officer roles, flex officer roles, loan file import, simulation, EOM reporting, direct SharePoint upload, or LOS/LMS integration.
 
 ## Adding Officers
 
@@ -34,9 +34,9 @@ Credit Card loans may be tracked by count and type rather than goal-dollar amoun
 
 ## Importing Loans
 
-Loan import availability depends on the configured tier. In the current go-to-market packaging, Import Loans is treated as a Platinum-level feature because file formats often require institution-specific customization.
+Basic uses manual loan entry only.
 
-Basic users should expect to enter loans manually unless a separate customer-specific import workflow has been configured.
+File-based loan import, such as importing a CSV export with mapping and preview, requires Pro or Platinum. Basic users should enter loans manually unless the customer is upgraded to a tier that includes import.
 
 ## Running Assignment
 
@@ -75,6 +75,7 @@ Basic does not include:
 - Consumer/Mortgage lane separation
 - Consumer, Mortgage, and Flex officer roles
 - Officer Lane Fairness
+- file-based loan import
 - fairness simulation
 - EOM reporting
 - custom branding

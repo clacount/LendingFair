@@ -11,6 +11,7 @@ Use this checklist before sharing a pilot build with a credit union.
 - [ ] Basic blocks mortgage loan support.
 - [ ] Basic blocks Officer Lane Fairness.
 - [ ] Basic blocks multiple officer roles such as Mortgage and Flex.
+- [ ] Basic hides or blocks file-based loan import.
 - [ ] Basic blocks simulation access.
 - [ ] Basic generated PDF includes app version and active tier.
 - [ ] Basic running totals persist after app reload.
@@ -25,6 +26,10 @@ Use this checklist before sharing a pilot build with a credit union.
 - [ ] Pro consumer loan run completes.
 - [ ] Pro mortgage run completes.
 - [ ] Pro role-aware run completes with Consumer, Mortgage, and Flex officers.
+- [ ] Pro file-based loan import is available.
+- [ ] Pro import preview and confirm flow works.
+- [ ] Imported loans still generate valid assignments and PDFs.
+- [ ] Duplicate loan prevention still works for imported loans.
 - [ ] Pro simulation allows 60 business days.
 - [ ] Pro simulation above 60 business days is blocked.
 - [ ] Pro generated PDF includes app version and active tier.

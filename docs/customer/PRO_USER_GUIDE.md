@@ -2,7 +2,7 @@
 
 ## Pro Scope
 
-LendingFair Pro includes the Basic consumer-loan workflow and adds support for mortgage loan categories, officer roles, Officer Lane Fairness, fairness audit reporting, EOM reporting when available, and fairness simulation up to 60 business days.
+LendingFair Pro includes the Basic consumer-loan workflow and adds support for mortgage loan categories, officer roles, Officer Lane Fairness, file-based loan import, fairness audit reporting, EOM reporting when available, and fairness simulation up to 60 business days.
 
 ## Loan Categories
 
@@ -46,6 +46,10 @@ Loan types should be assigned to the correct category:
 
 Correct categorization matters because Officer Lane Fairness uses category and officer eligibility to decide who can receive each loan.
 
+The Recommended Fairness Model also uses these categories. Custom loan types should be assigned the correct Consumer or Mortgage category so the recommendation can reflect the actual entered or imported loan mix.
+
+If loans are imported before officers are configured, the recommendation card can provide preliminary loan-mix guidance. The final recommendation requires active officer roles to be loaded or configured.
+
 ## Officer Lane Fairness
 
 Officer Lane Fairness accounts for Consumer/Mortgage role eligibility. The app assigns each loan only to an eligible officer and then evaluates fairness within the applicable officer pool and lane-aware context.
@@ -57,10 +61,26 @@ This helps avoid comparing officers unfairly when some officers are not eligible
 1. Select the working folder.
 2. Confirm officers and roles.
 3. Confirm loan types and categories.
-4. Enter the current loans.
+4. Enter the current loans manually or import a loan file.
 5. Choose the appropriate fairness model.
 6. Run the assignment.
 7. Review the generated PDF and fairness audit.
+
+## File-Based Loan Import
+
+Pro supports user-driven file import for loan data, such as importing a CSV export from an approved source. The import workflow should be treated as a file-based operational step, not a live system integration.
+
+When importing:
+
+1. Select the loan file.
+2. Review detected headers.
+3. Map the loan ID, amount, and loan type columns.
+4. Preview the import results.
+5. Confirm the import only after validating the preview.
+
+Imported loans still use the configured loan types and categories. They remain subject to duplicate loan prevention, assignment validation, and the selected fairness engine before any assignments are generated.
+
+Imported files with mortgage-like loan type names, such as Second Mortgage, Home Equity, HELOC, Refi, or First Mortgage, can influence the Recommended Fairness Model even before a custom type is fully configured. Review the preview and loan type category before assignment.
 
 ## PDF and Fairness Audit Output
 
@@ -90,6 +110,7 @@ Platinum is intended to allow unlimited simulation subject to normal input valid
 Pro does not include:
 
 - automated LOS/LMS integration
+- scheduled or live loan data sync
 - live API/webhook assignment runs
 - backend database persistence
 - centralized user authentication

@@ -233,7 +233,7 @@
     setControlAvailability(
       doc.getElementById('importLoansBtn'),
       state.canUseImportLoans,
-      'Import Loans requires Platinum.'
+      'Loan import requires Pro or Platinum.'
     );
 
     const mortgageCategoryOption = doc.getElementById('loanTypeEditorCategoryInput')?.querySelector?.('option[value="mortgage"]');

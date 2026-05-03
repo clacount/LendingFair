@@ -57,13 +57,14 @@ test('Pro supports officer lane, consumer loans, mortgage loans, multiple office
   assert.equal(entitlements.canUseLoanCategory(LOAN_CATEGORIES.MORTGAGE, TIERS.PRO), true);
   assert.equal(entitlements.canUseOfficerRole(OFFICER_ROLES.MORTGAGE, TIERS.PRO), true);
   assert.equal(entitlements.canUseOfficerRole(OFFICER_ROLES.FLEX, TIERS.PRO), true);
-  assert.equal(entitlements.canUseFeature(FEATURES.IMPORT_LOANS, TIERS.PRO), false);
+  assert.equal(entitlements.canUseFeature(FEATURES.IMPORT_LOANS, TIERS.PRO), true);
   assert.equal(entitlements.canUseFeature(FEATURES.SIMULATION, TIERS.PRO), true);
   assert.equal(entitlements.getSimulationMaxDays(TIERS.PRO), 60);
   assert.equal(entitlements.canUseUnlimitedSimulation(TIERS.PRO), false);
 });
 
 test('Platinum supports unlimited simulation', () => {
+  assert.equal(entitlements.canUseFeature(FEATURES.IMPORT_LOANS, TIERS.PLATINUM), true);
   assert.equal(entitlements.canUseFeature(FEATURES.SIMULATION, TIERS.PLATINUM), true);
   assert.equal(entitlements.getSimulationMaxDays(TIERS.PLATINUM), null);
   assert.equal(entitlements.canUseUnlimitedSimulation(TIERS.PLATINUM), true);
