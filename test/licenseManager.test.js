@@ -244,21 +244,21 @@ test('raw JSON license input is rejected', async () => {
   const { licenseManager } = resetGlobals({ config: { appMode: 'customer', tier: 'pro' } });
   const result = await licenseManager.installLicense(JSON.stringify(validLicense()));
   assert.equal(result.installed, false);
-  assert.equal(result.message, 'License must be Base64-encoded text, not raw JSON.');
+  assert.equal(result.message, 'License must be an encoded key, not raw JSON.');
 });
 
 test('object license input is rejected', async () => {
   const { licenseManager } = resetGlobals({ config: { appMode: 'customer', tier: 'pro' } });
   const result = await licenseManager.installLicense(validLicense());
   assert.equal(result.installed, false);
-  assert.match(result.message, /Base64-encoded text/);
+  assert.match(result.message, /an encoded key/);
 });
 
-test('invalid Base64 license is rejected', async () => {
+test('invalid license is rejected', async () => {
   const { licenseManager } = resetGlobals({ config: { appMode: 'customer', tier: 'pro' } });
   const result = await licenseManager.installLicense('not-base64!!');
   assert.equal(result.installed, false);
-  assert.match(result.message, /Base64 text is invalid/);
+  assert.match(result.message, /text is invalid/);
 });
 
 test('legacy b64 prefix license is migrated on hydrate', async () => {

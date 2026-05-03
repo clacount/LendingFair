@@ -29,7 +29,7 @@ The app relies on the browser File System Access API for selecting a working fol
 
 Basic and Pro customer pilots require a local LendingFair license payload. The license can be issued for a pilot period such as 30 or 60 days, or for a monthly/annual renewal period.
 
-No online activation is required. To renew or extend access, choose **Update License** in the app and paste the updated Base64 license text provided by LendingFair support, or use Import License File (.txt/.lic/.license/.json with Base64 content).
+No online activation is required. To renew or extend access, choose **Update License** in the app and paste the updated license key provided by LendingFair support, or use Import License File (.txt/.lic/.license/.json with updated key).
 
 When a working folder is selected, LendingFair saves the installed license as:
 
@@ -37,7 +37,7 @@ When a working folder is selected, LendingFair saves the installed license as:
 lendingfair-license.json
 ```
 
-This file stores only the Base64 license string and lives in the root of the selected working folder, not inside a monthly folder. If another authorized user opens LendingFair and selects the same working folder, the app reads that same license file.
+This file stores only the license key and lives in the root of the selected working folder, not inside a monthly folder. If another authorized user opens LendingFair and selects the same working folder, the app reads that same license file.
 
 If a license is missing, invalid, or expired, LendingFair blocks new operational actions such as running assignments, importing loans, editing officers, editing loan types, simulations, and new report generation. Existing files are not deleted, and support export remains available.
 

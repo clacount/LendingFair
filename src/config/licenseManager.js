@@ -42,7 +42,7 @@
     if (typeof Buffer !== 'undefined') {
       return Buffer.from(value, 'base64').toString('utf8');
     }
-    throw new Error('Base64 decoder unavailable.');
+    throw new Error('decoder unavailable.');
   }
 
   function decodeBase64LicenseInput(base64Text) {
@@ -51,16 +51,16 @@
       return { decoded: '', error: 'License is missing.' };
     }
     if (!/^[A-Za-z0-9+/]*={0,2}$/.test(normalized) || normalized.length % 4 !== 0) {
-      return { decoded: '', error: 'License Base64 text is invalid.' };
+      return { decoded: '', error: 'License text is invalid.' };
     }
     try {
       const decoded = decodeBase64ToUtf8(normalized);
       if (!decoded.trim()) {
-        return { decoded: '', error: 'License Base64 text is invalid.' };
+        return { decoded: '', error: 'License text is invalid.' };
       }
       return { decoded, error: '' };
     } catch (error) {
-      return { decoded: '', error: 'License Base64 text is invalid.' };
+      return { decoded: '', error: 'License text is invalid.' };
     }
   }
 
@@ -70,7 +70,7 @@
       return { license: null, encoded: '', decoded: '', error: 'License is missing.' };
     }
     if (isProbablyRawJson(normalizedInput)) {
-      return { license: null, encoded: '', decoded: '', error: 'License must be Base64-encoded text, not raw JSON.' };
+      return { license: null, encoded: '', decoded: '', error: 'License must be an encoded key, not raw JSON.' };
     }
     const encoded = normalizeBase64LicenseInput(normalizedInput);
     const decodeResult = decodeBase64LicenseInput(encoded);
@@ -86,7 +86,7 @@
       }
       return { license: { ...license }, encoded, decoded: decodeResult.decoded, error: '' };
     } catch {
-      return { license: null, encoded, decoded: decodeResult.decoded, error: 'License Base64 decoded text is not valid JSON.' };
+      return { license: null, encoded, decoded: decodeResult.decoded, error: 'License decoded key is not valid JSON.' };
     }
   }
 
@@ -156,7 +156,7 @@
 
   function validateLicense(licenseInput,{now=new Date(),allowExpired=true}={}){
     if (typeof licenseInput === 'object' && licenseInput !== null) {
-      return { valid:false,state:LICENSE_STATES.INVALID,message:'License must be Base64-encoded text, not a JSON object.',license:null,encoded:'',decoded:'' };
+      return { valid:false,state:LICENSE_STATES.INVALID,message:'License must be an encoded key, not a JSON object.',license:null,encoded:'',decoded:'' };
     }
     const parsed=parseBase64LicenseInput(licenseInput);
     if(parsed.error){return {valid:false,state:LICENSE_STATES.INVALID,message:parsed.error,license:null,encoded:parsed.encoded,decoded:parsed.decoded};}
