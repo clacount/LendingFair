@@ -13,6 +13,19 @@ Supported consumer loan types:
 
 Basic does not support mortgage loans, HELOC routing, Officer Lane Fairness, mortgage officer roles, flex officer roles, loan file import, simulation, EOM reporting, direct SharePoint upload, or LOS/LMS integration.
 
+## Selecting a Working Folder
+A working folder is required to save the assignment history. The working folder is selected at the beginning of the first session and can be changed as needed.
+- The working folder is the folder where the app will save the generated PDF report.
+- The working folder must be selected before entering loans.
+- The working folder must be selected before running the assignment.
+- The working folder must be selected before generating a PDF report.
+
+## Enter A License Key
+A proprietary license key will be provided to the credit union.
+- A license key is required to access the app.
+- The license key can be manually entered or imported from a file.
+- The license key is case-sensitive.
+
 ## Adding Officers
 
 1. Open LendingFair in Microsoft Edge or Google Chrome.
@@ -82,3 +95,4 @@ Basic does not include:
 - direct SharePoint upload
 - LOS/LMS integration
 - backend database or centralized authentication
+If a license is missing, invalid, or expired, LendingFair blocks new operational actions such as running assignments, importing loans, editing officers, editing loan types, simulations, and new report generation. Existing files are not deleted, and support export remains available.

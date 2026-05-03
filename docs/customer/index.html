@@ -131,8 +131,20 @@
     <p><strong>LendingFair Pro</strong> adds mortgage loan support, officer roles, Officer Lane Fairness, fairness audit reporting, EOM reporting, and limited fairness simulation.</p>
     <p><strong>LendingFair Platinum</strong> is the future enterprise direction for hosted/backend capabilities, database-backed persistence, APIs, live runs, and deeper institution-specific integrations.</p>
     <h3>Local Browser Operation</h3>
-    <p>Basic and Pro run locally in Microsoft Edge or Google Chrome. No backend database or hosted LendingFair service is required for the current Basic/Pro package.</p>
+    <p>Basic and Pro run locally in the browser. No backend database or hosted LendingFair service is required for the current Basic/Pro package.</p>
+    <p>Supported browsers:</p>
+    <ul>
+      <li>Microsoft Edge</li>
+      <li>Google Chrome</li>
+    </ul>
     <p>The app relies on the browser File System Access API for selecting a working folder and writing local output files.</p>
+    <h3>Local Pilot License</h3>
+    <p>Basic and Pro customer pilots require a local LendingFair license payload. The license can be issued for a pilot period such as 30 or 60 days, or for a monthly/annual renewal period.</p>
+    <p>No online activation is required. To renew or extend access, choose <strong>Update License</strong> in the app and paste the new license text provided by LendingFair support, or use Import License File (.txt/.lic/.license/.json with the new key).</p>
+    <p>When a working folder is selected, LendingFair saves the installed license as:</p>
+    <pre><code>lendingfair-license.json</code></pre>
+    <p>This file stores only the license key and lives in the root of the selected working folder, not inside a monthly folder. If another authorized user opens LendingFair and selects the same working folder, the app reads that same license file.</p>
+    <p>If a license is missing, invalid, or expired, LendingFair blocks new operational actions such as running assignments, importing loans, editing officers, editing loan types, simulations, and new report generation. Existing files are not deleted, and support export remains available.</p>
     <h3>Working Folder and Monthly Files</h3>
     <p>Select a working folder approved by your institution. LendingFair creates or uses a monthly subfolder named in <code>YYYY-MM</code> format, such as <code>2026-05</code>.</p>
     <p>The active monthly folder contains running totals CSV, loan history CSV, generated PDFs, and EOM/custom reports when available.</p>
@@ -140,11 +152,37 @@
     <p>Reports include app version, active tier, generated timestamp, fairness engine, assignments by loan/officer, and fairness audit details when available for the tier.</p>
     <h3>No LOS/LMS Integration in Basic or Pro</h3>
     <p>Basic and Pro do not connect directly to a Loan Origination System or Loan Management System. Pro supports file-based loan import only, such as a user-selected CSV export with mapping, preview, validation, and confirm. Direct polling, API/webhook ingestion, automated live runs, and writeback are part of the Platinum roadmap.</p>
+    <h3>Platinum Roadmap</h3>
+    <p>Platinum is intended for future enterprise needs such as:</p>
+    <ul>
+      <li>hosted or containerized backend service</li>
+      <li>database-backed officer state and audit history</li>
+      <li>API/webhook or scheduled polling integrations</li>
+      <li>SharePoint/Microsoft Graph integration</li>
+      <li>custom reporting and institution-specific automation</li>
+      <li>live production assignment runs</li>
+    </ul>
+    <p>These capabilities are currently being discussed and developed separately from the Basic/Pro local-browser package.</p>
   </section>
 
   <section id="basic-user-guide">
     <h2>Basic User Guide</h2>
     <p>LendingFair Basic supports consumer-loan assignment only. It uses the Global fairness engine and one shared officer pool.</p>
+    <h3>Selecting a Working Folder</h3>
+    <p>A working folder is required to save the assignment history. The working folder is selected at the beginning of the first session and can be changed as needed.</p>
+    <ul>
+      <li>The working folder is the folder where the app will save the generated PDF report.</li>
+      <li>The working folder must be selected before entering loans.</li>
+      <li>The working folder must be selected before running the assignment.</li>
+      <li>The working folder must be selected before generating a PDF report.</li>
+    </ul>
+    <h3>Enter A License Key</h3>
+    <p>A proprietary license key will be provided to the credit union.</p>
+    <ul>
+      <li>A license key is required to access the app.</li>
+      <li>The license key can be manually entered or imported from a file.</li>
+      <li>The license key is case-sensitive.</li>
+    </ul>
     <h3>Supported Consumer Loan Types</h3>
     <ul>
       <li>Auto</li>
@@ -170,6 +208,12 @@
       <li>Review on-screen assignments and fairness information.</li>
       <li>Open the generated PDF from the active monthly folder.</li>
     </ol>
+    <h3>Finding PDFs</h3>
+    <p>Generated assignment PDFs are saved in the active monthly folder under the working folder. The monthly folder is named in <code>YYYY-MM</code> format.</p>
+    <p>Example:</p>
+    <pre><code>Selected Working Folder/
+  2026-05/
+    Loan-Assignment-Report-2026-05-02-103000.pdf</code></pre>
     <h3>Duplicate Loan Prevention</h3>
     <p>LendingFair tracks loan history in the selected monthly folder. Use consistent loan IDs so duplicate prevention works as intended.</p>
     <h3>What Basic Does Not Include</h3>
