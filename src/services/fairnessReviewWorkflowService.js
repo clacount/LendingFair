@@ -46,6 +46,14 @@
     return values.reduce((sum, value) => sum + value, 0);
   }
 
+  function getAttemptScore(attempt = {}) {
+    const directMetricValues = collectVarianceMetrics({ metrics: attempt.metrics || {} });
+    if (directMetricValues.length) {
+      return directMetricValues.reduce((sum, value) => sum + value, 0);
+    }
+    return getFairnessAttemptScore(attempt.fairnessEvaluation || attempt.result?.fairnessEvaluation || {});
+  }
+
   function buildFairnessAttempt({ attemptNumber, result }) {
     const fairnessEvaluation = result?.fairnessEvaluation || {};
     const status = normalizeStatus(fairnessEvaluation.overallResult);
@@ -78,21 +86,25 @@
 
   function selectBestFairnessAttempt(attempts = []) {
     const validAttempts = (Array.isArray(attempts) ? attempts : [])
-      .filter((attempt) => attempt?.result && !attempt.result.error)
+      .filter((attempt) => !attempt?.result?.error)
       .map((attempt, index) => ({
         ...attempt,
         attemptNumber: Number(attempt.attemptNumber) || index + 1,
         status: normalizeStatus(attempt.status || attempt.fairnessEvaluation?.overallResult),
         fairnessEvaluation: attempt.fairnessEvaluation || attempt.result?.fairnessEvaluation || {},
         metrics: attempt.metrics || attempt.fairnessEvaluation?.metrics || attempt.result?.fairnessEvaluation?.metrics || {},
-        score: getNumericMetric(attempt.score) ?? getFairnessAttemptScore(attempt.fairnessEvaluation || attempt.result?.fairnessEvaluation || {})
+        score: getNumericMetric(attempt.score) ?? getAttemptScore(attempt)
       }));
 
     if (!validAttempts.length) {
-      return null;
+      return { selectedAttempt: null, reason: 'no_attempts' };
     }
 
-    return [...validAttempts].sort(compareFairnessAttempts)[0];
+    const selectedAttempt = [...validAttempts].sort(compareFairnessAttempts)[0];
+    return {
+      selectedAttempt,
+      reason: Number.isFinite(selectedAttempt.score) ? 'best_available_score' : 'no_comparable_metrics'
+    };
   }
 
   function resolveSelectedAttempt(selection, fallbackAttempt = null) {
