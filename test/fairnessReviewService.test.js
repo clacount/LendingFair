@@ -12,6 +12,14 @@ test('selectBestFairnessAttempt prefers PASS over REVIEW', () => {
   assert.equal(selectedAttempt.attemptNumber, 2);
 });
 
+test('selectBestFairnessAttempt prefers ADVISORY over lower-scored REVIEW', () => {
+  const { selectedAttempt } = global.FairnessReviewService.selectBestFairnessAttempt([
+    { attemptNumber: 1, status: 'REVIEW', metrics: { maxCountVariancePercent: 1, maxAmountVariancePercent: 1 } },
+    { attemptNumber: 2, status: 'ADVISORY', metrics: { maxCountVariancePercent: 20, maxAmountVariancePercent: 24 } }
+  ]);
+  assert.equal(selectedAttempt.attemptNumber, 2);
+});
+
 test('resolveSelectedAttempt unwraps browser selection payload', () => {
   const fallbackAttempt = { attemptNumber: 1, status: 'REVIEW' };
   const passAttempt = { attemptNumber: 2, status: 'PASS' };

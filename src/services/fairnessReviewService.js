@@ -1,5 +1,10 @@
 (function initializeFairnessReviewService(globalScope) {
   const FAIRNESS_REVIEW_MAX_ATTEMPTS = 5;
+  const STATUS_RANK = {
+    PASS: 0,
+    ADVISORY: 1,
+    REVIEW: 2
+  };
 
   function toFiniteNumber(value) {
     return Number.isFinite(value) ? value : null;
@@ -36,10 +41,17 @@
       const status = String(attempt?.status || attempt?.fairnessEvaluation?.overallResult || 'REVIEW').toUpperCase();
       return { attempt, index, status, score: deriveFairnessScore(attempt) };
     });
-    const passAttempts = decorated.filter((entry) => entry.status === 'PASS');
-    const pool = passAttempts.length ? passAttempts : decorated;
-    let best = pool[0];
-    for (const candidate of pool.slice(1)) {
+    let best = decorated[0];
+    for (const candidate of decorated.slice(1)) {
+      const bestRank = STATUS_RANK[best.status] ?? STATUS_RANK.REVIEW;
+      const candidateRank = STATUS_RANK[candidate.status] ?? STATUS_RANK.REVIEW;
+      if (candidateRank < bestRank) {
+        best = candidate;
+        continue;
+      }
+      if (candidateRank > bestRank) {
+        continue;
+      }
       if (best.score === null && candidate.score !== null) {
         best = candidate;
         continue;
