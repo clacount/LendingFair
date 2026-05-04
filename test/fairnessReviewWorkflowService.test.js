@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 global.window = global;
-require('../src/services/fairnessReviewService.js');
+require('../src/services/fairnessReviewWorkflowService.js');
 
 test('selectBestFairnessAttempt prefers PASS over REVIEW', () => {
   const { selectedAttempt } = global.FairnessReviewService.selectBestFairnessAttempt([
