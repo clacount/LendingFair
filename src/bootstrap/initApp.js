@@ -28,6 +28,12 @@ const supportExportBtn = document.getElementById('supportExportBtn');
 const randomizeBtn = document.getElementById('randomizeBtn');
 const clearBtn = document.getElementById('clearBtn');
 const removeLoanHistoryBtn = document.getElementById('removeLoanHistoryBtn');
+const fairnessReviewModalEl = document.getElementById('fairnessReviewModal');
+const closeFairnessReviewModalBtn = document.getElementById('closeFairnessReviewModalBtn');
+const cancelFairnessReviewModalBtn = document.getElementById('cancelFairnessReviewModalBtn');
+const approveFairnessReviewBtn = document.getElementById('approveFairnessReviewBtn');
+const denyFairnessReviewBtn = document.getElementById('denyFairnessReviewBtn');
+const fairnessReviewModalBodyEl = document.getElementById('fairnessReviewModalBody');
 const messageEl = document.getElementById('message');
 const step1MessageEl = document.getElementById('step1Message');
 const step2MessageEl = document.getElementById('step2Message');
@@ -106,6 +112,9 @@ const loanTypeEditorModalMessageEl = document.getElementById('loanTypeEditorModa
 
 const distributionDetailsEl = document.getElementById('distributionDetails');
 const distributionChartsEl = document.getElementById('distributionCharts');
+const fairnessReviewService = window.FairnessReviewWorkflowService || window.FairnessReviewService;
+const FAIRNESS_REVIEW_MAX_ATTEMPTS = fairnessReviewService?.FAIRNESS_REVIEW_MAX_ATTEMPTS || 5;
+let pendingReviewAssignment = null;
 const entitlements = window.LendingFairEntitlements;
 const customerConfig = window.LendingFairCustomerConfig;
 const licenseManager = window.LendingFairLicenseManager;
@@ -2150,12 +2159,22 @@ function syncLicenseStatusUi() {
       && license.tier !== configuredTier
       ? ' · license tier overrides package tier'
       : '';
-    const labelText = `${tierLabel} · ${typeLabel}${licenseManager.getLicenseStatusLabel()}${expiryLabel}${tierOverrideLabel}`;
+    const licenseStatusText = licenseManager.getLicenseStatusLabel();
+    const labelText = `${tierLabel} · ${typeLabel}${licenseStatusText}${expiryLabel}${tierOverrideLabel}`;
+    const compactStatusText = state.state === 'active'
+      ? 'Active'
+      : (
+        state.state === 'expiring_soon'
+          ? `Expires in ${Math.max(0, Number(state.daysUntilExpiration) || 0)}d`
+          : licenseStatusText
+      );
+    const compactFooterLabel = `${tierLabel} · ${typeLabel}${compactStatusText}${expiryLabel}`;
     [topLicenseStatusLabel, licenseStatusLabel].forEach((statusLabel) => {
       if (!statusLabel) {
         return;
       }
-      statusLabel.textContent = labelText;
+      statusLabel.textContent = statusLabel === licenseStatusLabel ? compactFooterLabel : labelText;
+      statusLabel.title = labelText;
       statusLabel.dataset.state = state.state;
     });
   }
@@ -4434,6 +4453,81 @@ function buildUpdatedLoanHistory(result, generatedAt, priorLoanHistory) {
   return { loans: updatedLoans };
 }
 
+async function commitAssignmentResult(result, officers, loans, runningTotals, loanHistory, statusMessage) {
+  const generatedAt = new Date();
+  const updatedRunningTotals = buildUpdatedRunningTotals(officers, result, runningTotals);
+  result.updatedRunningTotals = buildRunningTotalsWithCurrentOfficerStatuses(updatedRunningTotals);
+  const fileName = await saveResultPdf(result, officers, loans, generatedAt);
+  await saveRunningTotals(result.updatedRunningTotals);
+  await saveLoanHistory(buildUpdatedLoanHistory(result, generatedAt, loanHistory));
+  setMessage(`${statusMessage} Saved to ${fileName}. Officer history was updated in ${getSessionFileName('runningTotals')}, and loan history was updated in ${getSessionFileName('loanHistory')}.`, 'success');
+  return fileName;
+}
+
+function getPendingReviewReason() {
+  const result = pendingReviewAssignment?.result;
+  const fairnessEvaluation = result?.fairnessEvaluation;
+  const descriptor = fairnessEvaluation?.statusMetricDescriptor;
+  if (descriptor?.label && Number.isFinite(Number(descriptor.valuePercent))) {
+    return `${descriptor.label}: ${Number(descriptor.valuePercent).toFixed(1)}%`;
+  }
+  return (fairnessEvaluation?.summaryItems || [])[0] || 'The selected assignment remains in REVIEW status.';
+}
+
+function closeFairnessReviewModal() {
+  if (fairnessReviewModalEl) {
+    fairnessReviewModalEl.hidden = true;
+  }
+}
+
+function openFairnessReviewModal() {
+  if (!pendingReviewAssignment || !fairnessReviewModalEl || !fairnessReviewModalBodyEl) {
+    return;
+  }
+
+  const review = pendingReviewAssignment.result.fairnessReview || {};
+  fairnessReviewModalBodyEl.innerHTML = `
+    <p>This assignment requires review. LendingFair tested additional assignment attempts and selected the best available result, but the fairness status remains REVIEW.</p>
+    <p>Review the assignment split on screen. Approve assignment will save history, update running totals, and generate the final report. Deny will discard this pending assignment without saving.</p>
+    <ul>
+      <li>Final selected status: <strong>${escapeHtml(String(review.selectedStatus || 'REVIEW'))}</strong></li>
+      <li>Attempts evaluated: <strong>${escapeHtml(String(review.attemptsEvaluated || 1))}</strong></li>
+      <li>Selected attempt: <strong>${escapeHtml(String(review.selectedAttempt || 1))}</strong></li>
+      <li>Initial status: <strong>${escapeHtml(String(review.initialStatus || 'REVIEW'))}</strong></li>
+      <li>${escapeHtml(getPendingReviewReason())}</li>
+    </ul>
+  `;
+  fairnessReviewModalEl.hidden = false;
+}
+
+function denyPendingReviewAssignment() {
+  pendingReviewAssignment = null;
+  closeFairnessReviewModal();
+  setMessage('Fairness Review assignment denied. No history, running totals, or report files were saved.', 'success');
+}
+
+async function approvePendingReviewAssignment() {
+  if (!pendingReviewAssignment) {
+    closeFairnessReviewModal();
+    return;
+  }
+
+  if (!requireOperationalLicense('confirm-assignment')) {
+    return;
+  }
+
+  const { result, officers, loans, runningTotals, loanHistory } = pendingReviewAssignment;
+  result.fairnessReview.managerConfirmed = true;
+
+  try {
+    await commitAssignmentResult(result, officers, loans, runningTotals, loanHistory, 'Manager confirmed REVIEW assignment.');
+    pendingReviewAssignment = null;
+    closeFairnessReviewModal();
+  } catch (error) {
+    setMessage(`Assignments were generated, but the files could not be fully saved: ${error.message}`, 'warning');
+  }
+}
+
 async function saveRunningTotals(runningTotals) {
   if (!outputDirectoryHandle) {
     throw new Error('No output folder has been selected.');
@@ -5340,6 +5434,15 @@ function buildPdfLines(result, officers, loans, generatedAt) {
     lines.push({ text: 'Fairness Audit', size: 14, gapAfter: 10 });
     lines.push({ text: `Fairness model: ${getSelectedFairnessEngineLabel()}`, size: 11, gapAfter: 4 });
     lines.push({ text: `Overall fairness status: ${fairnessEvaluation.overallResult}`, size: 11, gapAfter: 4 });
+    if (result.fairnessReview?.attemptsEvaluated > 1) {
+      lines.push({ text: 'Fairness Review Workflow: Additional assignment attempts were evaluated.', size: 11, gapAfter: 4 });
+      lines.push({ text: `Attempts evaluated: ${result.fairnessReview.attemptsEvaluated}`, size: 11, gapAfter: 4 });
+      lines.push({ text: `Selected attempt: ${result.fairnessReview.selectedAttempt}`, size: 11, gapAfter: 4 });
+      lines.push({ text: `Initial status: ${result.fairnessReview.initialStatus}`, size: 11, gapAfter: 4 });
+      lines.push({ text: `Selected status: ${result.fairnessReview.selectedStatus}`, size: 11, gapAfter: 4 });
+      lines.push({ text: `Manager confirmation required: ${result.fairnessReview.managerConfirmationRequired ? 'Yes' : 'No'}`, size: 11, gapAfter: 4 });
+      lines.push({ text: `Manager confirmed: ${result.fairnessReview.managerConfirmed ? 'Yes' : 'No'}`, size: 11, gapAfter: 4 });
+    }
     fairnessEvaluation.summaryItems.forEach((item) => {
       lines.push({ text: item, size: 11, gapAfter: 4 });
     });
@@ -7342,6 +7445,15 @@ licenseModalEl?.addEventListener('click', (event) => {
     licenseModalEl.hidden = true;
   }
 });
+closeFairnessReviewModalBtn?.addEventListener('click', closeFairnessReviewModal);
+cancelFairnessReviewModalBtn?.addEventListener('click', closeFairnessReviewModal);
+fairnessReviewModalEl?.addEventListener('click', (event) => {
+  if (event.target === fairnessReviewModalEl) {
+    closeFairnessReviewModal();
+  }
+});
+approveFairnessReviewBtn?.addEventListener('click', approvePendingReviewAssignment);
+denyFairnessReviewBtn?.addEventListener('click', denyPendingReviewAssignment);
 installLicenseBtn?.addEventListener('click', async () => {
   const result = await licenseManager?.installLicense?.(licenseInput?.value || '');
   if (!result?.installed) {
@@ -7431,6 +7543,11 @@ loanList?.addEventListener('input', renderScenarioEngineRecommendation);
 loanList?.addEventListener('change', renderScenarioEngineRecommendation);
 
 randomizeBtn.addEventListener('click', async () => {
+  if (pendingReviewAssignment) {
+    openFairnessReviewModal();
+    setMessage('A Fairness Review assignment is pending manager confirmation. Approve or deny it before running another assignment.', 'warning');
+    return;
+  }
   if (!requireOperationalLicense('run-assignment')) {
     return;
   }
@@ -7466,7 +7583,42 @@ randomizeBtn.addEventListener('click', async () => {
     return;
   }
 
-  const result = assignLoans(officers, loans, runningTotals);
+  const attempts = [];
+  const firstResult = assignLoans(officers, loans, runningTotals);
+  const firstEvaluation = firstResult.fairnessEvaluation || evaluateResultFairness(firstResult);
+  attempts.push({
+    attemptNumber: 1,
+    result: firstResult,
+    fairnessEvaluation: firstEvaluation,
+    status: String(firstEvaluation?.overallResult || 'REVIEW').toUpperCase(),
+    metrics: firstEvaluation?.metrics || {}
+  });
+  let result = firstResult;
+
+  if (!result.error && attempts[0].status === 'REVIEW') {
+    for (let attemptNumber = 2; attemptNumber <= FAIRNESS_REVIEW_MAX_ATTEMPTS; attemptNumber += 1) {
+      const attemptResult = assignLoans(officers, loans, runningTotals);
+      const attemptEvaluation = attemptResult.fairnessEvaluation || evaluateResultFairness(attemptResult);
+      attempts.push({
+        attemptNumber,
+        result: attemptResult,
+        fairnessEvaluation: attemptEvaluation,
+        status: String(attemptEvaluation?.overallResult || 'REVIEW').toUpperCase(),
+        metrics: attemptEvaluation?.metrics || {}
+      });
+    }
+    const selectedAttempt = fairnessReviewService?.selectBestFairnessAttempt?.(attempts) || attempts[0];
+    result = selectedAttempt?.result || result;
+    result.fairnessReview = {
+      attemptsEvaluated: attempts.length,
+      initialStatus: attempts[0].status,
+      selectedAttempt: selectedAttempt?.attemptNumber || 1,
+      selectedStatus: selectedAttempt?.status || attempts[0].status,
+      managerConfirmationRequired: (selectedAttempt?.status || attempts[0].status) === 'REVIEW',
+      managerConfirmed: false
+    };
+  }
+
   renderResults(result);
 
   if (result.error) {
@@ -7475,14 +7627,18 @@ randomizeBtn.addEventListener('click', async () => {
 
   renderDistributionCharts(result, officers, runningTotals);
 
+  if (result.fairnessReview?.managerConfirmationRequired) {
+    pendingReviewAssignment = { result, officers, loans, runningTotals, loanHistory };
+    openFairnessReviewModal();
+    setMessage('Fairness Review Required: review the split, then approve or deny the assignment. Nothing has been saved yet.', 'warning');
+    return;
+  }
+
   try {
-    const generatedAt = new Date();
-    const updatedRunningTotals = buildUpdatedRunningTotals(officers, result, runningTotals);
-    result.updatedRunningTotals = buildRunningTotalsWithCurrentOfficerStatuses(updatedRunningTotals);
-    const fileName = await saveResultPdf(result, officers, loans, generatedAt);
-    await saveRunningTotals(result.updatedRunningTotals);
-    await saveLoanHistory(buildUpdatedLoanHistory(result, generatedAt, loanHistory));
-    setMessage(`Assignments randomized and saved to ${fileName}. Officer history was updated in ${getSessionFileName('runningTotals')}, and loan history was updated in ${getSessionFileName('loanHistory')}.`, 'success');
+    const reviewPrefix = result.fairnessReview?.attemptsEvaluated > 1
+      ? 'Initial assignment required review. LendingFair tested additional assignment attempts and selected a PASS result.'
+      : 'Assignments randomized.';
+    await commitAssignmentResult(result, officers, loans, runningTotals, loanHistory, reviewPrefix);
   } catch (error) {
     setMessage(`Assignments were generated, but the files could not be fully saved: ${error.message}`, 'warning');
   }
@@ -7512,6 +7668,8 @@ removeLoanHistoryBtn?.addEventListener('click', async () => {
 });
 
 clearBtn.addEventListener('click', () => {
+  pendingReviewAssignment = null;
+  closeFairnessReviewModal();
   officerList.innerHTML = '';
   loanList.innerHTML = '';
   setMessage('');
