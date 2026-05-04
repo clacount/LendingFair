@@ -83,3 +83,14 @@ The credit union should review and approve its own assignment policy, including:
 ## Disclaimer
 
 LendingFair provides an auditable assignment recommendation based on configured rules and available data. The credit union remains responsible for reviewing, approving, and maintaining its own loan assignment policy.
+
+## Fairness Review Workflow
+
+When an initial assignment returns **REVIEW**, LendingFair runs a capped set of additional assignment attempts using the same inputs and selects the **best available assignment**.
+
+- PASS on initial attempt: saves normally.
+- REVIEW on initial attempt: runs additional assignment attempts.
+- If a PASS is found: that PASS is selected and saved.
+- If all attempts remain REVIEW: **manager confirmation required** before save/report generation.
+
+This workflow improves review discipline and transparency; it does not hide REVIEW outcomes.

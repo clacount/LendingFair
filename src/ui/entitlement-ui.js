@@ -128,9 +128,7 @@
       || customerConfig.getProductLabel?.(state.tierLabel)
       || `LendingFair ${state.tierLabel}`;
     const customerName = customerConfig.getCustomerConfig?.().customerName || '';
-    labelEl.textContent = customerName
-      ? `${productLabel} | Configured for: ${customerName}`
-      : productLabel;
+    labelEl.replaceChildren(buildVersionLabelFragment(productLabel, customerName));
     labelEl.dataset.state = 'ready';
   }
 
@@ -142,9 +140,29 @@
     }
 
     const customerName = getCustomerConfig()?.getCustomerConfig?.().customerName || '';
-    labelEl.textContent = customerName
-      ? `${appMetadata.getProductVersionLabel?.(state.tierLabel)} | Configured for: ${customerName}`
-      : appMetadata.getProductVersionLabel?.(state.tierLabel);
+    labelEl.replaceChildren(buildVersionLabelFragment(appMetadata.getProductVersionLabel?.(state.tierLabel), customerName));
+  }
+
+  function buildVersionLabelFragment(productLabel, customerName = '') {
+    const fragment = globalScope.document.createDocumentFragment();
+    const productSpan = globalScope.document.createElement('span');
+    productSpan.className = 'version-label-product';
+    productSpan.textContent = productLabel || 'LendingFair';
+    fragment.appendChild(productSpan);
+
+    if (customerName) {
+      const separatorSpan = globalScope.document.createElement('span');
+      separatorSpan.className = 'version-label-separator';
+      separatorSpan.textContent = '|';
+      fragment.appendChild(separatorSpan);
+
+      const customerSpan = globalScope.document.createElement('span');
+      customerSpan.className = 'version-label-customer';
+      customerSpan.textContent = `Configured for: ${customerName}`;
+      fragment.appendChild(customerSpan);
+    }
+
+    return fragment;
   }
 
   function applyCustomerModeControls() {

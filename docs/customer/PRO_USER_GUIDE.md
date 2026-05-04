@@ -117,3 +117,7 @@ Pro does not include:
 - direct SharePoint upload unless separately integrated
 - unlimited simulation
 - Platinum custom integration workflows
+
+## Fairness Review
+
+For REVIEW status runs, LendingFair evaluates additional assignment attempts and selects the best available assignment. If the selected attempt remains REVIEW, manager confirmation is required before final save and report generation. Confirmed REVIEW assignments are captured in fairness audit metadata.

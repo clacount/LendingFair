@@ -80,3 +80,13 @@ Use this checklist before sharing a pilot build with a credit union.
 - [ ] Customer has reviewed Known Limitations.
 - [ ] Customer understands pilot license expiration/renewal process.
 - [ ] Customer has agreed to pilot scope and review cadence.
+
+## Fairness Review Workflow
+
+- [ ] PASS assignments continue to save normally.
+- [ ] REVIEW assignments trigger additional assignment attempts.
+- [ ] Attempts are capped and do not run indefinitely.
+- [ ] Best available assignment is selected and shown.
+- [ ] If selected status remains REVIEW, manager confirmation is required.
+- [ ] No running totals/history/PDF side effects occur before confirmation for REVIEW status outcomes.
+- [ ] Fairness audit/report metadata shows attempts evaluated, selected attempt, and manager confirmation fields.

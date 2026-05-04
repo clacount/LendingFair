@@ -217,18 +217,22 @@ header p {
 .license-status-label {
   display: inline-flex;
   align-items: center;
-  width: fit-content;
+  width: auto;
   max-width: 100%;
+  min-width: 0;
   padding: 6px 10px;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: #ffffff;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: clamp(0.68rem, 1.05vw, 0.8rem);
   font-weight: 700;
   letter-spacing: 0.04em;
   line-height: 1.25;
   text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .top-license-status {
@@ -1503,6 +1507,22 @@ select {
   flex-wrap: wrap;
 }
 
+.fairness-review-modal-body {
+  display: grid;
+  gap: 12px;
+}
+
+.fairness-review-modal-body p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.fairness-review-modal-body ul {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text);
+}
+
 #simulationModalMessage {
   margin-top: 0;
   min-height: 20px;
@@ -1722,7 +1742,7 @@ select {
   position: relative;
   min-height: 76px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(160px, 1fr) auto minmax(220px, 1fr);
   align-items: end;
   column-gap: 16px;
   padding: 6px 0;
@@ -1740,18 +1760,52 @@ select {
 
 .version-label {
   position: static;
-  justify-self: end;
-  text-align: right;
+  min-width: 0;
+  font-size: clamp(0.72rem, 1.25vw, 0.9rem);
+  line-height: 1.25;
 }
 
 #appVersionLabel {
-  grid-column: 3;
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 6px;
+  width: auto;
+  max-width: calc(50% - 110px);
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 #licenseStatusLabel {
-  grid-column: 1;
-  justify-self: start;
+  position: absolute;
+  left: 0;
+  bottom: 0;
   text-align: left;
+  max-width: calc(50% - 110px);
+}
+
+.version-label-product,
+.version-label-customer {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.version-label-product {
+  flex: 0 1 auto;
+}
+
+.version-label-customer {
+  flex: 1 1 auto;
+}
+
+.version-label-separator {
+  flex: 0 0 auto;
+  color: var(--muted);
 }
 
 .license-status-label[data-state="expired"],
@@ -2157,11 +2211,32 @@ select {
   }
 
   .app-footer {
-    min-height: 108px;
-    align-items: flex-start;
-    justify-content: flex-start;
-    flex-direction: column;
+    grid-template-columns: 1fr;
+    min-height: 0;
+    justify-items: center;
     gap: 10px;
+  }
+
+  .footer-branding-logo,
+  #appVersionLabel,
+  #licenseStatusLabel {
+    position: static;
+    grid-column: 1;
+    justify-self: center;
+    text-align: center;
+    max-width: 100%;
+  }
+
+  #appVersionLabel {
+    justify-content: center;
+    font-size: clamp(0.68rem, 2.8vw, 0.82rem);
+  }
+
+  #licenseStatusLabel {
+    max-width: 100%;
+    justify-content: center;
+    text-align: center;
+    font-size: clamp(0.64rem, 2.6vw, 0.78rem);
   }
 
   .version-label {

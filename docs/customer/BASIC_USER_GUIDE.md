@@ -96,3 +96,7 @@ Basic does not include:
 - LOS/LMS integration
 - backend database or centralized authentication
 If a license is missing, invalid, or expired, LendingFair blocks new operational actions such as running assignments, importing loans, editing officers, editing loan types, simulations, and new report generation. Existing files are not deleted, and support export remains available.
+
+## Fairness Review
+
+If an initial run returns REVIEW, LendingFair performs additional assignment attempts and selects the best available assignment. If the selected result still returns REVIEW, manager confirmation is required before running totals/history and reports are saved.
