@@ -12,6 +12,21 @@ test('selectBestFairnessAttempt prefers PASS over REVIEW', () => {
   assert.equal(selectedAttempt.attemptNumber, 2);
 });
 
+test('resolveSelectedAttempt unwraps browser selection payload', () => {
+  const fallbackAttempt = { attemptNumber: 1, status: 'REVIEW' };
+  const passAttempt = { attemptNumber: 2, status: 'PASS' };
+  const selection = { selectedAttempt: passAttempt, reason: 'best_available_score' };
+
+  assert.equal(global.FairnessReviewService.resolveSelectedAttempt(selection, fallbackAttempt), passAttempt);
+});
+
+test('resolveSelectedAttempt accepts direct attempt shape', () => {
+  const fallbackAttempt = { attemptNumber: 1, status: 'REVIEW' };
+  const advisoryAttempt = { attemptNumber: 3, status: 'ADVISORY', result: {} };
+
+  assert.equal(global.FairnessReviewService.resolveSelectedAttempt(advisoryAttempt, fallbackAttempt), advisoryAttempt);
+});
+
 test('selectBestFairnessAttempt chooses lower variance among PASS attempts', () => {
   const { selectedAttempt } = global.FairnessReviewService.selectBestFairnessAttempt([
     { attemptNumber: 1, status: 'PASS', metrics: { maxCountVariancePercent: 9, maxAmountVariancePercent: 9 } },

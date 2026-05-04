@@ -54,9 +54,23 @@
     };
   }
 
+  function resolveSelectedAttempt(selection, fallbackAttempt = null) {
+    if (!selection) {
+      return fallbackAttempt;
+    }
+    if (selection.selectedAttempt) {
+      return selection.selectedAttempt;
+    }
+    if (selection.result || selection.attemptNumber) {
+      return selection;
+    }
+    return fallbackAttempt;
+  }
+
   globalScope.FairnessReviewService = {
     FAIRNESS_REVIEW_MAX_ATTEMPTS,
     deriveFairnessScore,
-    selectBestFairnessAttempt
+    selectBestFairnessAttempt,
+    resolveSelectedAttempt
   };
 })(window);

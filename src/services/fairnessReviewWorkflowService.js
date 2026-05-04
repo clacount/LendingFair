@@ -95,6 +95,19 @@
     return [...validAttempts].sort(compareFairnessAttempts)[0];
   }
 
+  function resolveSelectedAttempt(selection, fallbackAttempt = null) {
+    if (!selection) {
+      return fallbackAttempt;
+    }
+    if (selection.selectedAttempt) {
+      return selection.selectedAttempt;
+    }
+    if (selection.result || selection.attemptNumber) {
+      return selection;
+    }
+    return fallbackAttempt;
+  }
+
   function shouldRequireManagerConfirmation(attempt) {
     return normalizeStatus(attempt?.status || attempt?.fairnessEvaluation?.overallResult) === 'REVIEW';
   }
@@ -105,6 +118,7 @@
     getFairnessAttemptScore,
     buildFairnessAttempt,
     selectBestFairnessAttempt,
+    resolveSelectedAttempt,
     shouldRequireManagerConfirmation
   };
 

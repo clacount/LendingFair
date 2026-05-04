@@ -7607,7 +7607,11 @@ randomizeBtn.addEventListener('click', async () => {
         metrics: attemptEvaluation?.metrics || {}
       });
     }
-    const selectedAttempt = fairnessReviewService?.selectBestFairnessAttempt?.(attempts) || attempts[0];
+    const selectedPayload = fairnessReviewService?.selectBestFairnessAttempt?.(attempts);
+    const selectedAttempt = fairnessReviewService?.resolveSelectedAttempt?.(selectedPayload, attempts[0])
+      || selectedPayload?.selectedAttempt
+      || selectedPayload
+      || attempts[0];
     result = selectedAttempt?.result || result;
     result.fairnessReview = {
       attemptsEvaluated: attempts.length,
